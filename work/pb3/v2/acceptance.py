@@ -20,6 +20,9 @@ JOIN = ['2000 2START', '2010 -']
 # work RAM, as build.py lays it out
 P2_BLK, P2_POS, P2_ON, DOWN, TMR, P2JOIN = 0x7F00, 0x7F30, 0x7F35, 0x7F50, 0x7F52, 0x7F55
 HERO1, HERO2 = 0x7F58, 0x7F59
+SUIT, ENE, GUN, MOPEN = 0x7F90, 0x7F92, 0x7F98, 0x7F99
+PWR = 0x05C8                    # the engine's own double-damage flag
+SAT = 0x060C                    # the weapon unit's object type = the weapon ID
 # the title screen is the character select; it is up from about frame 20 until
 # the first start press, so the choice is made in the frames just before it
 PICK = ['25 RIGHT,2LEFT', '35 -']
@@ -71,6 +74,29 @@ class St:
     def h1(self):   return self._w(HERO1)
     @property
     def h2(self):   return self._w(HERO2)
+    def suit(self, i): return self._w(SUIT + i)
+    def ene(self, i):  return self._w(ENE + i)
+    @property
+    def gun(self):  return self._w(GUN)
+    @property
+    def mopen(self): return self._w(MOPEN)
+    @property
+    def sat(self):  return self.r[SAT]
+    @property
+    def y(self):    return self.px(0x82)
+
+    def attrs(self):
+        """Which sprite palettes the two men's own tiles are drawn with."""
+        one, two = set(), set()
+        for i in range(64):
+            y, t, a, x = self.r[0x200 + 4 * i: 0x204 + 4 * i]
+            if y >= 0xF0:
+                continue
+            if (t & 0xFE) < 0x20:
+                one.add(a & 3)
+            elif 0x40 <= (t & 0xFE) < 0x60:
+                two.add(a & 3)
+        return one, two
 
 
 def walk(first, last, keys='RIGHT', step=40):
@@ -113,7 +139,7 @@ def main():
 
     # 5. both attack.  The punch is object slot $0F; the runtime gives player
     #    two slot $0D, which the engine already tests against enemies.
-    s = St(run(START + JOIN + ['2100 -', '2110 B,2B', '2120 -'], 2114, (2113,), 'punch'))
+    s = St(run(START + JOIN + ['2100 -', '2110 B,2B', '2130 -'], 2118, (2117,), 'punch'))
     check('both men punch at once', s.slot(0x0F) and s.slot(0x0D),
           'slot $0F=%02X  slot $0D=%02X' % (s.slot(0x0F), s.slot(0x0D)))
 
@@ -178,6 +204,81 @@ def main():
     check('and the pair is back in play afterwards',
           r2.on == 1 and r2.a_hp and r2.b_hp,
           'P2_ON=%d  bars %d and %d' % (r2.on, r2.a_hp, r2.b_hp))
+
+    # --- stage 3: the suits, the sub-weapons and the one bar they share ----
+
+    # 9. every Solbrain sub-weapon is carried from the start, no letters to
+    #    collect: the menu picks one and the engine builds its own unit
+    carried = []
+    for g in range(1, 9):
+        s = St(run(START, 2100, pokes=['7F98=%d@1900' % g]))
+        carried.append(s.sat)
+    check('all eight sub-weapons, from the start', carried == list(range(1, 9)),
+          'weapon unit type per choice: %s' % carried)
+
+    # 10. the menu opens on SELECT and closes on it
+    o = St(run(START + ['2000 SELECT', '2010 -'], 2060))
+    c = St(run(START + ['2000 SELECT', '2010 -', '2040 SELECT', '2050 -'], 2100))
+    check('the menu opens and closes on select', o.mopen == 1 and c.mopen == 0,
+          'open %d, then %d' % (o.mopen, c.mopen))
+
+    # 11. each pad dresses its own man
+    pick = START + JOIN + ['2100 SELECT', '2110 -', '2120 RIGHT', '2130 -',
+                           '2140 2RIGHT', '2150 -', '2160 2RIGHT', '2170 -',
+                           '2180 SELECT', '2190 -']
+    s = St(run(pick, 2260, (2200,), 'suits'))
+    check('each pad dresses its own man', s.suit(0) == 1 and s.suit(1) == 2,
+          'suits %d and %d of 4' % (s.suit(0), s.suit(1)))
+
+    # 12. and the two suits are two different colours on screen: the men are
+    #     drawn on different sprite palettes, which is the only way this
+    #     engine can show two costumes at once
+    one, two = s.attrs()
+    check('the two suits are two colours', one == {0} and two == {3},
+          'player one on palette %s, player two on %s'
+          % (sorted(one), sorted(two)))
+
+    # 13. a suit eats the bar and falls off when it is empty
+    d = St(run(START + ['2000 SELECT', '2010 -', '2020 RIGHT', '2030 -',
+                        '2040 SELECT', '2050 -'], 2700,
+               pokes=['7F92=1@2100']))
+    check('a suit drains the bar and then falls off',
+          d.ene(0) == 0 and d.suit(0) == 0,
+          'bar %d, suit %d' % (d.ene(0), d.suit(0)))
+
+    # 14. and firing costs out of the same bar
+    fire = START + ['1980 SELECT', '1990 -', '2000 UP', '2010 -',
+                    '2020 SELECT', '2030 -']
+    fire += [x for f in range(2100, 3000, 20)
+             for x in ('%d B' % f, '%d -' % (f + 8))]
+    f1 = St(run(fire, 2100))
+    f2 = St(run(fire, 3000))
+    check('firing costs out of the same bar', f2.ene(0) < f1.ene(0),
+          'bar %d before, %d after %d shots' % (f1.ene(0), f2.ene(0), 45))
+
+    # 15. an empty bar means no weapon unit at all -- bare hands
+    e = St(run(fire, 2200, pokes=['7F92=0@2150', '7F93=0@2150']))
+    check('an empty bar leaves you bare-handed', e.sat == 0,
+          'weapon unit type %d' % e.sat)
+
+    # 16. the speed suit covers more ground in the same time
+    run_r = START + ['1900 RIGHT']
+    a0 = St(run(run_r, 2000, pokes=['7F90=0@1850']))
+    a2 = St(run(run_r, 2000, pokes=['7F90=2@1850']))
+    check('the speed suit covers more ground', a2.a_x > a0.a_x + 16,
+          '%.0f px against %.0f in the same 100 frames' % (a2.a_x, a0.a_x))
+
+    # 17. the float suit falls slower while A is held
+    fall = START + ['1900 RIGHT', '1930 RIGHT,A']
+    b0 = St(run(fall, 1983, pokes=['7F90=0@1850']))
+    b1 = St(run(fall, 1983, pokes=['7F90=1@1850']))
+    check('the float suit falls slower', b1.y < b0.y - 8,
+          'y %.0f against %.0f at the same frame' % (b1.y, b0.y))
+
+    # 18. the power suit turns on the engine's own double-damage flag
+    p3 = St(run(START, 2000, pokes=['7F90=3@1850']))
+    check('the power suit doubles the punch', p3.r[PWR] != 0,
+          "the engine's own power flag reads %02X" % p3.r[PWR])
 
     print('\n%s' % ('all checks passed' if ok else 'SOMETHING FAILED'))
     return 0 if ok else 1

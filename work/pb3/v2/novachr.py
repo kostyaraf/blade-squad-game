@@ -328,28 +328,65 @@ GLYPH_BANK = 152        # the two little labels the select screen needs
 MENU_MAX = 6            # sprites the select screen is willing to draw
 
 
-def _glyphs():
-    """Two 8x16 labels, "1P" and "2P", drawn here because neither cartridge
-    has a digit in a bank the select screen can reach."""
-    art = {
-        '1': ['..XX....', '.XXX....', '..XX....', '..XX....',
-              '..XX....', '..XX....', '.XXXX...', '........'],
-        '2': ['.XXXX...', 'XX..XX..', '....XX..', '..XXX...',
-              '.XX.....', 'XX..XX..', 'XXXXXX..', '........'],
-        'P': ['XXXXX...', 'XX..XX..', 'XX..XX..', 'XXXXX...',
-              'XX......', 'XX......', 'XX......', '........'],
-    }
+FONT = "0123456789ABCDEFGHILMNOPRSTUWY\x1e "
+# 5x7, drawn on an 8x8 grid; each character becomes one 8x16 sprite with its
+# lower half blank, so a line of text sits on a 16-pixel pitch.
+_ART = {
+    '0': ['.XXX.', 'X...X', 'X..XX', 'X.X.X', 'XX..X', 'X...X', '.XXX.'],
+    '1': ['..X..', '.XX..', '..X..', '..X..', '..X..', '..X..', '.XXX.'],
+    '2': ['.XXX.', 'X...X', '....X', '..XX.', '.X...', 'X....', 'XXXXX'],
+    '3': ['XXXXX', '...X.', '..X..', '...X.', '....X', 'X...X', '.XXX.'],
+    '4': ['...X.', '..XX.', '.X.X.', 'X..X.', 'XXXXX', '...X.', '...X.'],
+    '5': ['XXXXX', 'X....', 'XXXX.', '....X', '....X', 'X...X', '.XXX.'],
+    '6': ['..XX.', '.X...', 'X....', 'XXXX.', 'X...X', 'X...X', '.XXX.'],
+    '7': ['XXXXX', '....X', '...X.', '..X..', '.X...', '.X...', '.X...'],
+    '8': ['.XXX.', 'X...X', 'X...X', '.XXX.', 'X...X', 'X...X', '.XXX.'],
+    '9': ['.XXX.', 'X...X', 'X...X', '.XXXX', '....X', '...X.', '.XX..'],
+    'A': ['.XXX.', 'X...X', 'X...X', 'XXXXX', 'X...X', 'X...X', 'X...X'],
+    'B': ['XXXX.', 'X...X', 'X...X', 'XXXX.', 'X...X', 'X...X', 'XXXX.'],
+    'C': ['.XXX.', 'X...X', 'X....', 'X....', 'X....', 'X...X', '.XXX.'],
+    'D': ['XXXX.', 'X...X', 'X...X', 'X...X', 'X...X', 'X...X', 'XXXX.'],
+    'E': ['XXXXX', 'X....', 'X....', 'XXXX.', 'X....', 'X....', 'XXXXX'],
+    'F': ['XXXXX', 'X....', 'X....', 'XXXX.', 'X....', 'X....', 'X....'],
+    'G': ['.XXX.', 'X...X', 'X....', 'X..XX', 'X...X', 'X...X', '.XXX.'],
+    'H': ['X...X', 'X...X', 'X...X', 'XXXXX', 'X...X', 'X...X', 'X...X'],
+    'I': ['XXXXX', '..X..', '..X..', '..X..', '..X..', '..X..', 'XXXXX'],
+    'L': ['X....', 'X....', 'X....', 'X....', 'X....', 'X....', 'XXXXX'],
+    'M': ['X...X', 'XX.XX', 'X.X.X', 'X.X.X', 'X...X', 'X...X', 'X...X'],
+    'N': ['X...X', 'XX..X', 'X.X.X', 'X.X.X', 'X..XX', 'X...X', 'X...X'],
+    'O': ['.XXX.', 'X...X', 'X...X', 'X...X', 'X...X', 'X...X', '.XXX.'],
+    'P': ['XXXX.', 'X...X', 'X...X', 'XXXX.', 'X....', 'X....', 'X....'],
+    'R': ['XXXX.', 'X...X', 'X...X', 'XXXX.', 'X.X..', 'X..X.', 'X...X'],
+    'S': ['.XXXX', 'X....', 'X....', '.XXX.', '....X', '....X', 'XXXX.'],
+    'T': ['XXXXX', '..X..', '..X..', '..X..', '..X..', '..X..', '..X..'],
+    'U': ['X...X', 'X...X', 'X...X', 'X...X', 'X...X', 'X...X', '.XXX.'],
+    'W': ['X...X', 'X...X', 'X...X', 'X.X.X', 'X.X.X', 'XX.XX', 'X...X'],
+    'Y': ['X...X', 'X...X', '.X.X.', '..X..', '..X..', '..X..', '..X..'],
+    '\x1e': ['XXXXX', 'XXXXX', 'XXXXX', 'XXXXX', 'XXXXX', 'XXXXX', 'XXXXX'],
+    ' ': ['.....', '.....', '.....', '.....', '.....', '.....', '.....'],
+}
 
-    def tile(ch):
+
+def glyph_tile(ch):
+    """The sprite tile byte that draws `ch`, for a bank in the given slot."""
+    return FONT.index(ch)
+
+
+def _glyphs():
+    """A 32-character font: digits, the letters the menus need, a solid block
+    and a space.  Neither cartridge has a usable digit in a bank these screens
+    can reach, so the font is authored here."""
+    out = bytearray()
+    for ch in FONT:
         lo = bytearray(8)
-        for y, row in enumerate(art[ch]):
+        for y, row in enumerate(_ART[ch]):
             for x, c in enumerate(row):
                 if c == 'X':
-                    lo[y] |= 0x80 >> x
-        return bytes(lo) + bytes(8)          # colour 1, the light one
-
-    return bytearray(tile('1') + tile('P') + tile('2') + tile('P') +
-                     bytes(1024 - 64))
+                    lo[y + 1] |= 0x80 >> (x + 1)
+        out += bytes(lo) + bytes(lo)         # both planes: colour 3, which is
+                                             # white in every palette in play
+        out += bytes(16)                     # the lower half of the 8x16 pair
+    return out + bytes(1024 - len(out))
 
 
 def menu_frame(sol, banks):
