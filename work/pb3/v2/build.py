@@ -51,6 +51,9 @@ SPAWN  = 0x7F60                 # a pristine copy of a standing player, 45 bytes
 TILEADD= 0x7F56                 # added to every sprite tile the engine emits
 P1BANK = 0x7F57                 # player one's sprite CHR bank, kept over the
                                 # frame while player two overwrites the shadow
+HERO1  = 0x7F58                 # 0 = this game's hero, 1 = the other game's
+HERO2  = 0x7F59
+LABDY  = 0x7F5A                 # scratch: which row a select-screen label is on
 
 # --- the engine, as far as the runtime needs to know it ---------------------
 SYMS = {
@@ -76,6 +79,11 @@ SYMS = {
     'CHR_R2':   0x0042,         # shadow of the MMC3 1K bank at $1000 -- the
                                 # player's own sprite art, swapped per pose
     'CHR_R3':   0x0043,         # shadow of the bank at $1400: tiles $40-$7F
+    'CHR_R4':   0x0044,         # shadow of the bank at $1800: tiles $80-$BF
+    'MODE':     0x0002,         # which screen the game is on; $05 = the title
+    'OAM':      0x0200,         # the buffer that is sent to the PPU each frame
+    'PALBUF':   0x0110,
+    'HERO1':    HERO1, 'HERO2': HERO2, 'LABDY': LABDY,
     'OAM_T1':   0x0201,         # the three places the engine stores a tile
     'OAM_T2':   0x01FE,
     'OBJ_YL':   0x00C0, 'OBJ_YH': 0x00D0, 'DOWN': DOWN, 'TMR': TMR, 'CUR': CUR,
@@ -187,7 +195,10 @@ hook:   lda PL_STATE            ; states $12/$13 are the warp-in: a level has
         sta DOWN+1
 h_run:  lda P2_ON
         bne h_two
-        jsr PLAYER              ; alone: exactly the original behaviour
+        lda #0                  ; alone: the original behaviour, except that
+        sta TILEADD             ; a lone player may still be the other hero
+        jsr PLAYER
+        jsr chrslot
         jmp init
 h_two:  lda DOWN+0              ; both out of health?  Then stop hiding it and
         and DOWN+1              ; let the engine run its own death sequence on
@@ -282,29 +293,195 @@ t_keep: rts
 
 ; --- chrslot: give each player his own 1K of the sprite pattern table ------
 ; The engine picks the player's art bank per pose and leaves it in the shadow
-; $42.  Player one's is kept, player two's is moved to the neighbouring slot.
+; $42.  That pose then has to be fetched as whichever hero the man chose, out
+; of a bank built for the slot he is drawn in -- see work/pb3/v2/novachr.py.
 chrslot: lda P2_ON
-        beq c_none
-        lda CUR
+        bne c_pair
+        lda HERO1               ; alone, and playing as the other hero
+        beq c_ret
+        lda CHR_R2
+        jsr map_n2
+        sta CHR_R2
+c_ret:  rts
+c_pair: lda CUR
         bne c_two
-        lda CHR_R2              ; player one just drew: remember his bank
+        lda CHR_R2              ; player one just drew: remember his pose
         sta P1BANK
         rts
-c_two:  lda CHR_R2              ; player two just drew: the same poses, but
-        ldx #NPOSE-1            ; drawn as the other game's hero, go into the
-c_map:  cmp poses,x             ; second slot
-        beq c_hit
-        dex
-        bpl c_map
-        lda CHR_R2              ; a pose we never saw when the art was built:
-        bne c_set               ; he shows Solbrain's man for that one frame
-c_hit:  lda novas,x
+c_two:  lda HERO2               ; player two just drew: his pose goes into the
+        beq c_2s                ; second slot, as the hero he chose
+        lda CHR_R2
+        jsr map_n3
+        jmp c_set
+c_2s:   lda CHR_R2
+        jsr map_s3
 c_set:  sta CHR_R3
-        lda P1BANK              ; and player one gets his own bank back
-        sta CHR_R2
-c_none: rts
+        lda HERO1               ; and player one gets the first slot back
+        beq c_1s
+        lda P1BANK
+        jsr map_n2
+        jmp c_1e
+c_1s:   lda P1BANK
+c_1e:   sta CHR_R2
+        rts
+
+; A pose bank we never saw when the art was built comes back unchanged, so the
+; man shows this game's hero for that one frame rather than rubble.
+map_n2: ldx #NPOSE-1
+m2a:    cmp poses,x
+        beq m2h
+        dex
+        bpl m2a
+        rts
+m2h:    lda nova2,x
+        rts
+map_n3: ldx #NPOSE-1
+m3a:    cmp poses,x
+        beq m3h
+        dex
+        bpl m3a
+        rts
+m3h:    lda nova3,x
+        rts
+map_s3: ldx #NPOSE-1
+msa:    cmp poses,x
+        beq msh
+        dex
+        bpl msa
+        rts
+msh:    lda sol3,x
+        rts
 poses:  .byte POSE_TABLE
-novas:  .byte NOVA_TABLE
+nova2:  .byte NOVA2_TABLE
+nova3:  .byte NOVA3_TABLE
+sol3:   .byte SOL3_TABLE
+
+; --- the select screen -----------------------------------------------------
+; Hooked in just before the sprites are handed to the PPU, so it can put its
+; own men on top of the title screen without fighting anybody for the buffer:
+; the title draws no sprites at all.  Left picks this game's hero, right picks
+; the other one; each pad picks for its own player.
+menu:   lda MODE
+        cmp #$05
+        beq q_on
+        jmp q_end
+q_on:
+        lda #MENU_POSE          ; both men have to be mapped in at once, so
+        sta CHR_R2              ; the two slots hold the two heroes' art
+        lda #MENU_NOVA
+        sta CHR_R3
+        lda #GLYPHS
+        sta CHR_R4
+        jsr q_pal
+        jsr q_pads
+        jsr q_draw
+q_end:  lda #$00                ; the two bytes the hook stands in for
+        ldx #$02
+        rts
+
+; The title screen has no sprites, so it has no sprite colours either.  Three
+; entries of sprite palette 0 are set here, inside vblank, right before the
+; sprites are sent; the game reloads its own scroll after this hook returns.
+q_pal:  lda #$30                ; the title's own sprite colours are three
+        sta PALBUF+1            ; near-black purples; the two men need to be
+        lda #$16                ; readable, so recolour sprite palette 0 in
+        sta PALBUF+2            ; the game's own buffer -- it uploads it for us
+        lda #$11
+        sta PALBUF+3
+        rts
+
+q_pads: lda PAD1_P
+        and #$03
+        beq q_p2
+        lsr a                   ; right in the carry, left in what is left
+        lda #$00
+        adc #$00
+        sta HERO1
+q_p2:   lda PAD2_P
+        and #$03
+        beq q_pe
+        lsr a
+        lda #$00
+        adc #$00
+        sta HERO2
+q_pe:   rts
+
+q_draw: lda #$00
+        sta LABDY
+        ldx #$00                ; the title screen draws nothing of its own,
+        lda #$F0                ; so park every sprite off the bottom first
+q_clr:  sta OAM+0,x
+        inx
+        inx
+        inx
+        inx
+        bne q_clr
+        ldy #$00
+q_lp:   lda #MENU_Y              ; this game's hero on the left
+        clc
+        adc msy,y
+        sta OAM+0,x
+        lda mst,y
+        sta OAM+1,x
+        lda #$00
+        sta OAM+2,x
+        lda msx,y
+        clc
+        adc #MENU_X1
+        sta OAM+3,x
+        lda #MENU_Y              ; the other game's hero on the right
+        clc
+        adc msy,y
+        sta OAM+4,x
+        lda mst,y
+        clc
+        adc #$40
+        sta OAM+5,x
+        lda #$00
+        sta OAM+6,x
+        lda msx,y
+        clc
+        adc #MENU_X2
+        sta OAM+7,x
+        txa
+        clc
+        adc #$08
+        tax
+        iny
+        cpy #NMENU
+        bne q_lp
+        lda HERO1               ; a label under each man's choice
+        ldy #$81
+        jsr q_lab
+        lda HERO2
+        ldy #$83
+        pha
+        lda #$10                ; the second label sits a row lower, so the
+        sta LABDY               ; two of them read even on the same man
+        pla
+q_lab:  pha
+        lda #MENU_LY
+        clc
+        adc LABDY
+        sta OAM+0,x
+        tya
+        sta OAM+1,x
+        lda #$00
+        sta OAM+2,x
+        pla
+        beq q_l1
+        lda #MENU_X2+4
+        bne q_l2
+q_l1:   lda #MENU_X1+4
+q_l2:   sta OAM+3,x
+        txa
+        clc
+        adc #$04
+        tax
+        rts
+msx:    .byte MS_X
+msy:    .byte MS_Y
+mst:    .byte MS_T
 
 ; --- camera: replaces `JSR CAM_XF / JSR CAM_YF` at bank 14 $CD9C -----------
 ; The engine's camera scrolls when the live player pushes a dead-zone edge, by
@@ -591,14 +768,23 @@ p2:     lda $00AF,y
         bcs p2
         rts
 """
-    mapping = mapping or {}
-    order = sorted(mapping)
-    src = src.replace('POSE_TABLE', ','.join(str(b) for b in order) or '0')
-    src = src.replace('NOVA_TABLE',
-                      ','.join(str(mapping[b]) for b in order) or '0')
+    order = novachr.SOL_ORDER
+    tbl = lambda base: ','.join(str(base + i) for i in range(len(order)))
+    src = src.replace('POSE_TABLE', ','.join(str(b) for b in order))
+    src = src.replace('NOVA2_TABLE', tbl(novachr.NOVA2_BASE))
+    src = src.replace('NOVA3_TABLE', tbl(novachr.NOVA3_BASE))
+    src = src.replace('SOL3_TABLE', tbl(novachr.SOL3_BASE))
+    ink, mbank, msprs = mapping
+    src = src.replace('MS_X', ','.join(str(s[0]) for s in msprs))
+    src = src.replace('MS_Y', ','.join(str(s[1] & 0xFF) for s in msprs))
+    src = src.replace('MS_T', ','.join(str(s[4] | 1) for s in msprs))
     a = Asm(WRAM, dict(SYMS, PL_BLK_LEN=PL_BLK_LEN, MARGIN=MARGIN,
                         RESPAWN=RESPAWN, RESPAWN_DX=RESPAWN_DX,
-                        NPOSE=max(1, len(order))))
+                        NPOSE=len(order), NMENU=len(msprs),
+                        MENU_POSE=mbank,
+                        MENU_NOVA=novachr.NOVA3_BASE + order.index(mbank),
+                        GLYPHS=novachr.GLYPH_BANK,
+                        MENU_X1=40, MENU_X2=200, MENU_Y=128, MENU_LY=134))
     return a.assemble(src), a.syms
 
 
@@ -640,6 +826,10 @@ c1:     lda ($00),y
         inc $03
         dex
         bne c1
+        lda #$00                ; who each pad starts out playing as
+        sta HERO1
+        lda #$01
+        sta HERO2
         jmp RESET
 """
     a = Asm(BOOT, dict(SYMS, RTBANK=RTBANK, PAGES=pages))
@@ -648,8 +838,8 @@ c1:     lda ($00),y
 
 def build():
     img = Image()
-    mapping, novabanks, redrawn = novachr.novabanks()
-    img.add_chr(novabanks, novachr.NOVA_BASE)
+    mapping, first, novabanks, redrawn = novachr.novabanks()
+    img.add_chr(novabanks, first)
     rt, syms = runtime(mapping)
     pages = (len(rt) + 0xFF) // 0x100
     img.prg[RTBANK * BANK:RTBANK * BANK + len(rt)] = rt
@@ -687,6 +877,13 @@ def build():
         assert bytes(old) == bytes(orig), '%04X %s' % (cpu, old.hex())
         img.poke(15, cpu,
                  bytes((0x20, syms[sym] & 0xFF, syms[sym] >> 8)), 'tile hook')
+
+    # the select screen, hooked in right before the sprites go to the PPU
+    old = img.prg[img.off(15, 0xFAE7):img.off(15, 0xFAE7) + 4]
+    assert bytes(old) == bytes((0xA9, 0x00, 0xA2, 0x02)), old.hex()
+    img.poke(15, 0xFAE7,
+             bytes((0x20, syms['menu'] & 0xFF, syms['menu'] >> 8, 0xEA)),
+             'select screen')
 
     n = img.save()
     print('%s  %d bytes' % (os.path.relpath(OUT, ROOT), n))

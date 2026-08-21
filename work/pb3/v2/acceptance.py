@@ -19,6 +19,10 @@ JOIN = ['2000 2START', '2010 -']
 
 # work RAM, as build.py lays it out
 P2_BLK, P2_POS, P2_ON, DOWN, TMR, P2JOIN = 0x7F00, 0x7F30, 0x7F35, 0x7F50, 0x7F52, 0x7F55
+HERO1, HERO2 = 0x7F58, 0x7F59
+# the title screen is the character select; it is up from about frame 20 until
+# the first start press, so the choice is made in the frames just before it
+PICK = ['25 RIGHT,2LEFT', '35 -']
 HP = 0x05C5
 
 
@@ -63,6 +67,10 @@ class St:
     def down(self, i): return self._w(DOWN + i)
     def tmr(self, i):  return self._w(TMR + i)
     def slot(self, n): return self.r[0x600 + n]
+    @property
+    def h1(self):   return self._w(HERO1)
+    @property
+    def h2(self):   return self._w(HERO2)
 
 
 def walk(first, last, keys='RIGHT', step=40):
@@ -116,6 +124,21 @@ def main():
                2260, (2260,), 'heroes'))
     check('player two is the other game\'s hero', s.r[0x43] >= 128,
           'his CHR bank is %d (Solbrain\'s own are 64-92)' % s.r[0x43])
+
+    # 5c. the select screen: each pad picks its own man, and the man picked
+    #     is the one whose art is loaded once the level starts
+    s = St(run(PICK + START + walk(1980, 2100), 2100, (30,), 'select'))
+    check('each pad picks its own man', s.h1 == 1 and s.h2 == 0,
+          'pad 1 chose %d, pad 2 chose %d (0 = this game, 1 = the other)'
+          % (s.h1, s.h2))
+    check('the man you picked is the man you play', s.r[0x42] >= 128,
+          'player one draws out of CHR bank %d, not 64-92' % s.r[0x42])
+    s = St(run(PICK + START + JOIN + ['2100 LEFT', '2140 -',
+                                      '2200 2LEFT', '2230 -'], 2260))
+    check('and swapping the pair swaps the art',
+          128 <= s.r[0x42] < 144 and s.r[0x43] >= 144,
+          'banks %d and %d (128-143 the other game, 144+ this one)'
+          % (s.r[0x42], s.r[0x43]))
 
     # 6. each takes damage on his own bar
     a = St(run(START + JOIN + walk(2100, 2600), 2600))

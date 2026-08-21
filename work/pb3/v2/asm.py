@@ -129,8 +129,11 @@ class Asm:
         return ('abs', v)
 
     def assemble(self, text):
+        # Sizes settle after a pass or two -- a forward label starts unknown,
+        # so an operand can shrink from absolute to zero page once it is
+        # known.  Keep laying it out until nothing moves, then check.
         out = bytearray()
-        for p in (1, 2):
+        for p in (1, 1, 1, 2):
             out = bytearray()
             pc = self.org
             for ln, raw in enumerate(text.splitlines(), 1):

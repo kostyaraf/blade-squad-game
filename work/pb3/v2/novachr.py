@@ -319,13 +319,73 @@ def preview(sol, banks, path):
 # Solbrain's player art bank -> the bank holding the same poses drawn as the
 # Power Blade 2 hero.  Measured: those are the only banks the engine ever puts
 # in the player's CHR slot.
-NOVA_BASE = 128
 SOL_ORDER = [64, 65, 66, 67, 70, 85, 92]
 R3_BANK = 86            # what normally sits in the slot player two borrows
+NOVA2_BASE = 128        # other hero, drawn in the first slot  (upper half: HUD)
+NOVA3_BASE = 136        # other hero, drawn in the second slot (upper half: 86)
+SOL3_BASE = 144         # this game's hero, drawn in the second slot
+GLYPH_BANK = 152        # the two little labels the select screen needs
+MENU_MAX = 6            # sprites the select screen is willing to draw
+
+
+def _glyphs():
+    """Two 8x16 labels, "1P" and "2P", drawn here because neither cartridge
+    has a digit in a bank the select screen can reach."""
+    art = {
+        '1': ['..XX....', '.XXX....', '..XX....', '..XX....',
+              '..XX....', '..XX....', '.XXXX...', '........'],
+        '2': ['.XXXX...', 'XX..XX..', '....XX..', '..XXX...',
+              '.XX.....', 'XX..XX..', 'XXXXXX..', '........'],
+        'P': ['XXXXX...', 'XX..XX..', 'XX..XX..', 'XXXXX...',
+              'XX......', 'XX......', 'XX......', '........'],
+    }
+
+    def tile(ch):
+        lo = bytearray(8)
+        for y, row in enumerate(art[ch]):
+            for x, c in enumerate(row):
+                if c == 'X':
+                    lo[y] |= 0x80 >> x
+        return bytes(lo) + bytes(8)          # colour 1, the light one
+
+    return bytearray(tile('1') + tile('P') + tile('2') + tile('P') +
+                     bytes(1024 - 64))
+
+
+def menu_frame(sol, banks):
+    """The pose the select screen shows: the one that came out of the redraw
+    with the most ink, so neither man is a sliver on the choosing screen."""
+    best = None
+    for k, (f, m, t) in sol.items():
+        if len(m) > MENU_MAX or len({s[3] for s in m}) != 1:
+            continue
+        bank = m[0][3]
+        ink = 0
+        ok = True
+        for dx, dy, at, b, idx in m:
+            data = banks.get(b, {}).get(idx)
+            if data is None:
+                ok = False
+                break
+            ink += sum(bin(v).count('1') for v in data)
+        if not ok:
+            continue
+        x0, y0, x1, y1 = bbox(m)
+        if x1 - x0 + 1 > 24:
+            continue
+        if best is None or ink > best[0]:
+            best = (ink, bank, sorted(m, key=lambda s: (s[1], s[0])))
+    return best
 
 
 def novabanks():
-    """(mapping, [1K bank images]) ready to be appended to the CHR."""
+    """(mapping, first bank, [1K bank images]) ready to append to the CHR.
+
+    Three families, because a bank has to suit the slot it is mapped into: the
+    first slot keeps the health bar and the satellite in its upper half, the
+    second slot has to keep what the borrowed bank normally holds there.  Any
+    other choice turns some other object on screen to rubble.
+    """
     sol, pb2 = collect()
     banks, filled = build_banks(sol, pb2)
     rom = open(SOL, 'rb').read()
@@ -334,20 +394,30 @@ def novabanks():
     def orig(b):
         return bytearray(rom[chr0 + b * 1024:chr0 + (b + 1) * 1024])
 
-    out, mapping = [], {}
+    imgs = {}
     for i, b in enumerate(SOL_ORDER):
-        # the lower half is the man; the upper half has to keep what the
-        # borrowed slot normally holds, or every object drawn out of tiles
-        # $60-$7F turns to rubble the moment player two joins
-        img = orig(b)
-        img[0x200:0x400] = orig(R3_BANK)[0x200:0x400]
+        nova = orig(b)
         for idx, data in banks.get(b, {}).items():
-            img[idx * 16:idx * 16 + 32] = data
-        out.append(bytes(img))
-        mapping[b] = NOVA_BASE + i
-    return mapping, out, filled
+            nova[idx * 16:idx * 16 + 32] = data
+        imgs[NOVA2_BASE + i] = bytes(nova)
+        n3 = bytearray(nova)
+        n3[0x200:0x400] = orig(R3_BANK)[0x200:0x400]
+        imgs[NOVA3_BASE + i] = bytes(n3)
+        s3 = orig(b)
+        s3[0x200:0x400] = orig(R3_BANK)[0x200:0x400]
+        imgs[SOL3_BASE + i] = bytes(s3)
+    imgs[GLYPH_BANK] = bytes(_glyphs())
+
+    first = min(imgs)
+    last = max(imgs)
+    out = [imgs.get(b, bytes(1024)) for b in range(first, last + 1)]
+    return menu_frame(sol, banks), first, out, filled
 
 
 if __name__ == '__main__' and '-emit' in sys.argv:
-    m, imgs, filled = novabanks()
-    print('%d slots redrawn, %d banks: %s' % (filled, len(imgs), m))
+    mf, first, imgs, filled = novabanks()
+    print('%d slots redrawn, %d banks from %d' % (filled, len(imgs), first))
+    print('select-screen pose: bank %d, %d sprites, ink %d'
+          % (mf[1], len(mf[2]), mf[0]))
+    for dx, dy, at, b, idx in mf[2]:
+        print('   dx=%3d dy=%4d attr=%02X tile=%02X' % (dx, dy, at, idx))
