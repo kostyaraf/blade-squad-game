@@ -1,0 +1,319 @@
+E0 measurement A -- level-format capacity, both directions
+ROMs: Power Blade 2 (USA).nes / Tokkyuu Shirei Solbrain (Japan).nes
+
+====================================================================================================
+PARSER VERIFICATION against nesemu -vram dumps
+====================================================================================================
+  solbrain a2050.bin      stage  0  tiles   924 wrong 0  attrs  238 wrong 0
+  solbrain a2100.bin      stage  0  tiles   896 wrong 0  attrs  224 wrong 0
+  solbrain a2200.bin      stage  0  tiles   896 wrong 0  attrs  238 wrong 0
+  solbrain a2500.bin      stage  0  tiles   924 wrong 0  attrs  238 wrong 0
+  solbrain p01.bin        stage  1  tiles   924 wrong 0  attrs  238 wrong 0
+  solbrain p0F.bin        stage 15  tiles   924 wrong 0  attrs  238 wrong 0
+  solbrain p10.bin        stage 16  tiles   924 wrong 0  attrs  238 wrong 0
+  solbrain p13.bin        stage 19  tiles   924 wrong 0  attrs  238 wrong 0
+  powerblade2 v1900.bin   stage 0 area 0 camera screen 2 -> screen $02
+               decoded 20x32 tiles land on CIRAM nametable 1 rows 0..19 with 0 mismatches of 640
+
+====================================================================================================
+DIRECTION A -- Solbrain levels expressed in the Power Blade 2 format
+====================================================================================================
+
+src mt   = metatiles (16x16) in the stage's used rooms = rooms * 256
+keptH    = kept if every room becomes a PB2 horizontal screen (256x160) -- ver1's policy
+keptMIX  = upper bound, room keeps 256 unless it must go into a horizontal area
+2Djunc   = used rooms that have an X neighbour AND a Y neighbour
+deg3+    = used rooms with 3 or more neighbours (no 1-D chain can hold them)
+runH/V   = longest straight room run; a PB2 area holds at most 16 screens ($DFB4)
+edgeH/V  = room borders the player can actually cross (a 16-px lane that is
+           non-solid on both sides); neighbours in the room map that are
+           walled off do not count
+1-D chain? = every connected component of that graph is an open chain, the
+           only shape PB2's linear area sequence ($86F0 INC $9C) can hold
+
+st rooms  src mt  keptH    %    keptMIX    %   2Djunc deg3+ runH runV edgeH edgeV  1-D chain?
+---------------------------------------------------------------------------------------------
+ 0    21    5376   3360   62.5     4416   82.1      4     0    6    4    11     6  yes
+ 1    71   18176  11360   62.5    17216   94.7     57    50    8   12    53    54  NO
+ 2    72   18432  11520   62.5    17568   95.3     58    51    8   12    53    55  NO
+ 3    21    5376   3360   62.5     4128   76.8      8     6    9    2    18     4  NO
+ 4    34    8704   5440   62.5     7840   90.1     20    12    8    3    24    12  NO
+ 5    49   12544   7840   62.5    10720   85.5     27    22   13    4    38    17  NO
+ 6    30    7680   4800   62.5     6432   83.8     16    12   12    3    25    11  NO
+ 7    30    7680   4800   62.5     5568   72.5      3     0   12    3    20     4  yes
+ 8     3     768    480   62.5      768  100.0      0     0    1    1     0     0  yes
+ 9    21    5376   3360   62.5     4128   76.8      8     6    9    2    18     4  NO
+10    30    7680   4800   62.5     6528   85.0     15     9   10    4    23    10  NO
+11    30    7680   4800   62.5     6528   85.0     15     8   10    4    22    10  NO
+12     2     512    320   62.5      320   62.5      0     0    2    1     1     0  yes
+13    65   16640  10400   62.5    16544   99.4     63    59    6   15    49    59  NO
+14     1     256    160   62.5      256  100.0      0     0    1    1     0     0  yes
+15    34    8704   5440   62.5     6976   80.1      7     0    6    6    18    12  yes
+16    34    8704   5440   62.5     6976   80.1      7     0    8    6    20    12  yes
+17     1     256    160   62.5      256  100.0      0     0    1    1     0     0  yes
+18     9    2304   1440   62.5     1440   62.5      0     0    9    1     8     0  yes
+19     1     256    160   62.5      256  100.0      0     0    1    1     0     0  yes
+---------------------------------------------------------------------------------------------
+ALL   559  143104  89440   62.5   124864   87.3    308   235             401   270
+
+2D junction rooms: 308 of 559 used rooms = 55.1%  (stages with any: 14/20)
+rooms needing 3+ exits: 235 = 42.0%  (stages with any: 10/20)
+PB2 areas are a strictly linear chain: the area-exit object does INC $9C ($86F0), and there are 52 exit records for 53 areas.
+
+Stages whose room graph is only open chains (the one shape a PB2 area
+sequence can hold): 10 of 20, 136 of 559 rooms = 24.3%.
+  -> 0, 7, 8, 12, 14, 15, 16, 17, 18, 19
+Metatiles that survive at all = keptMIX summed over ONLY those stages:
+  27232 of 143104 = 19.0%   (the other 75.7% belongs to stages PB2 cannot lay
+   out, because their rooms branch or close a loop)
+
+-- collision model: PB2 classifies a 16x16 cell by its TOP-LEFT 8x8 tile number ($DCBF, build_page) --
+
+st  cells  tiles  TLtiles  conflict  conflictSOLID  lostCells   %    lostSOLID   %    slots(<=256)
+--------------------------------------------------------------------------------------------------
+ 0   5376    155       52         8              0         42  0.78          0  0.00      168
+ 1  18176    132       48         5              0         26  0.14          0  0.00      140
+ 2  18432    118       46         4              0         68  0.37          0  0.00      123
+ 3   5376    165       62         5              1        148  2.75        148  2.75      174
+ 4   8704    133       54         2              0          0  0.00          0  0.00      137
+ 5  12544    140       52         6              1       1960 15.62          7  0.06      148
+ 6   7680    106       37         5              0        293  3.82          0  0.00      114
+ 7   7680    146       52         8              1        336  4.38         93  1.21      158
+ 8    768    101       34         0              0          0  0.00          0  0.00      101
+ 9   5376    165       62         5              1        148  2.75        148  2.75      174
+10   7680    142       55         3              2        110  1.43        106  1.38      147
+11   7680    123       43         8              2        165  2.15         91  1.18      133
+12    512     72       28         1              0         18  3.52          0  0.00       73
+13  16640     96       40         1              0          0  0.00          0  0.00       98
+14    256     76       33         2              2         11  4.30         11  4.30       78
+15   8704    151       59         9              0         93  1.07          0  0.00      162
+16   8704    174       63         4              1        183  2.10        183  2.10      181
+17    256     63       23         1              0         22  8.59          0  0.00       64
+18   2304    146       53         4              1         52  2.26         52  2.26      152
+19    256     67       24         2              1         22  8.59         10  3.91       69
+--------------------------------------------------------------------------------------------------
+ALL 143104                        83             13       3697  2.58        849  0.59  stages over 256 tiles: 0
+
+`slots` = 8x8 tile numbers PB2 would need if every conflict is resolved
+by duplicating the tile pattern.  PB2 has 256 background tiles per area
+(R2..R5, 4 x 1 KB at $1000).
+
+-- Power Blade 2 table budget for the same data --
+
+A Solbrain room (8x8 blocks) is exactly one PB2 *vertical* screen
+(64 bytes of block ids); a Solbrain block (2x2 metatiles = 4x4 tiles)
+is exactly one PB2 block (16 bytes) plus its 1 attribute byte.
+
+st  rooms->PB2 screens (<=256)  blocks (<=256)  tiles (<=256)  longest V run (<=15)  fits
+-----------------------------------------------------------------------------------------
+ 0                         21             152            168                     4  yes
+ 1                         71             120            140                    12  yes
+ 2                         72             120            123                    12  yes
+ 3                         21             123            174                     2  yes
+ 4                         34             111            137                     3  yes
+ 5                         49             132            148                     4  yes
+ 6                         30             112            114                     3  yes
+ 7                         30             112            158                     3  yes
+ 8                          3              59            101                     1  yes
+ 9                         21             123            174                     2  yes
+10                         30              95            147                     4  yes
+11                         30              95            133                     4  yes
+12                          2              28             73                     1  yes
+13                         65              97             98                    15  yes
+14                          1              29             78                     1  yes
+15                         34             161            162                     6  yes
+16                         34             161            181                     6  yes
+17                          1              22             64                     1  yes
+18                          9              73            152                     1  yes
+19                          1              24             69                     1  yes
+-----------------------------------------------------------------------------------------
+stages whose TABLES fit PB2: 20/20 -- the tables were never the problem.
+
+-- destructible scenery and objects --
+
+st  altCells  altMetatiles  PB2bits  objTotal  objMaxRoom  PB2 obj slots
+------------------------------------------------------------------------
+ 0       112            66        8       118          10             8
+ 1        17            13        8       129           8             8
+ 2       280            12        8        60           5             8
+ 3        18            18        8        92           8             8
+ 4        17            12        8       192          10             8
+ 5       489            16        8       129           8             8
+ 6       176            12        8       156          11             8
+ 7        60            28        8       144           8             8
+ 8         0             0        8         0           0             8
+ 9        18            18        8        59           5             8
+10        30             7        8        56           5             8
+11        80            13        8        77           5             8
+12         0             0        8         0           0             8
+13        86             8        8         0           0             8
+14         0             0        8         0           0             8
+15        94            34        8       188          10             8
+16       131            15        8       188          10             8
+17         0             0        8         0           0             8
+18         9             9        8         0           0             8
+19        24            24        8         0           0             8
+------------------------------------------------------------------------
+ALL      1641           305               1588
+
+PB2 tracks broken blocks in the 8 bits of $3B, per area ($8A87/$8A9B),
+and every breakable also needs a type-$0C object, which competes for the
+same 8 object slots $0E..$15 ($E4B1).
+
+====================================================================================================
+DIRECTION B -- Power Blade 2 levels expressed in the Solbrain format
+====================================================================================================
+
+Unit of conversion is one PB2 area -> one Solbrain area (both own exactly
+one camera-bounds header and one CHR set).  Limits checked:
+  metatiles <= 256 (id is a byte in the block table, $D0D6)
+  blocks    <= 256 (id is a byte in the screen table, $D0C4)
+  screens   <= 256 (id is a byte in the room map, $EFB0)
+  rooms fit in the 16x16 room grid ($EFA0: room = roomY*16 + roomX)
+  background tiles <= 256 (R0+R1 = 2 x 2 KB at $0000, $E74E)
+
+st ar ax scr  src mt  rooms(WxH)  metatiles  blocks  screens  tiles  types  fits
+--------------------------------------------------------------------------------
+ 0  0  H   3     480      3x1            54      23        3     68      2  yes
+ 0  1  V   2     480      1x2            37      35        2     58      3  yes
+ 0  2  H   5     800      5x1            47      29        5     82      5  yes
+ 0  3  V   3     720      1x3            41      44        3     57      2  yes
+ 0  4  H   5     800      5x1            47      45        5     76      3  yes
+ 0  5  V   5    1200      1x5            79      73        5    105      3  yes
+ 0  6  H   5     800      5x1            65      37        5     81      5  yes
+ 1  0  H   6     960      6x1            58      38        6     80      5  yes
+ 1  1  V   2     480      1x2            50      30        2     76      2  yes
+ 1  2  V   2     480      1x2            80      46        2    100      3  yes
+ 1  3  H   3     480      3x1            46      23        3     67      3  yes
+ 1  4  V   2     480      1x2            68      35        2     94      3  yes
+ 1  5  H   5     800      5x1            54      42        5     62      3  yes
+ 1  6  V   2     480      1x2            49      23        2     64      2  yes
+ 1  7  H   5     800      5x1            63      41        5     87      3  yes
+ 2  0  V   4     960      1x4            75      49        4     84      3  yes
+ 2  1  V   3     720      1x3            69      44        3     65      4  yes
+ 2  2  H   6     960      6x1            50      23        6     99      2  yes
+ 2  3  V   5    1200      1x5            67      66        5    146      3  yes
+ 2  4  H   4     640      4x1            65      27        4    152      3  yes
+ 2  5  V   2     480      1x2            43      25        2     48      3  yes
+ 2  6  H   4     640      4x1            49      18        4     89      2  yes
+ 3  0  H   3     480      3x1            55      27        3     99      2  yes
+ 3  1  V   2     480      1x2            59      34        2     85      3  yes
+ 3  2  H   5     800      5x1            24      11        5     39      4  yes
+ 3  3  V   4     960      1x4            74      53        4    112      7  yes
+ 3  4  H   6     960      6x1            62      37        6    101      3  yes
+ 3  5  V   2     480      1x2            51      31        2    106      4  yes
+ 3  6  H   5     800      5x1            55      46        5     99      2  yes
+ 4  0  H   3     480      3x1            85      42        3    101      2  yes
+ 4  1  V   3     720      1x3            44      36        3     65      2  yes
+ 4  2  H   3     480      3x1            88      47        3    111      2  yes
+ 4  3  H   1     160      1x1            51      25        1     72      3  yes
+ 4  4  H   4     640      4x1            17      16        4     39      3  yes
+ 4  5  V   3     720      1x3            74      44        3    125      4  yes
+ 4  6  V   4     960      1x4            70      35        4    104      3  yes
+ 4  7  V   3     720      1x3            29      23        3     64      3  yes
+ 4  8  V   3     720      1x3            44      43        3     97      3  yes
+ 4  9  V   4     960      1x4            73      36        4    107      4  yes
+ 5  0  V   5    1200      1x5            11      13        5     25      2  yes
+ 5  1  H   5     800      5x1            88      53        5    136      3  yes
+ 5  2  V   2     480      1x2            25      23        2     27      3  yes
+ 5  3  H   5     800      5x1            19      16        5     45      3  yes
+ 5  4  V   2     480      1x2            42      33        2     39      4  yes
+ 5  5  H   5     800      5x1            39      23        5     79      4  yes
+ 5  6  H   1     160      1x1            32      20        1     66      2  yes
+ 5  7  H   1     160      1x1            37      24        1     74      4  yes
+ 5  8  H   1     160      1x1            15      17        1     25      3  yes
+ 5  9  H   1     160      1x1            20      19        1     38      3  yes
+ 5 10  H   1     160      1x1            32      20        1     66      2  yes
+ 5 11  H   1     160      1x1            31      23        1     65      3  yes
+ 5 12  V   3     720      1x3            31      24        3     37      3  yes
+ 5 13  H   4     640      4x1            41      26        4     81      4  yes
+ 6  0  H   1     160      1x1            89      41        1    103      2  yes
+ 6  1  H   1     160      1x1            72      38        1     85      3  yes
+ 6  2  H   1     160      1x1            88      41        1    102      2  yes
+ 6  3  H   1     160      1x1            88      41        1    102      2  yes
+ 6  4  H   1     160      1x1            48      25        1    118      2  yes
+ 6  5  H   1     160      1x1            45      23        1    106      3  yes
+ 6  6  H   1     160      1x1            88      41        1    102      2  yes
+ 6  7  H   1     160      1x1            25      17        1     45      3  yes
+ 6  8  H   1     160      1x1            96      41        1    111      4  yes
+ 6  9  H   1     160      1x1            80      37        1     98      3  yes
+--------------------------------------------------------------------------------
+ALL          35840 metatiles in 63 areas; representable 35840 = 100.00%
+worst case over all areas: metatiles 96/256, blocks 73/256, screens 6/256, tiles 152/256
+
+Per stage (a PB2 stage becomes several Solbrain areas):
+st areas  src mt  metatiles(sum)  blocks(sum)  screens(sum)  all fit
+--------------------------------------------------------------------
+ 0     7    5280             370          286            28  yes
+ 1     8    4960             468          278            27  yes
+ 2     7    5600             418          252            28  yes
+ 3     7    4960             380          239            27  yes
+ 4    10    6560             575          347            31  yes
+ 5    14    6880             463          334            37  yes
+ 6    10    1600             719          345            10  yes
+
+-- objects --
+st areas  records  max/area  PB2 live slots  Solbrain room groups need
+----------------------------------------------------------------------
+ 0     7       77        15               8 <= 64/group, 6-byte records
+ 1     8       78        14               8 <= 64/group, 6-byte records
+ 2     7       87        23               8 <= 64/group, 6-byte records
+ 3     7       98        20               8 <= 64/group, 6-byte records
+ 4    10       88        13               8 <= 64/group, 6-byte records
+ 5    14       87        16               8 <= 64/group, 6-byte records
+ 6    11       11         1               8 <= 64/group, 6-byte records
+
+
+-- destructible background, PB2 -> Solbrain --
+
+PB2 marks a broken block with one of the 8 bits of $3B, per area, and the
+hitbox is object type $0C ($8A5D).  Solbrain switches a metatile ID, not a
+map cell ($D101/$0540), so keeping PB2's per-instance behaviour costs one
+private metatile ID per breakable.
+st  type-$0C records  max/area  extra metatile IDs needed (worst area)
+----------------------------------------------------------------------
+ 0                 4         2                              2
+ 1                 5         2                              2
+ 2                 0         0                              0
+ 3                 8         4                              4
+ 4                 1         1                              1
+ 5                 5         4                              4
+ 6                 0         0                              0
+
+PB2 record = 4 bytes: position ALONG the scroll axis in 16-px units,
+type, position ACROSS the axis in pixels, flags ($E4BD).  Solbrain record
+= 6 bytes with full 16-bit X and Y ($AE7C), so it holds a PB2 record with
+room to spare.  Objects live 12 at a time in Solbrain ($CE1D) against 8 in
+PB2 ($E4B1), and Solbrain has 64 'alive' flags per stage ($0560).
+
+====================================================================================================
+THE SPECIFIC QUESTIONS FROM 2.2 / 2.3
+====================================================================================================
+
+1) block size: PB2 block = 32x32 px = 4x4 tiles, 16 bytes ($DBDE);
+   Solbrain block = 32x32 px = 2x2 metatiles, 4 bytes ($D0D6).
+   SAME PIXEL SIZE.  PB2 stores the 16 tiles flat, Solbrain stores them
+   through a metatile indirection -- a repack, not a loss.
+
+2) does a PB2 horizontal screen (5 blocks = 160 px) fit a Solbrain room
+   (8 blocks = 256 px)?  Yes: 5 <= 8, 3 block rows of padding.
+   Camera Y is clamped by area-header bytes 7/8, which are HIGH BYTES
+   only ($E73A/$E73F, $3C/$3E are forced to 0), so the clamp is in whole
+   256-px steps: the padding is visible unless it is authored as scenery.
+   PB2 shows 176 scanlines of playfield ($AE=1 -> IRQ latch $AF);
+   Solbrain shows 224.  NOT a data loss.
+
+3) PB2 vertical areas: a screen holds 8 blocks (256 px) of data but only
+   240 px are ever drawn ($EAA5).  240 is not a multiple of 32, so the
+   32-px block grid of consecutive vertical screens is offset by 16 px.
+   16 px alignment (the metatile grid) is preserved, so re-packing into
+   Solbrain blocks costs new block records, not geometry.
+
+4) longest PB2 area found: 6 screens (format cap is 16, $DFB4 masks $66
+   with #$0F).  The Solbrain room grid is 16 wide, so a 6-screen
+   horizontal area fits one room row.
+
+5) the reverse cap: a Solbrain room chain of R rooms is R*256 px.  A PB2
+   horizontal area covers at most 16*256 = 4096 px, a PB2 vertical area
+   at most 16*240 = 3840 px, so a vertical chain of more than 15 rooms
+   cannot be expressed at all.

@@ -458,6 +458,11 @@ def direction_a(sol_rom, out):
     p("2Djunc   = used rooms that have an X neighbour AND a Y neighbour")
     p("deg3+    = used rooms with 3 or more neighbours (no 1-D chain can hold them)")
     p("runH/V   = longest straight room run; a PB2 area holds at most 16 screens ($DFB4)")
+    p("edgeH/V  = room borders the player can actually cross (a 16-px lane that is")
+    p("           non-solid on both sides); neighbours in the room map that are")
+    p("           walled off do not count")
+    p("1-D chain? = every connected component of that graph is an open chain, the")
+    p("           only shape PB2's linear area sequence ($86F0 INC $9C) can hold")
     p("")
     hdr = ("st rooms  src mt  keptH    %    keptMIX    %   2Djunc deg3+ runH runV "
            "edgeH edgeV  1-D chain?")
@@ -671,6 +676,21 @@ def direction_b(out):
           % (s, len(areas), sum(n), max(n) if n else 0, PB2_OBJ_SLOTS,
              "<= %d/group, 6-byte records" % SOL_MAX_OBJ_PER_GROUP))
     p("")
+    p("")
+    p("-- destructible background, PB2 -> Solbrain --")
+    p("")
+    p("PB2 marks a broken block with one of the 8 bits of $3B, per area, and the")
+    p("hitbox is object type $0C ($8A5D).  Solbrain switches a metatile ID, not a")
+    p("map cell ($D101/$0540), so keeping PB2's per-instance behaviour costs one")
+    p("private metatile ID per breakable.")
+    hdr = "st  type-$0C records  max/area  extra metatile IDs needed (worst area)"
+    p(hdr)
+    p("-" * len(hdr))
+    for s in range(pb2_levels.NSTAGES):
+        areas = pb2_spawn_lists(r.spawn_rom, s)
+        n = [sum(1 for rec in recs if rec[1] == 0x0C) for recs in areas]
+        p("%2d %17d %9d %30d" % (s, sum(n), max(n) if n else 0, max(n) if n else 0))
+    p("")
     p("PB2 record = 4 bytes: position ALONG the scroll axis in 16-px units,")
     p("type, position ACROSS the axis in pixels, flags ($E4BD).  Solbrain record")
     p("= 6 bytes with full 16-bit X and Y ($AE7C), so it holds a PB2 record with")
@@ -773,6 +793,49 @@ def render_pngs(outdir, sol_rom, r):
             img.save(f)
             made.append(f)
         picks = []
+
+    # ---- Solbrain stage maps with the 160-px band PB2 would keep ----------
+    for stage in (0, 1):
+        st = sol_levels.Stage(sol_rom, stage)
+        info = SolStageInfo(sol_rom, stage)
+        x0, y0, x1, y1 = st.bbox()
+        W, H = (x1 - x0 + 1) * 256, (y1 - y0 + 1) * 256
+        tiles = _sol_chr(sol_rom, st.chr_banks)
+        pal = st.palette[:16]
+        img = Image.new('RGB', (W, H), (0, 0, 0))
+        px = img.load()
+        for (rx, ry) in sorted(st.used_rooms()):
+            for ty in range(32):
+                for tx in range(32):
+                    t = st.tile_at(rx * 32 + tx, ry * 32 + ty)
+                    if t is None:
+                        continue
+                    pl = st.palette_at(rx * 16 + tx // 2, ry * 16 + ty // 2) or 0
+                    g = tiles[t]
+                    ox, oy = (rx - x0) * 256 + tx * 8, (ry - y0) * 256 + ty * 8
+                    for y in range(8):
+                        a, b = g[y], g[y + 8]
+                        for x in range(8):
+                            v = ((a >> (7 - x)) & 1) | (((b >> (7 - x)) & 1) << 1)
+                            px[ox + x, oy + y] = NES[pal[pl * 4 + v] & 0x3F]
+        d = ImageDraw.Draw(img, 'RGBA')
+        for (rx, ry) in sorted(st.used_rooms()):
+            ox, oy = (rx - x0) * 256, (ry - y0) * 256
+            # what a PB2 horizontal screen keeps out of this room: 160 of 256 px
+            d.rectangle([ox + 96, oy, ox + 255, oy + 255], fill=(0, 0, 0, 130))
+            d.rectangle([ox, oy, ox + 255, oy + 159], outline=(0, 255, 255, 255),
+                        width=3)
+            n = len(info.adj[(rx, ry)])
+            col = (255, 0, 0, 255) if n > 2 else (255, 255, 0, 255)
+            d.ellipse([ox + 118, oy + 118, ox + 138, oy + 138], fill=col)
+            for q in info.adj[(rx, ry)]:
+                d.line([(ox + 128, oy + 128),
+                        ((q[0] - x0) * 256 + 128, (q[1] - y0) * 256 + 128)],
+                       fill=(255, 255, 255, 220), width=5)
+        img = img.resize((W // 3, H // 3), Image.LANCZOS)
+        f = os.path.join(outdir, 'sol_s%02d_map.png' % stage)
+        img.save(f)
+        made.append(f)
 
     # ---- Power Blade 2 screens --------------------------------------------
     dump = os.environ.get('PB2_VRAM')

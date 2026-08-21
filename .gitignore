@@ -19,3 +19,4 @@ work/build/*.nes
 work/tools/nesemu
 work/tools/db.pkl
 *.o
+work/tools/e0_ramemu
