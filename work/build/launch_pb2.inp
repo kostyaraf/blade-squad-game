@@ -1,0 +1,5 @@
+# title -> main menu -> START GAME (cursor default) -> launch PB2 stage 1
+60 START
+64 -
+90 A
+94 -

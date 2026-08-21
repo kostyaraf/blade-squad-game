@@ -1,0 +1,166 @@
+Warning: The following taps are not trusted:
+  coder/coder
+  facebook/fb
+  krishkrosh/apps
+
+Homebrew is currently ignoring formulae, casks and commands from these taps because tap trust is required.
+
+Prefer trusting only the specific formulae, casks or commands you need.
+Trust installed formulae from these taps with:
+  brew trust --formula coder/coder/coder
+  brew trust --formula facebook/fb/idb-companion
+Trust installed casks from these taps with:
+  brew trust --cask krishkrosh/apps/trackweight
+Trust other specific commands with:
+  brew trust --command <user>/<tap>/<command>
+Whole-tap trust is broader and includes all current and future formulae,
+casks and commands from the listed taps. Trust whole taps with:
+  brew trust coder/coder facebook/fb krishkrosh/apps
+Untap them with:
+  brew untap coder/coder facebook/fb krishkrosh/apps
+To disable trust checks:
+  export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
+This is not recommended and will be removed in a later release.
+For more information, see:
+  https://docs.brew.sh/Tap-Trust
+==> Would reinstall 1 formula:
+fceux
+==> Downloading https://ghcr.io/v2/homebrew/core/fceux/manifests/2.6.6_11
+==> Would install 1 dependency for fceux:
+qtbase
+==> Would upgrade 15 dependencies for fceux:
+dav1d
+mpg123
+lame
+ca-certificates
+sdl3
+svt-av1
+ffmpeg
+libarchive
+minizip
+dbus
+double-conversion
+glib
+fontconfig
+harfbuzz
+md4c
+==> Fetching downloads for: fceux
+✔︎ Bottle lame (4.0)
+✔︎ Bottle Manifest dav1d (1.5.4)
+✔︎ Bottle Manifest mpg123 (1.33.7)
+✔︎ Bottle Manifest ca-certificates (2026-08-13)
+✔︎ Bottle Manifest sdl3 (3.4.14)
+✔︎ Bottle Manifest svt-av1 (4.2.0)
+✔︎ Bottle Manifest ffmpeg (9.0.1)
+✔︎ Bottle Manifest libarchive (3.8.9)
+✔︎ Bottle Manifest minizip (1.3.2_1)
+✔︎ Bottle Manifest dbus (1.16.2_1)
+✔︎ Bottle Manifest double-conversion (3.4.0)
+✔︎ Bottle Manifest fontconfig (2.18.3)
+✔︎ Bottle ca-certificates (2026-08-13)
+✔︎ Bottle minizip (1.3.2_1)
+✔︎ Bottle Manifest glib (2.88.3)
+✔︎ Bottle Manifest harfbuzz (14.3.1)
+✔︎ Bottle Manifest md4c (0.5.3)
+✔︎ Bottle dav1d (1.5.4)
+✔︎ Bottle md4c (0.5.3)
+✔︎ Bottle double-conversion (3.4.0)
+✔︎ Bottle Manifest qtbase (6.11.1)
+✔︎ Bottle dbus (1.16.2_1)
+✔︎ Bottle mpg123 (1.33.7)
+✔︎ Bottle fontconfig (2.18.3)
+✔︎ Bottle sdl3 (3.4.14)
+✔︎ Bottle fceux (2.6.6_11)
+✔︎ Bottle libarchive (3.8.9)
+✔︎ Bottle svt-av1 (4.2.0)
+✔︎ Bottle harfbuzz (14.3.1)
+✔︎ Bottle glib (2.88.3)
+✔︎ Bottle ffmpeg (9.0.1)
+✔︎ Bottle qtbase (6.11.1)
+==> Reinstalling fceux 
+==> Installing dependencies for fceux: dav1d, mpg123, lame, ca-certificates, sdl3, svt-av1, ffmpeg, libarchive, minizip, dbus, double-conversion, glib, fontconfig, harfbuzz, md4c and qtbase
+==> Upgrading fceux dependency: dav1d
+==> Pouring dav1d--1.5.4.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/dav1d/1.5.4: 16 files, 959.6KB
+==> Upgrading fceux dependency: mpg123
+==> Pouring mpg123--1.33.7.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/mpg123/1.33.7: 34 files, 1.9MB
+==> Upgrading fceux dependency: lame
+==> Pouring lame--4.0.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/lame/4.0: 29 files, 1.9MB
+==> Upgrading fceux dependency: ca-certificates
+==> Pouring ca-certificates--2026-08-13.all.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/ca-certificates/2026-08-13: 5 files, 204.3KB
+==> Upgrading fceux dependency: sdl3
+==> Pouring sdl3--3.4.14.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/sdl3/3.4.14: 103 files, 6.3MB
+==> Upgrading fceux dependency: svt-av1
+==> Pouring svt-av1--4.2.0.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/svt-av1/4.2.0: 23 files, 3.3MB
+==> Upgrading fceux dependency: ffmpeg
+==> Pouring ffmpeg--9.0.1.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/ffmpeg/9.0.1: 290 files, 53.8MB
+==> Upgrading fceux dependency: libarchive
+==> Pouring libarchive--3.8.9.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/libarchive/3.8.9: 65 files, 4MB
+==> Upgrading fceux dependency: minizip
+==> Pouring minizip--1.3.2_1.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/minizip/1.3.2_1: 16 files, 265.4KB
+==> Upgrading fceux dependency: dbus
+==> Pouring dbus--1.16.2_1.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/dbus/1.16.2_1: 79 files, 2.0MB
+==> Upgrading fceux dependency: double-conversion
+==> Pouring double-conversion--3.4.0.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/double-conversion/3.4.0: 29 files, 256.1KB
+==> Upgrading fceux dependency: glib
+==> Pouring glib--2.88.3.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/glib/2.88.3: 501 files, 39.6MB
+==> Upgrading fceux dependency: fontconfig
+==> Pouring fontconfig--2.18.3.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/fontconfig/2.18.3: 102 files, 1.9MB
+==> Upgrading fceux dependency: harfbuzz
+==> Pouring harfbuzz--14.3.1.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/harfbuzz/14.3.1: 96 files, 13.3MB
+==> Upgrading fceux dependency: md4c
+==> Pouring md4c--0.5.3.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/md4c/0.5.3: 20 files, 276.0KB
+==> Installing fceux dependency: qtbase
+Error: The `brew link` step did not complete successfully
+Error: fceux: Could not symlink include/QtDeviceDiscoverySupport/6.9.0/QtDeviceDiscoverySupport/private/qdevicediscovery_dummy_p.h
+Target /opt/homebrew/include/QtDeviceDiscoverySupport/6.9.0/QtDeviceDiscoverySupport/private/qdevicediscovery_dummy_p.h
+is a symlink belonging to qt. You can unlink it:
+  brew unlink qt
+
+To force the link and overwrite all conflicting files:
+  brew link --overwrite qt
+
+To list all files that would be deleted:
+  brew link --overwrite qt --dry-run
+==> Pouring qtbase--6.11.1.arm64_tahoe.bottle.tar.gz
+The formula built, but is not symlinked into /opt/homebrew
+Could not symlink bin/androiddeployqt
+Target /opt/homebrew/bin/androiddeployqt
+is a symlink belonging to qt. You can unlink it:
+  brew unlink qt
+
+To force the link and overwrite all conflicting files:
+  brew link --overwrite qtbase
+
+To list all files that would be deleted:
+  brew link --overwrite qtbase --dry-run
+
+Possible conflicting files are:
+/opt/homebrew/bin/androiddeployqt -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/androiddeployqt
+/opt/homebrew/bin/androiddeployqt6 -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/androiddeployqt6
+/opt/homebrew/bin/androidtestrunner -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/androidtestrunner
+/opt/homebrew/bin/macdeployqt -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/macdeployqt
+/opt/homebrew/bin/macdeployqt6 -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/macdeployqt6
+/opt/homebrew/bin/qdbuscpp2xml -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/qdbuscpp2xml
+/opt/homebrew/bin/qdbusxml2cpp -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/qdbusxml2cpp
+/opt/homebrew/bin/qmake -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/qmake
+/opt/homebrew/bin/qmake6 -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/qmake6
+/opt/homebrew/bin/qt-cmake -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/qt-cmake
+/opt/homebrew/bin/qt-cmake-create -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/qt-cmake-create
+/opt/homebrew/bin/qt-configure-module -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/qt-configure-module
+/opt/homebrew/bin/qtpaths -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/qtpaths
+/opt/homebrew/bin/qtpaths6 -> /opt/homebrew/Cellar/qt/6.9.0_1/bin/qtpaths6

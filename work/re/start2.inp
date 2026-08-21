@@ -1,0 +1,6 @@
+# START pulses: early (300, per spec) and again once Solbrain shows PUSH START
+1 -
+300 START
+308 -
+950 START
+958 -

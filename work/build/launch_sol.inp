@@ -1,0 +1,23 @@
+# title -> menu -> STAGE SELECT -> 7 x DOWN (to SB 01) -> launch
+60 START
+64 -
+82 DOWN
+86 -
+94 A
+98 -
+116 DOWN
+120 -
+128 DOWN
+132 -
+140 DOWN
+144 -
+152 DOWN
+156 -
+164 DOWN
+168 -
+176 DOWN
+180 -
+188 DOWN
+192 -
+200 A
+204 -

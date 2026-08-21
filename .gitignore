@@ -1,0 +1,21 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# raw emulator traces and scratch runs -- regenerable, hundreds of MB
+work/re/out/
+work/re/p2/
+work/tmp/
+work/tmp2/
+work/dyn/
+work/shell/
+work/re/shots/
+work/re/st/
+work/re/eq/
+
+# intermediate cartridges; only the final PB3.nes is tracked
+work/build/*.nes
+!work/build/PB3.nes
+work/tools/nesemu
+work/tools/db.pkl
+*.o

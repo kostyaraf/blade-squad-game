@@ -1,0 +1,65 @@
+"""Simultaneous two-player co-op for the Power Blade 2 (USA) engine.
+
+DESIGN
+------
+Player 2 lives permanently in object slot 5.  Slots 1-5 are the player-owned
+projectile/effect slots, so slot 5 is drawn by the ordinary OAM builder with
+the *player* metasprite tables ($8148/$81B4, used for slots < 6) for free.
+
+Every frame the driver runs the stock player update twice:
+
+    run update            -> player 1 (slot 0)
+    swap slot 0 <-> slot 5, swap the shadow variables, point $4A/$48 at pad 2
+    run update            -> player 2 (now in slot 0)
+    swap everything back
+
+so that everything downstream (camera $D3B8, HUD, enemy collision) still sees
+player 1 in slot 0.
+
+ENTRY
+-----
+Bank 15 $EFD7 is the player-update dispatch arm:
+
+    EFD7  A0 38     LDY #$38
+    EFD9  20 A7 EC  JSR $ECA7      ; -> R6 = Y AND $0F, R7 = that+1
+    EFDC  4C 00 80  JMP $8000
+
+$ECAB masks Y with #$0F, so LDY #$0E selects block positions 14/15 - the first
+two free PB3 code positions.  Changing the single immediate byte at $EFD8 from
+$38 to $0E therefore redirects the player update into our new bank at $8000,
+at a cost of one patched byte and no fixed-bank space at all.
+
+We only own position 14 ($8000-$9FFF); position 15 belongs to another patch, so
+nothing here may call into $A000-$BFFF.
+
+Returning into pair 8 needs code that stays mapped while the banks move, so a
+26-byte trampoline is copied into RAM every frame (cheap, and immune to the
+engine's RAM clear).  $ED55 looked like dead code but is reachable through the
+bank-14 JMP thunk table at $C8BE, so it is left alone.
+
+RAM MAP  (this patch owns $034B-$038F, growing up; $03DF down belongs to
+another agent).  Verified never written after boot from a 4000-frame write log
+of title + cutscene + stage 1.
+"""
+
+NAME = "pb2_2player"
+GAME = "pb2"
+
+BANK_POS = 14
+
+# ---- RAM allocation ---------------------------------------------------------
+PB3_PLAYERS = 0x034B   # 1 or 2. The PB3 shell will write this; we default it.
+P2_MAGIC    = 0x034C   # $A5 once the driver has initialised this session
+P2_STATE    = 0x034D   # 0 = absent, 1 = alive, 2 = waiting to respawn
+P2_RESPAWN  = 0x034E   # respawn countdown
+SAVE_4A     = 0x034F   # pad-1 held,   parked while player 2 runs
+SAVE_48     = 0x0350   # pad-1 pressed, ditto
+SHADOW      = 0x0351   # 7 bytes: $0110,$0111,$0112,$0113,$01EF,$01F0,$9A
+PTR         = 0x0358   # 2-byte pointer scratch (page 3, not zero page)
+SCRATCH     = 0x035A
+
+TRAMP       = 0x0360   # LDY #$38 / JSR $ECAB / JSR $8000 / LDY #$0E / JMP $ECAB
+TRAMP_EXIT  = 0x036D   # LDY #$38 / JMP $ECAB          (tail: leave pair 8 mapped)
+TRAMP_SOLO  = 0x0372   # LDY #$38 / JSR $ECAB / JMP $8000
+
+MAGIC = 0x A5 if False else 0xA5

@@ -1,0 +1,12 @@
+# shell -> PB2, then replay the original stage-1 input shifted by the shell
+60 START
+64 -
+90 A
+94 -
+141 -
+440 START
+448 -
+840 START
+848 -
+1140 START
+1148 -
