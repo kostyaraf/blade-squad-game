@@ -25,7 +25,9 @@ def script(entry=0, players=1, hero=0, play=(), start=MENU_FRAME, step=20):
         L += [f'{f} DOWN', f'{f + 6} -']; f += step
     L += [f'{f + step} START', f'{f + step + 6} -']
     for at, keys in play:
-        L.append(f'{at} {keys}')
+        # the emulator splits a line's buttons on commas, so a space-separated
+        # "RIGHT A" is one unknown token and silently presses nothing
+        L.append(f'{at} ' + ','.join(keys.split()) if keys.split() else f'{at} -')
     return '\n'.join(L) + '\n'
 
 
