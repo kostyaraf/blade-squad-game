@@ -21,6 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, HERE)
 from asm import Asm
+import novachr
 
 SRC = os.path.join(ROOT, 'Tokkyuu Shirei Solbrain (Japan).nes')
 OUT = os.path.join(ROOT, 'work/build/PB3.nes')
@@ -47,6 +48,9 @@ TMR    = 0x7F52                 # per player: frames until he is put back
 CUR    = 0x7F54                 # which of the two `onep` is running for
 P2JOIN = 0x7F55                 # pad two has pressed start at least once
 SPAWN  = 0x7F60                 # a pristine copy of a standing player, 45 bytes
+TILEADD= 0x7F56                 # added to every sprite tile the engine emits
+P1BANK = 0x7F57                 # player one's sprite CHR bank, kept over the
+                                # frame while player two overwrites the shadow
 
 # --- the engine, as far as the runtime needs to know it ---------------------
 SYMS = {
@@ -68,6 +72,12 @@ SYMS = {
     'P2_BLK':   P2_BLK, 'P2_POS': P2_POS, 'P2_SPD': P2_SPD, 'P2_ON': P2_ON,
     'SV_POS':   SV_POS, 'SV_DSP': SV_DSP, 'TMP': TMP, 'TMP2': TMP2,
     'NEARF':    NEARF, 'TMP3': TMP3, 'P2JOIN': P2JOIN, 'SPAWN': SPAWN,
+    'TILEADD':  TILEADD, 'P1BANK': P1BANK,
+    'CHR_R2':   0x0042,         # shadow of the MMC3 1K bank at $1000 -- the
+                                # player's own sprite art, swapped per pose
+    'CHR_R3':   0x0043,         # shadow of the bank at $1400: tiles $40-$7F
+    'OAM_T1':   0x0201,         # the three places the engine stores a tile
+    'OAM_T2':   0x01FE,
     'OBJ_YL':   0x00C0, 'OBJ_YH': 0x00D0, 'DOWN': DOWN, 'TMR': TMR, 'CUR': CUR,
     'PL_HP':    0x05C5,         # the health bar, eight units
     'PL_INV':   0x05A3,         # invulnerability countdown; >= $70 = untouchable
@@ -134,6 +144,19 @@ class Image:
             'not free: bank %d $%04X' % (bank, cpu)
         self.poke(bank, cpu, data, name)
 
+    def add_chr(self, banks, first):
+        """Drop new 1K CHR banks in, padding the ROM out to a power of two so
+        no emulator has to guess how to mask a bank number."""
+        need = (first + len(banks)) * 1024
+        size = 0x2000
+        while size < need:
+            size *= 2
+        self.chr += bytearray(size - len(self.chr))
+        for i, b in enumerate(banks):
+            o = (first + i) * 1024
+            self.chr[o:o + 1024] = b
+        self.hdr[5] = len(self.chr) // 0x2000
+
     def save(self, path=OUT):
         open(path, 'wb').write(bytes(self.hdr) + bytes(self.prg) + bytes(self.chr))
         return len(self.hdr) + len(self.prg) + len(self.chr)
@@ -143,7 +166,7 @@ class Image:
 # The co-op runtime.  Lives at $6000 in work RAM.
 # ===========================================================================
 
-def runtime():
+def runtime(mapping=None):
     """Two players sharing one player update.
 
     The engine calls the player exactly once a frame, from `12:$9150`.  That
@@ -179,7 +202,10 @@ h_go:   ldx #0
         jsr swap
         ldx #1
         jsr onep
-        jmp swap
+        jsr swap
+        lda #0                  ; everything drawn after the pair -- enemies,
+        sta TILEADD             ; shots, the HUD -- keeps its own tiles
+        rts
 
 ; --- one player's frame.  X selects his down flag and respawn timer. --------
 ; This always runs with that player's context live, so his partner is always
@@ -187,7 +213,13 @@ h_go:   ldx #0
 onep:   stx CUR
         lda DOWN,x
         bne o_down
+        lda #0                  ; player two's sprites are drawn out of the
+        cpx #0                  ; next 1K of the sprite pattern table, so his
+        beq o_t0                ; art can differ from player one's
+        lda #$40
+o_t0:   sta TILEADD
         jsr PLAYER
+        jsr chrslot
         jsr clamp
         lda PL_HP
         bne o_ret
@@ -226,6 +258,53 @@ o_rs:   lda P2_POS,x
         ldx CUR                 ; X was consumed by the copy
         sta DOWN,x
         rts
+
+; --- the sprite tile hooks -------------------------------------------------
+; The engine's metasprite writer reads a tile out of a table and stores it.
+; Those three stores are redirected here, which is the whole of "player two
+; is drawn from different tiles": his sprites come out $40 higher, that is,
+; from the 1K bank at $1400 instead of the one at $1000.
+tile1:  jsr tshift
+        sta OAM_T1,x
+        rts
+tile2:  jsr tshift
+        sta OAM_T2,x
+        rts
+; The man himself is exactly the first 32 tiles of the bank ($00-$1F,
+; measured over a run).  Everything above that -- the health bar, the letters,
+; the boxes, the satellite -- is drawn inside the player update as well and
+; must stay where it is.
+tshift: cmp #$20
+        bcs t_keep
+        clc
+        adc TILEADD
+t_keep: rts
+
+; --- chrslot: give each player his own 1K of the sprite pattern table ------
+; The engine picks the player's art bank per pose and leaves it in the shadow
+; $42.  Player one's is kept, player two's is moved to the neighbouring slot.
+chrslot: lda P2_ON
+        beq c_none
+        lda CUR
+        bne c_two
+        lda CHR_R2              ; player one just drew: remember his bank
+        sta P1BANK
+        rts
+c_two:  lda CHR_R2              ; player two just drew: the same poses, but
+        ldx #NPOSE-1            ; drawn as the other game's hero, go into the
+c_map:  cmp poses,x             ; second slot
+        beq c_hit
+        dex
+        bpl c_map
+        lda CHR_R2              ; a pose we never saw when the art was built:
+        bne c_set               ; he shows Solbrain's man for that one frame
+c_hit:  lda novas,x
+c_set:  sta CHR_R3
+        lda P1BANK              ; and player one gets his own bank back
+        sta CHR_R2
+c_none: rts
+poses:  .byte POSE_TABLE
+novas:  .byte NOVA_TABLE
 
 ; --- camera: replaces `JSR CAM_XF / JSR CAM_YF` at bank 14 $CD9C -----------
 ; The engine's camera scrolls when the live player pushes a dead-zone edge, by
@@ -512,8 +591,14 @@ p2:     lda $00AF,y
         bcs p2
         rts
 """
+    mapping = mapping or {}
+    order = sorted(mapping)
+    src = src.replace('POSE_TABLE', ','.join(str(b) for b in order) or '0')
+    src = src.replace('NOVA_TABLE',
+                      ','.join(str(mapping[b]) for b in order) or '0')
     a = Asm(WRAM, dict(SYMS, PL_BLK_LEN=PL_BLK_LEN, MARGIN=MARGIN,
-                        RESPAWN=RESPAWN, RESPAWN_DX=RESPAWN_DX))
+                        RESPAWN=RESPAWN, RESPAWN_DX=RESPAWN_DX,
+                        NPOSE=max(1, len(order))))
     return a.assemble(src), a.syms
 
 
@@ -563,7 +648,9 @@ c1:     lda ($00),y
 
 def build():
     img = Image()
-    rt, syms = runtime()
+    mapping, novabanks, redrawn = novachr.novabanks()
+    img.add_chr(novabanks, novachr.NOVA_BASE)
+    rt, syms = runtime(mapping)
     pages = (len(rt) + 0xFF) // 0x100
     img.prg[RTBANK * BANK:RTBANK * BANK + len(rt)] = rt
 
@@ -590,6 +677,16 @@ def build():
     img.poke(14, 0xCDDD,
              bytes((0x20, syms['enemies'] & 0xFF, syms['enemies'] >> 8)),
              'enemy hook')
+
+    # the three places the sprite writer stores a tile byte, so player two's
+    # sprites can come from a different 1K of the pattern table
+    for cpu, orig, sym in ((0xF5C3, (0x9D, 0x01, 0x02), 'tile1'),
+                           (0xF775, (0x9D, 0x01, 0x02), 'tile1'),
+                           (0xF6CA, (0x9D, 0xFE, 0x01), 'tile2')):
+        old = img.prg[img.off(15, cpu):img.off(15, cpu) + 3]
+        assert bytes(old) == bytes(orig), '%04X %s' % (cpu, old.hex())
+        img.poke(15, cpu,
+                 bytes((0x20, syms[sym] & 0xFF, syms[sym] >> 8)), 'tile hook')
 
     n = img.save()
     print('%s  %d bytes' % (os.path.relpath(OUT, ROOT), n))

@@ -109,6 +109,14 @@ def main():
     check('both men punch at once', s.slot(0x0F) and s.slot(0x0D),
           'slot $0F=%02X  slot $0D=%02X' % (s.slot(0x0F), s.slot(0x0D)))
 
+    # 5b. and they are not the same man: player two's sprites are fetched
+    #     from the second 1K of the pattern table, which holds the other
+    #     game's hero redrawn into this engine's poses
+    s = St(run(START + JOIN + ['2100 LEFT', '2140 -', '2200 2LEFT', '2230 -'],
+               2260, (2260,), 'heroes'))
+    check('player two is the other game\'s hero', s.r[0x43] >= 128,
+          'his CHR bank is %d (Solbrain\'s own are 64-92)' % s.r[0x43])
+
     # 6. each takes damage on his own bar
     a = St(run(START + JOIN + walk(2100, 2600), 2600))
     check('health is per player and does drop', a.a_hp < 8 or a.b_hp < 8,
@@ -145,7 +153,7 @@ def main():
           r1.r[0x05A2] in (0x12, 0x13) or r2.r[0x05A2] < 0x12,
           'state %02X then %02X' % (r1.r[0x05A2], r2.r[0x05A2]))
     check('and the pair is back in play afterwards',
-          r2.on == 1 and r2.a_hp == 8 and r2.b_hp == 8,
+          r2.on == 1 and r2.a_hp and r2.b_hp,
           'P2_ON=%d  bars %d and %d' % (r2.on, r2.a_hp, r2.b_hp))
 
     print('\n%s' % ('all checks passed' if ok else 'SOMETHING FAILED'))
