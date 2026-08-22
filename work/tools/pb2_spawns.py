@@ -39,11 +39,19 @@ def stage_lists(rom, stage):
     p = rom.pair(6)
     hdr = rom.w15(0xE515 + stage * 2)
     tbl = rom.pw(p, hdr)
-    first = rom.pw(p, tbl)
-    n = (first - tbl) // 2
+    # The table runs until the LOWEST address it points at -- not until the
+    # first one.  Stage 5 puts its longest list first, so trusting entry 0
+    # walks 192 areas off the end of the bank.
+    ptrs, limit, i = [], 0xFFFF, 0
+    while tbl + i * 2 < limit:
+        v = rom.pw(p, tbl + i * 2)
+        if not 0x8000 <= v < 0xC000:
+            break
+        limit = min(limit, v)
+        ptrs.append(v)
+        i += 1
     out = []
-    for a in range(n):
-        addr = rom.pw(p, tbl + a * 2)
+    for addr in ptrs:
         recs = []
         while True:
             b = [rom.pb(p, addr + k) for k in range(4)]
