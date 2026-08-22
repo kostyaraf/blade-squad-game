@@ -13,6 +13,7 @@ crosses five while airborne, which is about what Power Blade 2 gives him.
 """
 JUMP_UP = 4
 JUMP_ACROSS = 5
+SLIDE_ACROSS = 6                # metatiles crossed by one slide
 
 
 class Band:
@@ -57,13 +58,19 @@ class Band:
                     stack.append(n)
         return seen
 
-    def _steps(self, c, r):
-        for d in (-1, 1):                       # walk off the edge, or along
-            if self.free(c + d, r):
-                nr = self.fall(c + d, r)
-                if nr is not None:
-                    yield (c + d, nr)
-        for h in range(1, JUMP_UP + 1):         # jump: rise, drift, fall
+    def _drop(self, c, r):
+        """Where he lands after sliding off the end of a floor."""
+        while r < self.h:
+            if self.solid(c, r):
+                return None
+            if r + 1 < self.h and self.solid(c, r + 1):
+                return r
+            r += 1
+        return None
+
+    def _jumps(self, c, r):
+        """Every spot a jump from (c, r) reaches: rise, drift, fall."""
+        for h in range(1, JUMP_UP + 1):
             if not self.free(c, r - h):
                 break
             for d in range(-JUMP_ACROSS, JUMP_ACROSS + 1):
@@ -74,3 +81,37 @@ class Band:
                 nr = self.fall(c + d, r - h)
                 if nr is not None:
                     yield (c + d, nr)
+
+    def _slides(self, c, r):
+        """Sliding.  Power Blade 2's hero is half his height while he slides,
+        and its levels are built for it: a corridor one metatile high is a
+        normal way through, and standing he does not fit.  He stops where
+        there is room to stand up; where the floor runs out instead, he jumps
+        out of the slide, which is what the button does in that game."""
+        for d in (-1, 1):
+            c2 = c
+            for _k in range(SLIDE_ACROSS):
+                c2 += d
+                if not 0 <= c2 < self.w or self.solid(c2, r):
+                    break
+                if r + 1 >= self.h or not self.solid(c2, r + 1):
+                    if self.free(c2, r):        # the floor ran out under him
+                        for n in self._jumps(c2, r):
+                            yield n
+                    nr = self._drop(c2, r)      # or he simply drops off it
+                    if nr is not None and self.free(c2, nr):
+                        yield (c2, nr)
+                    break
+                if self.free(c2, r):
+                    yield (c2, r)
+
+    def _steps(self, c, r):
+        for n in self._slides(c, r):
+            yield n
+        for d in (-1, 1):                       # walk off the edge, or along
+            if self.free(c + d, r):
+                nr = self.fall(c + d, r)
+                if nr is not None:
+                    yield (c + d, nr)
+        for n in self._jumps(c, r):
+            yield n

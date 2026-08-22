@@ -22,6 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, HERE)
 from asm import Asm
 import novachr
+import pb2port
 
 SRC = os.path.join(ROOT, 'Tokkyuu Shirei Solbrain (Japan).nes')
 OUT = os.path.join(ROOT, 'work/build/PB3.nes')
@@ -70,6 +71,44 @@ TATTR  = 0x7FA1
 PADT   = 0x7FA2
 PFLAG  = 0x7FA3                 # the sprite just written is player two's own
 MCLR   = 0x7FA4                 # wipe the menu's sprites on the frame it closes
+
+# --- the level tables, copied into work RAM at boot -------------------------
+# Solbrain indexes five tables by the stage number and every one of them is
+# exactly 20 entries long, packed against the next thing in the bank.  PB3 has
+# 83 stages, so all five move to work RAM, where they can be as long as they
+# like, and the five instructions that read them are redirected.
+STG_BANK = 0x7000               # 1 byte per stage: its even PRG bank
+STG_HDR  = 0x7100               # 2 bytes: the level header
+STG_SCR  = 0x7200               # 2 bytes: the per-stage scroll script
+STG_WLD  = 0x7300               # 1 byte: which world it belongs to
+OBJROOM  = 0x7400               # 256 x $FF: "this room has no objects"
+AREA     = 0x7500               # the 16 PB3 bytes of the current header
+PBTMP    = 0x7510
+PBTIC    = 0x7511               # background animation: frame and phase
+PBPH     = 0x7512
+PBAX     = 0x7513               # the player's position along the scroll axis
+PALW     = 0x7520               # the current level's 32 palette bytes
+PBMIN    = 0x7514               # the camera placer's working values
+PBMAX    = 0x7516
+PBB      = 0x7518
+PBC      = 0x751A
+PBT      = 0x751C
+CLIMB    = 0x7540   # 1 byte per player: he has hold of a ladder
+TSAVE    = 0x7542   # 16 bytes: $90-$9F, borrowed for the terrain question
+TCLS     = 0x7552   # the answer
+TOLD     = 0x7553   # was he on the ladder a moment ago
+EXARM    = 0x7554   # one bit per exit: he has been on its near side
+PBEX     = 0x7555   # the area's own width and height, in sixteen-pixel
+PBEY     = 0x7556   # units, kept because the engine clears its own copy
+PMROW    = 0x7557   # collision dump: the row being asked about, >= 16 = idle
+PMCOL    = 0x7558
+PMPTR    = 0x7559   # two bytes: where the row's answers go
+PMBUF    = 0x7600   # 16 rows of 96 answers, straight from the engine
+SLIDE    = 0x755A   # 1 byte per player: frames left of a slide
+FACE     = 0x755C   # 1 byte per player: the way he last leaned
+SLIDEY   = 0x755E   # how far above his middle the wall is felt for
+SLIDE_LEN = 22      # frames a slide lasts, as in Power Blade 2
+NSOL     = 20                   # stages 0..19 are Solbrain's own
 
 # --- the engine, as far as the runtime needs to know it ---------------------
 SYMS = {
@@ -123,12 +162,651 @@ SYMS = {
     'ENEMIES':  0xCE1D,         # engine: update all twelve enemy slots
     'ENEMY1':   0xCE26,         # engine: update one, X = slot
     'P2_DSP':   P2_BLK + 0x05B6 - 0x05A2,
+    'CHR_R0':   0x0040,         # shadow of the 2K bank at $0000 -- background
+    'CHR_R1':   0x0041,         # ... and the animated half at $0800
+    'STG_BANK': STG_BANK, 'STG_HDR': STG_HDR, 'STG_SCR': STG_SCR,
+    'STG_WLD':  STG_WLD, 'OBJROOM': OBJROOM, 'AREA': AREA, 'PBTMP': PBTMP,
+    'PBTIC':    PBTIC, 'PBPH': PBPH, 'PBAX': PBAX, 'NSOL': NSOL,
+    'PALW':     PALW, 'PBMIN': PBMIN, 'PBMAX': PBMAX, 'PBB': PBB,
+    'PBC':      PBC, 'PBT': PBT,
+    'CLIMB':    CLIMB, 'TSAVE': TSAVE, 'TCLS': TCLS, 'TOLD': TOLD,
+    'EXARM':    EXARM, 'PBEX': PBEX, 'PBEY': PBEY,
+    'PMROW':    PMROW, 'PMCOL': PMCOL, 'PMPTR': PMPTR, 'PMBUF': PMBUF,
+    'SLIDE':    SLIDE, 'FACE': FACE, 'SLIDEY': SLIDEY,
+    'SLIDE_LEN': SLIDE_LEN,
+    'TERRQ':    0xC00C,         # bank 14: what is the ground at $90/$92?
+    'MAPPAIR':  0xC92C,         # bank 14: map a PRG pair, saving the old one
+    'OBJTBL':   0xAFAD,         # bank 9: stage -> object tables
+    'LOADTAB':  0xE642,         # bank 15: the six pointers of a tileset
 }
 PL_BLK_LEN = 45
 RESPAWN_DX = 0x0200             # 32 px, so a respawn is not on top of him
 RESPAWN = 120                   # frames a downed player sits out
 MARGIN = 0x100                  # 16 px of screen edge the players cannot cross
 
+
+
+LEVELS_SRC = """
+
+; --- slidep / sldy: Power Blade 2's slide, inside Solbrain's engine --------
+; Power Blade 2's hero is thirty-one pixels tall standing and fifteen sliding
+; (its probe lists at $B520 and $B540), and its levels use that: a corridor one
+; metatile high is a normal way through.  Solbrain's hero is one height, felt
+; from six pixels above his middle to fourteen below, so those corridors are
+; walls.  The two places the engine measures that reach now ask SLIDEY instead
+; of a constant, and a slide is a short window with SLIDEY at zero -- fifteen
+; pixels, exactly Power Blade 2's figure.
+; The slide is DOWN plus the jump button, from the ground, as in Power Blade 2.
+; While it runs the pad is rewritten: his own DOWN would stop him walking and
+; a second jump would end it early.
+slidep: lda #$60
+        sta SLIDEY
+        ldx CUR
+        lda PAD1_H
+        and #$03
+        beq sl_t
+        sta FACE,x
+sl_t:   lda SLIDE,x
+        bne sl_on
+        lda PAD1_H
+        and #$04
+        beq sl_ret
+        lda PAD1_P
+        and #$80
+        beq sl_ret
+        lda PL_STATE
+        cmp #$04
+        bcs sl_ret
+        lda #SLIDE_LEN
+        sta SLIDE,x
+sl_on:  dec SLIDE,x
+        lda #$00
+        sta SLIDEY
+        lda PAD1_P
+        and #$7F
+        sta PAD1_P
+        lda PAD1_H
+        and #$70
+        ora FACE,x
+        sta PAD1_H
+sl_ret: rts
+
+sldy:   sec                     ; the borrow the engine leaves here is whatever
+        lda $82                 ; the last question happened to set
+        sbc SLIDEY
+        sta $92
+        rts
+
+; pmap: hand back the engine's own answer for a whole row of the room.
+; Every map in this project is drawn from the converter's idea of the level;
+; this is the only thing that reads the cartridge the way the engine does.
+; Poke PMROW with 0 and sixteen frames later PMBUF holds 16 rows of 96
+; metatiles, one byte each, exactly as $C00C returned them.
+pmap:   lda PMROW
+        cmp #$10
+        bcs pm_ret
+        ldx #$0F
+pm_sv:  lda $90,x
+        sta TSAVE,x
+        dex
+        bpl pm_sv
+        lda #$00
+        sta PMPTR
+        lda PMROW
+        lsr a
+        ror PMPTR               ; row * 128
+        clc
+        adc #>PMBUF
+        sta PMPTR+1
+        lda #$00
+        sta $90
+        sta $92
+        lda PMROW
+        sta $93
+        ldy #$00
+pm_lp:  sty PMCOL
+        tya
+        sta $91
+        lda #$00
+        sta $90
+        sta $92
+        lda PMROW
+        sta $93
+        jsr TERRQ
+        ldy PMPTR               ; the answer goes through a zero-page pointer,
+        sty $9E                 ; which the question itself has just clobbered
+        ldy PMPTR+1
+        sty $9F
+        ldy PMCOL
+        sta ($9E),y
+        iny
+        cpy #$60
+        bcc pm_lp
+        ldx #$0F
+pm_rs:  lda TSAVE,x
+        sta $90,x
+        dex
+        bpl pm_rs
+        inc PMROW
+pm_ret: rts
+
+; tr_pen: keep the player inside the area.
+; Power Blade 2 pens a player into his area -- the walk cannot leave it and
+; neither can a fall.  Solbrain has no such fence: its own levels are built so
+; that you never reach the edge, and a converted area, whose bottom row is
+; often water rather than rock, drops the player straight out of the world.
+; The area's own bounds are the ones the camera uses, in the same sixteen
+; pixels per unit; one unit in from each is where the player stops.
+tr_pen: lda PBEX
+        sec
+        sbc #$01
+        cmp $81
+        bcs tp_x0
+        sta $81
+        lda #$F0
+        sta $80
+tp_x0:  lda $81
+        bne tp_y1
+        lda #$00
+        sta $80
+tp_y1:  lda PBEY
+        sec
+        sbc #$01
+        cmp $83
+        bcs tp_y0
+        lda TCLS                ; deep enough to swim in?  then he floats on
+        cmp #$68                ; the bottom of it
+        beq tp_wet
+        cmp #$70
+        bne tp_die
+tp_wet: lda PBEY
+        sec
+        sbc #$01
+        sta $83
+        lda #$F0
+        sta $82
+        lda #$00                ; and the fall that took him there is over
+        sta $05B8
+        sta $05B9
+        rts
+tp_die: lda #$00                ; nothing under him at all: the fall is the
+        sta PL_HP               ; end of him, which is what both games do
+        rts
+tp_y0:  lda $83
+        bne tp_end
+        lda #$00
+        sta $82
+tp_end: rts
+
+; --- entryx: where the hero's run-in starts -------------------------------
+; A Solbrain level begins with the hero running in from the left edge of the
+; room he starts in ($CAAC: remember the target column, then round the
+; position down to the room).  The run lasts a fixed time and covers 128 px,
+; which is plenty when the level was authored around it, but a converted area
+; puts the player wherever Power Blade 2 put him -- up to 240 px into the
+; room -- and the run then ends short of the spot, in mid-air more often than
+; not.  So for a converted area the run starts 112 px short of the target
+; instead of at the room edge: the same walk, the same length, ending exactly
+; where it should.  It stops itself the moment the target column is reached.
+entryx: lda $81
+        sta $0720
+        ldx $55
+        cpx #NSOL
+        bcc ex_sol
+        sec
+        sbc #$07
+        bcs ex_st
+        lda #$00
+        beq ex_st
+ex_sol: and #$F0
+ex_st:  sta $81
+        rts
+
+; --- terrain: the four ground types Power Blade 2 has and this one does not -
+; Power Blade 2 marks ladders, liquid and two directions of current in its own
+; terrain table.  The converter keeps them, as collision classes this engine
+; steps over without acting on ($0C, $0D, $0E, $0F, $07 -- all of them inert
+; on the player's side, which is why they were chosen).  Acting on them is
+; this routine's job.  It runs once per player, right after his update, so it
+; works on what the engine has already done this frame and takes it back where
+; it has to.
+;
+; The question itself is the engine's own: $C00C answers "what is at $90/$92",
+; in the same units as the player's position, and hands back the collision
+; class shifted up three.  It writes over half of zero page on the way, so the
+; sixteen bytes it uses are put back afterwards.
+terrain: lda $55
+        cmp #NSOL
+        bcc tr_ret              ; a Solbrain level: none of this applies
+        lda PL_STATE
+        cmp #$10
+        bcs tr_ret              ; dying or warping in
+        ldx #$0F
+tr_sv:  lda $90,x
+        sta TSAVE,x
+        dex
+        bpl tr_sv
+        lda PL_POS+0
+        sta $90
+        lda PL_POS+1
+        sta $91
+        lda PL_POS+2
+        sta $92
+        lda PL_POS+3
+        sta $93
+        jsr TERRQ
+        sta TCLS
+        ldx #$0F
+tr_rs:  lda TSAVE,x
+        sta $90,x
+        dex
+        bpl tr_rs
+        jsr tr_pen              ; he does not leave the area
+        ldx CUR
+        lda CLIMB,x             ; leaving the ladder ends the climb by itself
+        sta TOLD
+        lda #$00
+        sta CLIMB,x
+        lda TCLS
+        cmp #$60
+        beq tr_lad
+        cmp #$68
+        beq tr_wat
+        cmp #$70
+        beq tr_wat
+        cmp #$78
+        bne tr_d1
+        jmp tr_cr
+tr_d1:  cmp #$38
+        bne tr_ret
+        jmp tr_cl
+tr_ret: rts
+
+; ladder: up or down takes hold of it, and from then on he hangs there until
+; he jumps off or climbs off the end
+tr_lad: lda PAD1_P
+        and #$80
+        bne tr_ret              ; jumped off
+        lda PAD1_H
+        and #$0C
+        beq tr_l0
+        lda #$01
+        sta CLIMB,x
+        bne tr_l1
+tr_l0:  lda TOLD
+        beq tr_ret              ; walking past a ladder, not on it
+        sta CLIMB,x
+tr_l1:  jsr tr_stop
+        lda PAD1_H
+        and #$08
+        beq tr_l2
+        sec                     ; two pixels a frame, the speed he walks at
+        lda PL_POS+2
+        sbc #$20
+        sta PL_POS+2
+        lda PL_POS+3
+        sbc #$00
+        sta PL_POS+3
+        rts
+tr_l2:  lda PAD1_H
+        and #$04
+        beq tr_r2
+        clc
+        lda PL_POS+2
+        adc #$20
+        sta PL_POS+2
+        lda PL_POS+3
+        adc #$00
+        sta PL_POS+3
+        rts
+
+; tr_stop: take back the vertical move the engine just made, and forget the
+; fall speed it had built up
+tr_stop: sec
+        lda PL_POS+2
+        sbc PL_DSP+2
+        sta PL_POS+2
+        lda PL_POS+3
+        sbc PL_DSP+3
+        sta PL_POS+3
+        lda #$00
+        sta $05B8
+        sta $05B9
+        rts
+
+; liquid: he sinks at half speed, and UP or A swims him up against it
+tr_wat: lda PAD1_H
+        and #$88
+        bne tr_ws
+        lda PL_DSP+3
+        bmi tr_r2               ; already going up
+        lsr a
+        sta TMP+1
+        lda PL_DSP+2
+        ror a
+        sta TMP
+        sec
+        lda PL_POS+2
+        sbc TMP
+        sta PL_POS+2
+        lda PL_POS+3
+        sbc TMP+1
+        sta PL_POS+3
+        lda $05B9               ; and never picks up more than a slow drift
+        bmi tr_r2
+        cmp #$02
+        bcc tr_r2
+        lda #$01
+        sta $05B9
+        rts
+tr_ws:  jsr tr_stop             ; the fall is cancelled outright, then two
+        sec                     ; pixels up, the speed he swims at
+        lda PL_POS+2
+        sbc #$20
+        sta PL_POS+2
+        lda PL_POS+3
+        sbc #$00
+        sta PL_POS+3
+tr_r2:  rts
+
+; current: three quarters of a pixel a frame, the number Power Blade 2 uses
+tr_cr:  clc
+        lda PL_POS+0
+        adc #$0C
+        sta PL_POS+0
+        lda PL_POS+1
+        adc #$00
+        sta PL_POS+1
+        rts
+tr_cl:  sec
+        lda PL_POS+0
+        sbc #$0C
+        sta PL_POS+0
+        lda PL_POS+1
+        sbc #$00
+        sta PL_POS+1
+        rts
+
+; ==========================================================================
+; The converted Power Blade 2 areas.
+; ==========================================================================
+; Solbrain loads a level from five stage-indexed tables and one 20-byte header.
+; The tables now live in work RAM (see STG_*), so the only things left to do
+; here are the two places where a table entry is not a plain index -- the
+; object lists and the palette bank -- plus the sixteen bytes PB3 appends to
+; every header of its own.
+
+; --- objptr: replaces `9:$AE81`, which indexed a 4-byte-per-stage table -----
+; Power Blade 2's own enemies are not ported yet, so a converted area points at
+; a room table that is all $FF -- the engine's own "no objects here".
+objptr: lda $55
+        cmp #NSOL
+        bcs op_new
+        asl a
+        asl a
+        tay
+        lda OBJTBL,y
+        sta $9A
+        lda OBJTBL+1,y
+        sta $9B
+        lda OBJTBL+2,y
+        sta $9C
+        lda OBJTBL+3,y
+        sta $9D
+        rts
+op_new: lda #<OBJROOM
+        sta $9A
+        sta $9C
+        lda #>OBJROOM
+        sta $9B
+        sta $9D
+        rts
+
+; --- lvload: replaces `JSR $E642` at the head of the header parser ----------
+; Reads PB3's sixteen extra header bytes into work RAM.  Must come back with
+; Y = 0, which is what the routine it replaces leaves behind.
+lvload: jsr LOADTAB
+        lda $55
+        cmp #NSOL
+        bcc lv_sol
+        ldy #20
+lv_cp:  lda ($90),y
+        sta AREA-20,y
+        iny
+        cpy #36
+        bne lv_cp
+        ldy #$00
+        rts
+lv_sol: lda #$00
+        ldy #15
+lv_cl:  sta AREA,y
+        dey
+        bpl lv_cl
+        ldy #$00
+        rts
+
+; --- lvstart: replaces the first instruction after the header parser -------
+; Two jobs, both of which need the level's own pair still mapped and the whole
+; header already parsed, which is exactly true here.
+;
+; The palette: Solbrain keeps every palette in one pair and three separate
+; readers map that pair by hand before following $20/$21.  A converted area
+; keeps its palette next to its own header, so it is copied into work RAM and
+; $20/$21 pointed at the copy -- after which no reader has to care.
+;
+; The camera: the header can only say which 256 px column and row the camera
+; starts in ($E715, $E726), which for Solbrain's own levels is enough because
+; they are authored around it.  A converted area starts wherever Power Blade 2
+; put the player, so the camera is placed on him here and clamped to the same
+; bounds the engine would clamp it to -- otherwise it sits outside them until
+; the player next moves along that axis, and the engine's own clamp is only
+; reached from the moving path ($F298).
+lvstart: lda $55
+        cmp #NSOL
+        bcs ls_go
+        jmp ls_end
+ls_go:
+        ldy #$1F
+ls_pal: lda ($20),y
+        sta PALW,y
+        dey
+        bpl ls_pal
+        lda #<PALW
+        sta $20
+        lda #>PALW
+        sta $21
+        lda $38                 ; horizontal: half a screen behind the player
+        sta PBMIN
+        lda $39
+        sta PBMIN+1
+        lda $3A
+        sta PBMAX
+        lda $3B
+        sta PBMAX+1
+        lda #$00
+        sta PBB
+        lda #$08                ; 128 px, in the usual 16-per-pixel units
+        sta PBB+1
+        ldx #$00
+        jsr lvcam
+        lda $3C
+        sta PBMIN
+        lda $3D
+        sta PBMIN+1
+        lda $3E
+        sta PBMAX
+        lda $3F
+        sta PBMAX+1
+        lda #$00
+        sta PBB
+        lda #$07                ; 112 px: half of the 224 on screen
+        sta PBB+1
+        ldx #$02
+        jsr lvcam
+        lda #$00                ; nobody is holding a ladder yet
+        sta CLIMB+0
+        sta CLIMB+1
+        sta EXARM               ; and no exit is live until he steps off it
+        lda $3B                 ; the engine clears the level's bounds once it
+        sta PBEX                ; has drawn it, so keep a copy of them
+        lda $3F
+        sta PBEY
+        lda #$FF                ; the collision dump is idle until asked for
+        sta PMROW
+        lda #$00                ; nobody is sliding into a level
+        sta SLIDE+0
+        sta SLIDE+1
+        lda AREA+1              ; and he leans the way out to begin with
+        and #$02
+        beq ls_fr
+        lda #$02
+        bne ls_fs
+ls_fr:  lda #$01
+ls_fs:  sta FACE+0
+        sta FACE+1
+ls_end: lda #$FF                ; what the two instructions replaced left
+        ldx #$1F
+        rts
+
+; --- lvcam: put one axis of the camera on the player and clamp it ----------
+; X = 0 for the horizontal axis, 2 for the vertical.  PBMIN/PBMAX are that
+; axis's bounds and PBB the distance to hold the player back from the edge of
+; the screen; the engine's own upper bound is PBMAX - $1000, one screen.
+lvcam:  sec
+        lda $80,x
+        sbc PBB
+        sta PBC
+        lda $81,x
+        sbc PBB+1
+        sta PBC+1
+        bcs lc_lo
+        lda #$00
+        sta PBC
+        sta PBC+1
+lc_lo:  lda PBC
+        cmp PBMIN
+        lda PBC+1
+        sbc PBMIN+1
+        bcs lc_hi
+        lda PBMIN
+        sta PBC
+        lda PBMIN+1
+        sta PBC+1
+lc_hi:  sec
+        lda PBMAX
+        sta PBT
+        lda PBMAX+1
+        sbc #$10
+        sta PBT+1
+        bcs lc_h2
+        lda #$00
+        sta PBT
+        sta PBT+1
+lc_h2:  lda PBT
+        cmp PBC
+        lda PBT+1
+        sbc PBC+1
+        bcs lc_st
+        lda PBT
+        sta PBC
+        lda PBT+1
+        sta PBC+1
+lc_st:  lda PBC
+        sta $30,x
+        lda PBC+1
+        sta $31,x
+        rts
+
+; --- bganim: Power Blade 2 animates the upper half of its background --------
+; Three consecutive 2K banks, one step every eight frames.  Called from the
+; frame hook, which runs before the shadow of R1 is pushed to the mapper.
+bganim: lda $55
+        cmp #NSOL
+        bcc ba_ret
+        lda AREA+1
+        and #$04
+        beq ba_ret
+        inc PBTIC
+        lda PBTIC
+        and #$07
+        bne ba_set
+        inc PBPH
+        lda PBPH
+        cmp #$03
+        bcc ba_set
+        lda #$00
+        sta PBPH
+ba_set: lda PBPH
+        asl a
+        clc
+        adc AREA+0
+        sta CHR_R1
+ba_ret: rts
+
+; --- areafx: the exits Power Blade 2 put in its own areas -------------------
+; Each area carries up to three of them: a plane across the scroll axis (the
+; ordinary way on) and a proximity point (the boss door).  Reaching one sets
+; the stage number and drops the game into mode $35, which is the engine's own
+; "load the level $55 names".
+areafx: lda $55
+        cmp #NSOL
+        bcc af_ret
+        lda AREA+2
+        beq af_ret
+        lda PL_STATE            ; not while warping in or dying
+        cmp #$10
+        bcs af_ret
+        lda AREA+1
+        and #$01
+        beq af_horz
+        lda $83
+        jmp af_ax
+af_horz: lda $81
+af_ax:  sta PBAX
+        ldy #$00
+af_loop: cpy AREA+2
+        bcs af_ret
+        tya
+        asl a
+        asl a
+        tax
+        lda AREA+4,x
+        bne af_near
+        lda AREA+1
+        and #$02
+        bne af_back
+        lda PBAX
+        cmp AREA+5,x
+        bcs af_hit
+        jmp af_arm
+af_back: lda AREA+5,x
+        cmp PBAX
+        bcs af_hit
+        jmp af_arm
+af_near: lda PBAX
+        sec
+        sbc AREA+5,x
+        bpl af_pos
+        eor #$FF
+        clc
+        adc #$01
+af_pos: cmp #$02
+        bcc af_hit
+af_arm: lda af_bit,y            ; standing on the near side arms the door
+        ora EXARM
+        sta EXARM
+af_next: iny
+        jmp af_loop
+af_hit: lda af_bit,y            ; a door he was already past when the area
+        and EXARM               ; loaded is not a door he walked into
+        beq af_next
+        lda AREA+6,x
+        sta $55
+        lda #$35
+        sta MODE
+af_ret: rts
+af_bit: .byte 1,2,4,8,16,32,64,128
+"""
 
 def load():
     rom = bytearray(open(SRC, 'rb').read())
@@ -214,9 +892,39 @@ def runtime(mapping=None):
     """
     src = """
 ; --- entry: replaces `JSR PLAYER` at bank 12 $9150 -------------------------
-hook:   lda MOPEN               ; the menu is up: nothing in the level moves
+hook:   jsr gframe              ; the bars, the pause menu, the background
+        lda MOPEN               ; the menu is up: nothing in the level moves
         beq h_live
         rts
+
+; --- gframe: everything the level draws for itself, once a frame ----------
+; This is the old select-screen hook's in-game half.  It has to run here and
+; not in the NMI: sixteen sprites is more work than what is left of vblank
+; once the engine has emptied its own buffers, and the writes that follow it
+; are the ones that set the screen's scroll.
+gframe: jsr bganim              ; the converted areas animate their background
+        lda #GLYPHS             ; the font goes in the one sprite bank the
+        sta CHR_R5              ; game never uses inside a level
+        lda PAD1_H              ; SELECT opens and closes the menu.  The edge
+        ora PAD2_H              ; is found here rather than trusting the
+        and #$20                ; engine's own newly-pressed byte, which this
+        cmp MROW                ; hook can see twice.
+        sta MROW
+        beq g_2
+        lda MROW
+        beq g_2
+        lda MOPEN
+        eor #$01
+        sta MOPEN
+        bne g_2
+        sta MCLR                ; closing: the menu's sprites have to go
+        inc MCLR
+g_2:    jsr suitpal
+        lda MOPEN
+        beq g_3
+        jsr mnav
+        jmp mdraw
+g_3:    jmp bars
 h_live: lda PL_STATE            ; states $12/$13 are the warp-in: a level has
         cmp #$12                ; just started or restarted, so player two is
         bcc h_run               ; built again from player one when he lands
@@ -227,18 +935,22 @@ h_live: lda PL_STATE            ; states $12/$13 are the warp-in: a level has
         lda #$10                ; a level always starts on a full bar
         sta ENE+0
         sta ENE+1
-h_run:  jsr gunkeep
+h_run:  jsr areafx
+        jsr gunkeep
         lda P2_ON
         bne h_two
         lda #0                  ; alone: the original behaviour, except that
         sta TILEADD             ; a lone player may still be the other hero
         sta CUR
+        jsr slidep
         jsr PLAYER
         jsr chrslot
         ldx #0
         jsr drain
         ldx #0
         jsr suitfx
+        jsr terrain
+        jsr pmap
         ldx #0
         jsr gunfee
         jmp init
@@ -301,12 +1013,15 @@ onep:   stx CUR
         beq o_t0                ; art can differ from player one's
         lda #$40
 o_t0:   sta TILEADD
+        jsr slidep
         jsr PLAYER
         jsr chrslot
         ldx CUR
         jsr drain
         ldx CUR
         jsr suitfx
+        jsr terrain
+        jsr pmap
         ldx CUR
         jsr gunfee
         jsr clamp
@@ -618,12 +1333,16 @@ m2a:    cmp poses,x
         rts
 m2h:    lda nova2,x
         rts
+; The second slot has no safe "leave it alone": his tiles have already been
+; emitted $40 higher, so a bank that was never built for that slot draws the
+; health bar and the letters instead of a man.  A pose we do not have falls
+; back on the standing one, which is wrong but is a hero.
 map_n3: ldx #NPOSE-1
 m3a:    cmp poses,x
         beq m3h
         dex
         bpl m3a
-        rts
+        ldx #$00
 m3h:    lda nova3,x
         rts
 map_s3: ldx #NPOSE-1
@@ -631,7 +1350,7 @@ msa:    cmp poses,x
         beq msh
         dex
         bpl msa
-        rts
+        ldx #$00
 msh:    lda sol3,x
         rts
 poses:  .byte POSE_TABLE
@@ -644,35 +1363,16 @@ sol3:   .byte SOL3_TABLE
 ; own men on top of the title screen without fighting anybody for the buffer:
 ; the title draws no sprites at all.  Left picks this game's hero, right picks
 ; the other one; each pad picks for its own player.
+; Only the select screen is drawn from here now.  Everything a level needs --
+; the bars, the pause menu, the background animation -- moved to `gframe`,
+; which runs with the rest of the frame's logic: this hook sits inside the
+; NMI, and the sixteen sprites of two energy bars took long enough that the
+; engine's own scroll write, which comes after it, missed the top of the
+; picture.  That is what made the whole screen jump sixteen pixels every
+; other frame -- the flicker, and the letters and digits in place of walls.
 menu:   lda MODE
         cmp #$05
         beq q_on
-        cmp #$00                ; $00 is a level in play
-        beq q_game
-        jmp q_end
-q_game: lda #GLYPHS             ; the font goes in the one sprite bank the
-        sta CHR_R5              ; game never uses inside a level
-        lda PAD1_H              ; SELECT opens and closes the menu.  The edge
-        ora PAD2_H              ; is found here rather than trusting the
-        and #$20                ; engine's own newly-pressed byte, which this
-        cmp MROW                ; hook can see twice.
-        sta MROW
-        beq q_g2
-        lda MROW
-        beq q_g2
-        lda MOPEN
-        eor #$01
-        sta MOPEN
-        bne q_g2
-        sta MCLR                ; closing: the menu's sprites have to go
-        inc MCLR
-q_g2:   jsr suitpal
-        lda MOPEN
-        beq q_g3
-        jsr mnav
-        jsr mdraw
-        jmp q_end
-q_g3:   jsr bars
         jmp q_end
 q_on:
         lda #MENU_POSE          ; both men have to be mapped in at once, so
@@ -1340,6 +2040,7 @@ p2:     lda $00AF,y
         bcs p2
         rts
 """
+    src = src + LEVELS_SRC
     order = novachr.SOL_ORDER
     tbl = lambda base: ','.join(str(base + i) for i in range(len(order)))
     src = src.replace('POSE_TABLE', ','.join(str(b) for b in order))
@@ -1444,13 +2145,67 @@ c1:     lda ($00),y
     return a.assemble(src)
 
 
+PB2_PAIRS = (18, 20, 22)        # the free PRG pairs the converted areas go in
+RT_SIZE = 0x2000                # the whole of work RAM is filled from bank 16
+
+
+def levels(img, chr_first):
+    """Convert Power Blade 2's areas and lay them out in PB3's spare banks.
+
+    Returns the four stage tables, ready to be copied into work RAM: one entry
+    per stage, Solbrain's own twenty first and the sixty-three converted areas
+    after them.
+    """
+    img.add_chr(pb2port.chr_banks(), chr_first)
+
+    areas, tilesets = pb2port.build()
+    order = {a: NSOL + i for i, a in enumerate(areas)}
+    bins = pb2port.pack_pairs(areas, tilesets)
+    assert len(bins) <= len(PB2_PAIRS), len(bins)
+
+    bank = [0] * len(order)
+    hdrp = [0] * len(order)
+    for i, groups in enumerate(bins):
+        b = PB2_PAIRS[i]
+        blob, hdr_at, used = pb2port.emit_pair(groups, b, chr_first,
+                                               lambda i: NSOL + i)
+        img.prg[b * BANK:(b + 2) * BANK] = blob
+        for a, at in hdr_at.items():
+            bank[order[a] - NSOL] = b
+            hdrp[order[a] - NSOL] = at
+        img.used.setdefault(b, []).append((0x8000, 0x8000 + used, 'PB2 levels'))
+
+    prg = img.prg
+    sol_bank = [prg[img.off(14, 0xC965) + i] for i in range(NSOL)]
+    sol_hdr = [prg[img.off(15, 0xE6E0) + i] for i in range(2 * NSOL)]
+    sol_scr = [prg[img.off(8, 0x93E8) + i] for i in range(2 * NSOL)]
+    sol_wld = [prg[img.off(15, 0xE223) + i] for i in range(NSOL)]
+
+    t_bank = bytes(sol_bank) + bytes(bank)
+    t_hdr = bytes(sol_hdr) + b''.join(bytes((p & 0xFF, p >> 8)) for p in hdrp)
+    t_scr = bytes(sol_scr) + bytes((0x45, 0xC9)) * len(order)   # $C945 = RTS
+    t_wld = bytes(sol_wld) + bytes(len(order))
+    return t_bank, t_hdr, t_scr, t_wld, len(order), len(bins)
+
+
 def build():
     img = Image()
     mapping, first, novabanks, redrawn = novachr.novabanks()
     img.add_chr(novabanks, first)
+    chr_first = (first + len(novabanks) + 1) & ~1   # even: R0/R1 are 2 KB
+    t_bank, t_hdr, t_scr, t_wld, n_area, n_pair = levels(img, chr_first)
+
     rt, syms = runtime(mapping)
-    pages = (len(rt) + 0xFF) // 0x100
-    img.prg[RTBANK * BANK:RTBANK * BANK + len(rt)] = rt
+    ram = bytearray(RT_SIZE)
+    ram[:len(rt)] = rt
+    for at, data in ((STG_BANK, t_bank), (STG_HDR, t_hdr),
+                     (STG_SCR, t_scr), (STG_WLD, t_wld),
+                     (OBJROOM, b'\xFF' * 256)):
+        o = at - WRAM
+        assert set(ram[o:o + len(data)]) == {0}, hex(at)
+        ram[o:o + len(data)] = data
+    pages = RT_SIZE // 0x100
+    img.prg[RTBANK * BANK:RTBANK * BANK + RT_SIZE] = ram
 
     boot = boot_code(pages)
     img.free(15, BOOT, boot, 'boot')
@@ -1510,8 +2265,64 @@ def build():
              bytes((0x20, syms['menu'] & 0xFF, syms['menu'] >> 8, 0xEA)),
              'select screen')
 
+    # --- the five stage-indexed tables, moved into work RAM ----------------
+    for bank, cpu, orig, new in (
+            (15, 0xE6C9, (0xBD, 0x65, 0xC9), (0xBD, STG_BANK & 0xFF, STG_BANK >> 8)),
+            (14, 0xC952, (0xB9, 0x65, 0xC9), (0xB9, STG_BANK & 0xFF, STG_BANK >> 8)),
+            (15, 0xE6D3, (0xB9, 0xE0, 0xE6), (0xB9, STG_HDR & 0xFF, STG_HDR >> 8)),
+            (15, 0xE6D8, (0xB9, 0xE1, 0xE6), (0xB9, (STG_HDR + 1) & 0xFF, STG_HDR >> 8)),
+            (8, 0x93DB, (0xBD, 0xE8, 0x93), (0xBD, STG_SCR & 0xFF, STG_SCR >> 8)),
+            (8, 0x93E0, (0xBD, 0xE9, 0x93), (0xBD, (STG_SCR + 1) & 0xFF, STG_SCR >> 8)),
+            (15, 0xE0C8, (0xBD, 0x23, 0xE2), (0xBD, STG_WLD & 0xFF, STG_WLD >> 8)),
+            (15, 0xE211, (0xBD, 0x23, 0xE2), (0xBD, STG_WLD & 0xFF, STG_WLD >> 8)),
+            (15, 0xE23E, (0xBD, 0x23, 0xE2), (0xBD, STG_WLD & 0xFF, STG_WLD >> 8))):
+        got = img.prg[img.off(bank, cpu):img.off(bank, cpu) + 3]
+        assert bytes(got) == bytes(orig), '%d:%04X %s' % (bank, cpu, got.hex())
+        img.poke(bank, cpu, bytes(new), 'stage table')
+
+    # the object tables, whose index is stage * 4 and so cannot reach past 63
+    o = img.off(9, 0xAE81)
+    assert img.prg[o] == 0xA5 and img.prg[o + 1] == 0x55, img.prg[o:o + 4].hex()
+    img.poke(9, 0xAE81,
+             bytes((0x20, syms['objptr'] & 0xFF, syms['objptr'] >> 8))
+             + b'\xEA' * 22, 'object tables')
+
+    # the palette, lifted out of the pair into work RAM so that whoever reads
+    # it next does not have to care which pair is mapped
+    got = img.prg[img.off(15, 0xE77E):img.off(15, 0xE77E) + 4]
+    assert bytes(got) == bytes((0xA9, 0xFF, 0xA2, 0x1F)), got.hex()
+    img.poke(15, 0xE77E,
+             bytes((0x20, syms['lvstart'] & 0xFF, syms['lvstart'] >> 8, 0xEA)),
+             'palette copy')
+
+    # where the hero's run-in starts
+    got = img.prg[img.off(14, 0xCAAC):img.off(14, 0xCAAC) + 9]
+    assert bytes(got) == bytes((0xA5, 0x81, 0x8D, 0x20, 0x07, 0x29, 0xF0,
+                                0x85, 0x81)), got.hex()
+    img.poke(14, 0xCAAC,
+             bytes((0x20, syms['entryx'] & 0xFF, syms['entryx'] >> 8))
+             + b'\xEA' * 6, 'run-in start')
+
+    # how far above his middle the player feels for a wall, both directions
+    for cpu in (0xA38E, 0xA42E):
+        got = img.prg[img.off(13, cpu):img.off(13, cpu) + 6]
+        assert bytes(got) == bytes((0xA5, 0x82, 0xE9, 0x60, 0x85, 0x92)), \
+            got.hex()
+        img.poke(13, cpu,
+                 bytes((0x20, syms['sldy'] & 0xFF, syms['sldy'] >> 8))
+                 + b'\xEA' * 3, 'slide reach')
+
+    # PB3's own sixteen header bytes, read where the engine reads its twenty
+    got = img.prg[img.off(15, 0xE708):img.off(15, 0xE708) + 3]
+    assert bytes(got) == bytes((0x20, 0x42, 0xE6)), got.hex()
+    img.poke(15, 0xE708,
+             bytes((0x20, syms['lvload'] & 0xFF, syms['lvload'] >> 8)),
+             'header tail')
+
     n = img.save()
     print('%s  %d bytes' % (os.path.relpath(OUT, ROOT), n))
+    print('%d converted areas in %d pairs, stages %d..%d'
+          % (n_area, n_pair, NSOL, NSOL + n_area - 1))
     print('runtime %d bytes at $%04X (%d page%s copied), boot %d of 144 bytes'
           % (len(rt), WRAM, pages, '' if pages == 1 else 's', len(boot)))
     for k in ('hook', 'init', 'swap', 'camera', 'clamp', 'enemies', 'mark'):
