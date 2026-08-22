@@ -1,0 +1,94 @@
+extends RefCounted
+class_name Pb2Level
+
+## One area of Power Blade 2, unfolded into a map of tile numbers.
+##
+## The cartridge kept the level folded four times over -- area, screen, block,
+## tile -- because it had to.  We unfold it once when the area is entered and
+## then never think about it again; what the engine needs to answer quickly is
+## "what is at this world pixel", not "which screen was that".
+
+const TILES_PER_SCREEN_X := 32
+
+var stage: int
+var area: int
+var vertical: bool
+var width_tiles: int
+var height_tiles: int
+var map_image: Image                # R = tile number, G = palette
+var palette: PackedByteArray
+var banks: Array                    # the four 1 KB CHR banks of the background
+var bank_phases: Array              # the sets the animated half cycles through
+var terrain: PackedByteArray        # what each tile number does underfoot
+var spawns: Array
+var _data: Dictionary
+
+
+func _init(stage_index: int, area_index: int) -> void:
+	stage = stage_index
+	area = area_index
+	_data = Nes._load_json("%s/pb2/levels/stage%d.json" % [Nes.DATA, stage])
+	var a: Dictionary = _data["areas"][area]
+	vertical = int(a["vertical"]) != 0
+	palette = PackedByteArray(a["palette"])
+	banks = (a["chr"] as Array).slice(0, 4)
+	bank_phases = a["chr_bg_phases"]
+	terrain = PackedByteArray(a["terrain"])
+	spawns = a["spawns"]
+	_build(a)
+
+
+func _build(a: Dictionary) -> void:
+	var screens: Array = a["screens"]
+	var all_screens: Array = _data["screens"]
+	var blocks: Array = _data["blocks"]
+	var attrs: Array = _data["attributes"]
+
+	# Every screen of an area is the same shape, so the area's size follows
+	# from how many there are and which way it scrolls.
+	var first: Dictionary = all_screens[int(screens[0])]
+	var sh: int = int(first["h"]) * 4          # tiles tall
+	if vertical:
+		width_tiles = TILES_PER_SCREEN_X
+		height_tiles = sh * screens.size()
+	else:
+		width_tiles = TILES_PER_SCREEN_X * screens.size()
+		height_tiles = sh
+
+	var buf := PackedByteArray()
+	buf.resize(width_tiles * height_tiles * 4)
+	for n in range(screens.size()):
+		var sc: Dictionary = all_screens[int(screens[n])]
+		var sblocks: Array = sc["blocks"]
+		var ox: int = 0 if vertical else n * TILES_PER_SCREEN_X
+		var oy: int = n * sh if vertical else 0
+		for br in range(int(sc["h"])):
+			for bc in range(8):
+				var b: int = int(sblocks[br * 8 + bc])
+				var blk: Array = blocks[b] if b < blocks.size() else []
+				var at: int = int(attrs[b]) if b < attrs.size() else 0
+				for r in range(4):
+					for c in range(4):
+						var t: int = int(blk[r * 4 + c]) if blk.size() == 16 else 0
+						# One attribute byte covers the whole 32x32 block; its
+						# four bit pairs are its four 16x16 quarters.
+						var quad: int = (r / 2) * 2 + (c / 2)
+						var pal: int = (at >> (quad * 2)) & 3
+						var x: int = ox + bc * 4 + c
+						var y: int = oy + br * 4 + r
+						var o: int = (y * width_tiles + x) * 4
+						buf[o] = t
+						buf[o + 1] = pal
+						buf[o + 3] = 255
+	map_image = Image.create_from_data(width_tiles, height_tiles, false,
+			Image.FORMAT_RGBA8, buf)
+
+
+## What the ground does at this world pixel: solid, ladder, water, spikes...
+func terrain_at(px: int, py: int) -> int:
+	var tx := px >> 3
+	var ty := py >> 3
+	if tx < 0 or ty < 0 or tx >= width_tiles or ty >= height_tiles:
+		return 0
+	var c := map_image.get_pixel(tx, ty)
+	return terrain[int(round(c.r * 255.0))]
