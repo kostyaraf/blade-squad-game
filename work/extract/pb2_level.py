@@ -33,6 +33,17 @@ def collision_map(coll, stage, area):
     return [coll.tile_type(stage, t, area) for t in range(256)]
 
 
+def collision_classes(coll, stage, area):
+    """Collision class 0..3 for every tile number.
+
+    This is what the player physics actually reads: the console keeps two bits
+    per 16x16 cell in its buffer at $0680 and turns them back into a byte
+    through the table at $F5A9 -- air, ladder, wall, hazard.  The class of a
+    cell is the class of its TOP-LEFT 8x8 tile.
+    """
+    return [coll.tile_class(stage, t, area) for t in range(256)]
+
+
 def export():
     lv = PB2Levels(ROM_PB2)
     coll = PB2Collision(ROM_PB2)
@@ -59,6 +70,7 @@ def export():
                 chr_bg_phases=pal.area_bg_chr_phases(s, a),
                 palette=pal.area_palette(s, a),
                 terrain=collision_map(coll, s, a),
+                terrain_class=collision_classes(coll, s, a),
                 spawns=spawns,
             ))
         obj = dict(
@@ -75,8 +87,10 @@ def export():
         print('stage %d  %3d blocks  %2d screens  %2d areas  %6d bytes'
               % (s, st['nblocks'], len(st['screens']), len(areas), size))
     write_json(os.path.join(d, 'index.json'),
-               dict(stages=index, terrain_names={'%02X' % k: v
-                                                 for k, v in TERRAIN.items()}))
+               dict(stages=index,
+                    terrain_names={'%02X' % k: v for k, v in TERRAIN.items()},
+                    # $F5A9: what the two cached bits mean to the physics
+                    class_bytes=[0x00, 0x01, 0x80, 0x02]))
 
 
 if __name__ == '__main__':

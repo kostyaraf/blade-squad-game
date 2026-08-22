@@ -21,6 +21,7 @@ var pads: Array[Pad] = []
 
 func _ready() -> void:
 	var shots := ""
+	var replay := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -31,6 +32,11 @@ func _ready() -> void:
 			var p := a.substr(9).split(",")
 			scroll = Vector2i(int(p[0]), int(p[1]))
 		elif a.begins_with("--shots="): shots = a.substr(8)
+		elif a.begins_with("--replay="): replay = a.substr(9)
+	if replay != "":
+		_run_replay(replay)
+		get_tree().quit()
+		return
 	if shots != "":
 		await _run_shots(shots)
 		get_tree().quit()
@@ -52,6 +58,31 @@ func _run_shots(path: String) -> void:
 		_apply()
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(f[5])
+
+
+## Play a recorded script of buttons and print what the hero did each frame.
+##
+## The file says which area to stand in, where to stand, and then one line per
+## frame: the buttons held, the buttons pressed this frame, and where the
+## camera was -- all taken off the real cartridge.  The engine must answer with
+## the same positions.
+func _run_replay(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_load("pb2", int(cfg["stage"]), int(cfg["area"]))
+	var p := Pb2Player.new(level_pb2)
+	p.place(int(cfg["x"]), int(cfg["y"]), int(cfg["cam"]))
+	p.x = int(cfg["x"])
+	p.y = int(cfg["y"])
+	p.state = int(cfg["state"])
+	p.sub = int(cfg["sub"])
+	p.pose = int(cfg["pose"])
+	p.face_left = bool(cfg["face_left"])
+	var out := PackedStringArray()
+	for f in cfg["frames"]:
+		p.step(int(f["pad"]), int(f["hit"]), int(f["cam"]))
+		out.append("%d %d %d %d %d %d %d %d" % [p.x, p.y, p.vx, p.vy,
+				p.state, p.sub, p.pose, 1 if p.face_left else 0])
+	print("\n".join(out))
 
 
 var _cache := {}

@@ -20,6 +20,9 @@ var palette: PackedByteArray
 var banks: Array                    # the four 1 KB CHR banks of the background
 var bank_phases: Array              # the sets the animated half cycles through
 var terrain: PackedByteArray        # what each tile number does underfoot
+var terrain_class: PackedByteArray  # the two bits the physics actually reads
+var class_bytes := PackedByteArray([0x00, 0x01, 0x80, 0x02])
+var tiles: PackedByteArray          # tile number per 8x8 cell, row major
 var spawns: Array
 var _data: Dictionary
 
@@ -34,6 +37,7 @@ func _init(stage_index: int, area_index: int) -> void:
 	banks = (a["chr"] as Array).slice(0, 4)
 	bank_phases = a["chr_bg_phases"]
 	terrain = PackedByteArray(a["terrain"])
+	terrain_class = PackedByteArray(a["terrain_class"])
 	spawns = a["spawns"]
 	_build(a)
 
@@ -82,6 +86,10 @@ func _build(a: Dictionary) -> void:
 						buf[o + 3] = 255
 	map_image = Image.create_from_data(width_tiles, height_tiles, false,
 			Image.FORMAT_RGBA8, buf)
+	tiles = PackedByteArray()
+	tiles.resize(width_tiles * height_tiles)
+	for i in range(width_tiles * height_tiles):
+		tiles[i] = buf[i * 4]
 
 
 ## What the ground does at this world pixel: solid, ladder, water, spikes...
@@ -90,5 +98,17 @@ func terrain_at(px: int, py: int) -> int:
 	var ty := py >> 3
 	if tx < 0 or ty < 0 or tx >= width_tiles or ty >= height_tiles:
 		return 0
-	var c := map_image.get_pixel(tx, ty)
-	return terrain[int(round(c.r * 255.0))]
+	return terrain[tiles[ty * width_tiles + tx]]
+
+
+## What the physics sees at this world pixel.
+##
+## The console keeps two bits per 16x16 cell and takes them from that cell's
+## top left 8x8 tile, so a cell is as solid as its corner -- and the answer is
+## one of only four bytes ($F5A9): nothing, ladder, wall, hurt.
+func class_byte(px: int, py: int) -> int:
+	var tx := (px >> 4) << 1
+	var ty := (py >> 4) << 1
+	if tx < 0 or ty < 0 or tx >= width_tiles or ty >= height_tiles:
+		return 0x80
+	return class_bytes[terrain_class[tiles[ty * width_tiles + tx]]]
