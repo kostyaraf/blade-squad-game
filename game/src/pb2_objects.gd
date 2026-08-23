@@ -127,7 +127,9 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x07: "_mind_07", 0x08: "_mind_08", 0x2B: "_mind_2b",
 		0x29: "_mind_29", 0x20: "_mind_20",
 		0x39: "_mind_39",
-		0x09: "_mind_09", 0x0A: "_mind_0a"}
+		0x09: "_mind_09", 0x0A: "_mind_0a",
+		0x3E: "_mind_3e", 0x3A: "_mind_3a", 0x3B: "_mind_3b",
+		0x40: "_mind_40"}
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
@@ -2075,6 +2077,75 @@ func ride_apply(_s: PackedByteArray, _side: int, _down: int) -> void:
 	pass
 
 
+## $BDA3 -- three records of six numbers each, picked by the number the mind
+## hands over.  In order: the feeler put out below while going down, the one
+## put out above while going up, two more below for the two side questions,
+## and the feeler put out sideways going right and going left.
+const MOVER := [
+	[0x10, 0xF0, 0x08, 0xF8, 0x0C, 0xF4],
+	[0x04, 0xE0, 0xFC, 0xEC, 0x0C, 0xF4],
+	[0x04, 0xE0, 0xF8, 0xE8, 0x0C, 0xF4],
+	[0x04, 0xE0, 0xF8, 0xE8, 0x0C, 0xF4]]
+
+
+## $BCBB (bank 11) -- the walk of everything that flies and stops dead against
+## a wall.  What it has run into is kept in $0668: bit 0 the ceiling, bit 1 the
+## floor, bit 6 a wall on the right, bit 7 a wall on the left.  While a bit is
+## up and the thing is still pushing that way, it only asks the ground on its
+## own frames ($BE3E), so the same wall is not paid for twice a frame.
+func mover(n: int, s: PackedByteArray, which: int) -> void:
+	var r: Array = MOVER[which]
+	if (s[F_VY] | s[F_VYFR]) != 0:                     # $BCC5
+		var go := true
+		if (s[F_GROUND] & 0x01) != 0:                  # $BCDD
+			if s[F_VY] < 0x80:
+				s[F_GROUND] &= 0xFC                    # $BD91
+			else:
+				go = its_turn(n, clock)                # $BCE2
+		elif (s[F_GROUND] & 0x02) != 0:                # $BCD6
+			if s[F_VY] >= 0x80:
+				s[F_GROUND] &= 0xFC
+			else:
+				go = its_turn(n, clock)
+		if go:
+			var down: int = r[0] if s[F_VY] < 0x80 else r[1]
+			if walled_either_turn(n, s, 0x07, down, 0x00) >= 0x80:
+				s[F_GROUND] &= 0xFC                    # $BD07
+				s[F_GROUND] |= 0x01 if s[F_VY] >= 0x80 else 0x02
+				s[F_VY] = 0x00
+				s[F_VYFR] = 0x00
+			else:
+				step_down(s)                           # $C8F4
+				s[F_GROUND] &= 0xFC
+	if (s[F_VX] | s[F_VXFR]) == 0:                     # $BD23
+		return
+	var go2 := true
+	if (s[F_GROUND] & 0x80) != 0:                      # $BD3B
+		if s[F_VX] < 0x80:
+			s[F_GROUND] &= 0x3F                        # $BD9A
+		else:
+			go2 = its_turn(n, clock)                   # $BD40
+	elif (s[F_GROUND] & 0x40) != 0:                    # $BD34
+		if s[F_VX] >= 0x80:
+			s[F_GROUND] &= 0x3F
+		else:
+			go2 = its_turn(n, clock)
+	if not go2:
+		return
+	var side: int = r[4] if s[F_VX] < 0x80 else r[5]   # $BD4A
+	var hit: bool = ground_turn_clear(n, s, side, r[2]) >= 0x80
+	if not hit:                                        # $BD62
+		hit = ground_turn_clear(n, s, side, r[3]) >= 0x80
+	if hit:
+		s[F_GROUND] &= 0x3F                            # $BD74
+		s[F_GROUND] |= 0x80 if s[F_VX] >= 0x80 else 0x40
+		s[F_VX] = 0x00
+		s[F_VXFR] = 0x00
+		return
+	step_side(s)                                       # $C8F7
+	s[F_GROUND] &= 0x3F
+
+
 # --- The minds ---------------------------------------------------------
 
 
@@ -2742,13 +2813,18 @@ func strayed_far(s: PackedByteArray) -> bool:
 	var hi: int = d >> 8
 	var lo: int = d & 0xFF
 	var going_back: bool = (s[F_VX] & 0x80) != 0
-	if lo < 0x80:
-		if hi != 1:                                    # $ACED CPY #$01
-			return false
-		return going_back                              # $ACF5 BMI
-	if hi != 0xFE:                                     # $ACFC CPY #$FE
+	# The cartridge weighs the two bytes apart, and the high one first: $ACEB
+	# splits on its sign, and only then is the low one asked whether it has
+	# passed the half.  A whole screen and a half is the plain reading of it,
+	# but the two halves are never put back together, so a high byte of two or
+	# more is judged on its low byte alone.  That is kept as it stands.
+	if hi < 0x80:                                      # $ACEB
+		if hi == 0x01 or lo >= 0x80:                   # $ACED, $ACF1
+			return going_back                          # $ACF5
 		return false
-	return not going_back                              # $AD04 BPL
+	if hi == 0xFE or lo < 0x80:                        # $ACFC, $AD00
+		return not going_back                          # $AD04
+	return false
 
 
 ## $FE08 -- and the way back.
@@ -2962,11 +3038,11 @@ func _atan(x0: int, y0: int, x1: int, y1: int) -> int:
 	if dy == 0:
 		return (bits << 2) & 0xFF                      # $F75D
 	if dy == dx:
-		# $F762 -- four rolls bring the three bits down to the bottom.
-		var r: int = bits
-		for _k in range(4):
-			r = ((r << 1) | (r >> 7)) & 0xFF
-		return quarter[r & 0x03]
+		# $F762 -- four rolls, and they go through the carry, which the CMP a
+		# moment ago left up.  What lands in the bottom two places is the pair
+		# of signs, bits five and six; a plain roll of the byte alone would
+		# bring down four and five instead and answer the wrong corner.
+		return quarter[(bits >> 5) & 0x03]
 	# $F716 -- the shorter over the longer, to eight bits.
 	var num: int = dx if bits & 0x80 else dy
 	var den: int = dy if bits & 0x80 else dx
@@ -4416,3 +4492,614 @@ func _rail_lost(s: PackedByteArray) -> bool:
 	if ground(s, 0x14, 0x08) < 0x80:                   # $A1D6
 		return false
 	return ground(s, 0x14, 0xF8) < 0x80                # $A1DF
+
+
+## $BC1B -- how long to wait before picking the sideways speed again, and
+## which of the speeds below to take, by the number handed in.
+const SIDE_PICK_3E := [[0x40, 2], [0x10, 0], [0x20, 1], [0x30, 2],
+		[0x60, 3], [0x20, 4]]
+## $BC27 -- the sideways speeds: whole and 1/256ths, all of them toward him.
+const SIDE_SPEED_3E := [[0xFE, 0x00], [0xFE, 0x40], [0xFE, 0x80],
+		[0xFE, 0xC0], [0xFF, 0xE0]]
+## $BC7F -- and the up-and-down ones.
+const DOWN_SPEED_3E := [[0x01, 0x80], [0x01, 0x00], [0x00, 0x80],
+		[0x00, 0x40], [0x00, 0x20]]
+
+
+## $BACB (bank 11) -- the flier that hangs over him and drops on him.  It
+## drifts about at the height he is, springs up out of the way of a boomerang,
+## hangs there long enough to spit once, and comes down.
+func _mind_3e(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:                                  # $C97E
+		0: _wake_3e(s)
+		1: _hover_3e(n, s)
+		2: _rise_3e(n, s)
+		3: _dive_3e(n, s)
+
+
+## $BAD6 -- four lives, and both its counts nudged on by one from whatever the
+## list left in them, so that neither picks a speed on its first frame.
+func _wake_3e(s: PackedByteArray) -> void:
+	s[F_LIFE] = 0x04                                   # $BE5A 04
+	s[F_MARK] = 0x01
+	start_anim(s, 0x24)                                # $BEAD 24
+	s[F_SELF] = (s[F_SELF] + 1) & 0xFF
+	s[F_COUNT] = (s[F_COUNT] + 1) & 0xFF
+	record_home_along(s)                               # $C9B1
+	s[F_STATE] += 1                                    # $C966
+
+
+## $BAEA -- hanging about him.  A boomerang on its way sends it straight up,
+## unless it is already stopped against a wall to one side.
+func _hover_3e(n: int, s: PackedByteArray) -> void:
+	step_anim(s)                                       # $C837
+	_pick_down_3e(s)                                   # $BC31
+	_drift_3e(n, s)                                    # $BBAB
+	face_hero(s)                                       # $C8FD
+	_pick_side_3e(s)                                   # $BBD6
+	if not boomerang_coming(s):                        # $AD0F
+		return
+	if (s[F_GROUND] & 0xC0) != 0:                      # $BAFF
+		return
+	_set_side_3e(s, 0)                                 # $BC05 with nought
+	set_speed_down(s, 0xF8, 0x00)                      # $BEB9 00 F8
+	s[F_KIND] = 0x89                                   # $BE6E 89
+	s[F_PUSH] = 0x80                                   # $BE91 80
+	s[F_ANG] = 0x00                                    # $BE98 00
+	s[F_STATE] += 1                                    # $C966
+
+
+## $BB1F -- up, then a wait at the top.  While it still climbs it only gathers
+## weight; once it hangs it takes aim and spits, and $063C is the rest it
+## takes between one shot and the next.
+func _rise_3e(n: int, s: PackedByteArray) -> void:
+	if s[F_VY] >= 0x80:                                # $BB22 BPL
+		add_speed_down(s, 0x64)                        # $C90C
+		_drift_3e(n, s)                                # $BBAB
+		return
+	s[F_PUSH] = (s[F_PUSH] - 1) & 0xFF                 # $BB2C
+	if s[F_PUSH] == 0 or (s[F_GROUND] & 0xC0) != 0:    # $BB31
+		_dive_start_3e(s)
+		return
+	s[F_KIND] = 0x8A                                   # $BE6E 8A
+	set_speed_down(s, 0x00, 0x00)                      # $BEB9 00 00
+	_drift_3e(n, s)                                    # $BBAB
+	face_hero(s)                                       # $C8FD
+	_pick_side_3e(s)                                   # $BBD6
+	if s[F_ANG] != 0:                                  # $BB4A
+		s[F_ANG] = (s[F_ANG] - 1) & 0xFF
+		if s[F_ANG] != 0:
+			return
+	var side: Array = hero_side(s)                     # $C93C
+	if bool(side[2]) or int(side[0]) >= 0x80:          # $BB57, $BB5B
+		_dive_start_3e(s)
+		return
+	if int(side[0]) >= 0x30:                           # $BB5F
+		return
+	if make_child_aimed(s, 0x00, 0xF0, 0x3F, 0x04, 0x40) < 0:
+		return
+	s[F_ANG] = 0x20                                    # $BE98 20
+
+
+## $BB7B -- it gives up hanging and comes down.
+func _dive_start_3e(s: PackedByteArray) -> void:
+	s[F_KIND] = 0x89                                   # $BE6E 89
+	set_speed_down(s, 0x01, 0x80)                      # $BEB9 80 01
+	set_speed_side(s, 0x00, 0x00)                      # $BEB3 00 00
+	s[F_STATE] += 1                                    # $C966
+
+
+## $BB8C -- the drop.  It goes back to hanging on the floor, or when he has
+## got below it, or when it has come down level with him.
+func _dive_3e(n: int, s: PackedByteArray) -> void:
+	mover(n, s, 1)                                     # $BCBB with one
+	var again: bool = (s[F_GROUND] & 0x02) != 0        # $BB91
+	if not again:
+		var d: Array = hero_down(s)                    # $C93F
+		if bool(d[2]):                                 # $BB9B
+			return
+		again = bool(d[1]) or int(d[0]) < 0x08         # $BB9D, $BB9F
+	if not again:
+		return
+	s[F_SELF] = 0x08                                   # $BE75 08
+	s[F_STATE] = 1                                     # $C96F
+
+
+## $BBAB -- the move it makes wherever it is.  Too far from where it woke
+## turns it about; a wall it has stopped against makes it pick a fresh speed
+## on the very next frame.
+func _drift_3e(n: int, s: PackedByteArray) -> void:
+	mover(n, s, 1)                                     # $BCBB with one
+	if strayed_far(s):                                 # $ACD0
+		s[F_SELF] = 0x80                               # $BE75 80
+		if s[F_VX] >= 0x80:                            # $BBB9
+			set_speed_side(s, 0x01, 0x00)              # $BEB3 00 01
+		else:
+			set_speed_side(s, 0xFF, 0x00)              # $BEB3 00 FF
+		return
+	if (s[F_GROUND] & 0xC0) != 0:                      # $BBCA
+		s[F_SELF] = 0x01                               # $BE75 01
+
+
+## $BBD6 -- how fast to go across, picked afresh when the count runs out.  The
+## further off he is the slower it comes, and a wall it is stuck against gets
+## its own entry so that it backs away.
+func _pick_side_3e(s: PackedByteArray) -> void:
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] != 0:
+		return
+	var side: Array = hero_side(s)                     # $C93C
+	var y := 8
+	if bool(side[2]):                                  # $BBDF
+		y = 2
+	elif (s[F_GROUND] & 0xC0) != 0:                    # $BBE2
+		y = 10
+	elif int(side[0]) >= 0x60:                         # $BBEF
+		y = 4
+	elif int(side[0]) >= 0x30:                         # $BBF3
+		y = 6
+	_set_side_3e(s, y)
+
+
+## $BC05 -- the pick itself, kept apart because the hover state jumps straight
+## in here with a nought of its own.
+func _set_side_3e(s: PackedByteArray, y: int) -> void:
+	var pick: Array = SIDE_PICK_3E[y >> 1]
+	s[F_SELF] = pick[0]
+	var sp: Array = SIDE_SPEED_3E[pick[1]]
+	set_speed_side_at_hero(s, sp[0], sp[1])            # $C900
+
+
+## $BC31 -- and how fast up or down, on a count of its own.  The carry the
+## question about him leaves behind says which way, and $C921 turns the speed
+## over when he is the further down.
+func _pick_down_3e(s: PackedByteArray) -> void:
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		return
+	s[F_COUNT] = 0x22                                  # $BE7C 22
+	var d: Array = hero_down(s)                        # $C93F
+	var y := 8
+	if bool(d[2]):                                     # $BC3F
+		y = 0
+	elif (s[F_GROUND] & 0xC0) != 0:                    # $BC42
+		y = 4
+	elif int(d[0]) >= 0x60:                            # $BC4E
+		y = 2
+	elif int(d[0]) >= 0x30:                            # $BC52
+		y = 4
+	elif int(d[0]) >= 0x10:                            # $BC56
+		y = 6
+	var sp: Array = DOWN_SPEED_3E[y >> 1]
+	set_speed_down(s, sp[0], sp[1])                    # $C909
+	if bool(d[1]):                                     # $BC78 -- the kept carry
+		flip_speed_down(s)                             # $C921
+
+
+## $B2D5 and $B2DE -- how fast it goes down when it dives, and $B2E7 the
+## weight that eats the dive away again, both by which eighth of the screen
+## he stands in.  The last entry is the one it takes off the floor.
+const DIVE_3A := [[0x03, 0x00], [0x02, 0x80], [0x02, 0x40], [0x01, 0xC0],
+		[0x01, 0x80], [0x01, 0x00], [0x00, 0x00], [0xFF, 0x80], [0x00, 0x00]]
+const DIVE_PULL_3A := [0x0E, 0x0F, 0x10, 0x14, 0x18, 0x1C, 0x22, 0x24, 0x01]
+## $B3A3 -- the wobble it flies with: a line down, or none.  The count runs up
+## and down the table and the sign turns over every sixty-four frames, so what
+## comes out is a slow swim.
+const WOBBLE_3A := [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1,
+		0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
+## $B409 -- the angle the two young start off at, by which way it looks.
+const YOUNG_3A := [0x90, 0x70, 0xF0, 0x10]
+
+
+## $B1EC (bank 11) -- the swimmer.  It drifts about him with a wobble, lets
+## two young go, then takes aim and dives.
+func _mind_3a(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:                                  # $C97E
+		0: _wake_3a(n, s)
+		1: _drift_3a(n, s)
+		2: _hold_3a(n, s)
+		3: _spit_3a(n, s)
+		4: _drift_3a(n, s)
+		5: _aim_dive_3a(n, s)
+		6: _dive_3a(n, s)
+
+
+## $B1FD -- it wakes and goes straight on into the drift below.
+func _wake_3a(n: int, s: PackedByteArray) -> void:
+	record_home_along(s)                               # $C9B1
+	s[F_LIFE] = 0x08                                   # $BE5A 08
+	s[F_MARK] = 0x01
+	start_anim(s, 0x22)                                # $BEAD 22
+	s[F_PUSH] = 0x20                                   # $BE91 20
+	s[F_STATE] = 1                                     # $C96F
+	_fly_3a(n, s)                                      # $B21F
+
+
+## $B21F -- the move it makes in every drifting state.
+func _fly_3a(n: int, s: PackedByteArray) -> void:
+	step_anim(s)                                       # $C837
+	_swim_3a(n, s)                                     # $B222
+
+
+## $B222 -- the same without the picture, which the spitting state wants.
+func _swim_3a(n: int, s: PackedByteArray) -> void:
+	face_hero(s)                                       # $C8FD
+	_wobble_3a(s)                                      # $B376
+	mover(n, s, 0)                                     # $B371
+
+
+## $B212 -- drifting, which is both the second state and the fifth.  Off the
+## edge of the screen, or a count run out, moves it on.
+func _drift_3a(n: int, s: PackedByteArray) -> void:
+	if (s[F_XHI] | s[F_YHI]) != 0:                     # $C9C3
+		s[F_STATE] += 1                                # $C966
+	else:
+		s[F_PUSH] = (s[F_PUSH] - 1) & 0xFF
+		if s[F_PUSH] == 0:
+			s[F_STATE] += 1
+	_fly_3a(n, s)                                      # $B21F
+
+
+## $B22B -- one frame to set the count for the spitting.
+func _hold_3a(n: int, s: PackedByteArray) -> void:
+	s[F_PUSH] = 0x10
+	s[F_STATE] += 1                                    # $C966
+	_fly_3a(n, s)                                      # $B21F
+
+
+## $B232 -- it opens up and lets two young go on the eighth frame.
+func _spit_3a(n: int, s: PackedByteArray) -> void:
+	_swim_3a(n, s)                                     # $B222
+	var done: bool = (s[F_XHI] | s[F_YHI]) != 0        # $C9C3
+	if not done:
+		s[F_PUSH] = (s[F_PUSH] - 1) & 0xFF
+		done = s[F_PUSH] == 0
+	if not done:
+		if s[F_PUSH] == 0x08:                          # $B23F
+			_young_3a(s)                               # $B3C3
+		s[F_KIND] = 0x98 if s[F_PUSH] >= 0x08 else 0x99
+		return
+	start_anim(s, 0x22)                                # $BEAD 22
+	s[F_PUSH] = 0x50                                   # $BE91 50
+	s[F_STATE] += 1                                    # $C966
+
+
+## $B263 -- one frame of taking aim.  It leans toward him, backs off if it has
+## come too far from home, and picks the dive by how far down he is.
+func _aim_dive_3a(n: int, s: PackedByteArray) -> void:
+	start_anim(s, 0x23)                                # $BEAD 23
+	s[F_PUSH] = 0x50                                   # $BE91 50
+	var side: Array = hero_side(s)                     # $C93C
+	if bool(side[2]) or int(side[0]) >= 0x30:          # $B26E, $B272
+		set_speed_side_at_hero(s, 0xFE, 0x00)          # $BEBF 00 FE
+	else:
+		s[F_BITS] = 0x00 if s[F_X] >= 0x80 else 0x40   # $B276
+		set_speed_side_facing(s, 0xFE, 0x00)           # $BEC5 00 FE
+	if strayed_far(s):                                 # $ACD0
+		set_speed_side_facing(s, 0xFF, 0x80)           # $BEC5 80 FF
+		flip_speed_side(s)                             # $C91E
+	var y := 8
+	if (s[F_GROUND] & 0x02) == 0:                      # $B29A
+		var a: int = s[F_Y]
+		if s[F_YHI] != 0:                              # $B2AB
+			a = 0x00 if s[F_YHI] >= 0x80 else 0xFF
+		y = (a & 0xE0) >> 5
+	s[F_ANG] = DIVE_PULL_3A[y]                         # $B2BD
+	set_speed_down(s, DIVE_3A[y][0], DIVE_3A[y][1])    # $C909
+	mover(n, s, 0)                                     # $B371
+	s[F_STATE] += 1                                    # $C966
+
+
+## $B2F0 -- the dive.  The weight eats into it every frame and the fall is
+## held to two lines; a wall or too long a way from home turns it back.
+func _dive_3a(n: int, s: PackedByteArray) -> void:
+	s[F_PUSH] = (s[F_PUSH] - 1) & 0xFF
+	if s[F_PUSH] == 0:
+		_dive_end_3a(s)                                # $B355
+		return
+	sub_speed_down(s, s[F_ANG])                        # $C90F
+	if s[F_VY] >= 0x80 and s[F_VY] < 0xFE:             # $B2FB, $B300
+		set_speed_down(s, 0xFE, 0x00)                  # $BEB9 00 FE
+	if s[F_YHI] >= 0x80 and s[F_VY] >= 0x80:           # $B309, $B30E
+		_dive_end_3a(s)
+		return
+	# $B31A -- here the cartridge does a TYA on a Y that nothing in the object
+	# loop ever sets: $CA0B hands the old one back and $FAB3 does not touch
+	# it.  Sampled on the real machine over three areas and seven hundred and
+	# sixty-two turns it was nought every time, so the nudge across that hangs
+	# off it never happens and is left out.
+	var back: bool = (s[F_GROUND] & 0xC0) != 0         # $B330
+	if not back and strayed_far(s):                    # $ACD0
+		back = true
+		if s[F_PUSH] >= 0x20:                          # $B33C
+			s[F_PUSH] = 0x20                           # $BE91 20
+	if back:
+		set_speed_side_facing(s, 0xFF, 0xE0)           # $BEC5 E0 FF
+		flip_speed_side(s)                             # $C91E
+	step_anim(s)                                       # $C837
+	mover(n, s, 0)                                     # $B371
+
+
+## $B355 -- the dive is over and it goes back to drifting.
+func _dive_end_3a(s: PackedByteArray) -> void:
+	start_anim(s, 0x22)                                # $BEAD 22
+	s[F_PUSH] = 0x18                                   # $BE91 18
+	s[F_STATE] = 1                                     # $C96F
+	if s[F_VX] >= 0x80:                                # $B360
+		set_speed_side(s, 0xFF, 0xC0)                  # $BEB3 C0 FF
+	else:
+		set_speed_side(s, 0x00, 0x40)                  # $BEB3 40 00
+
+
+## $B376 -- the swim.  $05E4 runs up for ever; its low five bits walk the
+## table there and back, and its sixty-fourth bit turns the sign over.
+func _wobble_3a(s: PackedByteArray) -> void:
+	s[F_COUNT] = (s[F_COUNT] + 1) & 0xFF
+	var c: int = s[F_COUNT]
+	var i: int = c & 0x1F
+	if (c & 0x20) != 0:                                # $B382
+		i = (~i) & 0x1F                                # $B386
+	var v: int = WOBBLE_3A[i]
+	if (((c + 0x20) & 0xFF) & 0x40) != 0:              # $B390
+		v = (-v) & 0xFF                                # $C858
+	set_speed_down(s, v, 0x00)                         # $C909
+
+
+## $B3C3 -- the two young, one turning each way.
+func _young_3a(s: PackedByteArray) -> void:
+	var first: int = 2 if (s[F_BITS] & 0x40) != 0 else 0   # $C990
+	_young_one_3a(s, 0x00, first)
+	_young_one_3a(s, 0xFF, first + 1)                  # $B3D3
+
+
+## $B3D7 -- and one of them.  $00 says which way it circles, $01 which angle
+## it starts from.
+func _young_one_3a(s: PackedByteArray, tag: int, i: int) -> void:
+	var c: int = make_child(s, 0x00, 0x00, 0x3B)       # $C8DF
+	if c < 0:
+		return
+	var y: PackedByteArray = slots[c]
+	y[F_KEEP2] = 0x0A if (tag & 0x80) == 0 else 0xF6   # $B3E6
+	y[F_KEEP] = (0x14 + (tag & 0x01)) & 0xFF           # $B3F1
+	y[F_COUNT] = YOUNG_3A[i]                           # $B3FD
+	y[F_SELF] = YOUNG_3A[i]
+
+
+## $B477 and $B47F -- the young's look and which way round it is drawn, by
+## which eighth of the turn it points.
+const KIND_3B := [0x9C, 0x9D, 0x9E, 0x9D, 0x9C, 0x9B, 0x9A, 0x9B]
+const BITS_3B := [0x40, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40]
+
+
+## $B40D (bank 11) -- the young of the swimmer: it curls round toward him,
+## keeping a little to one side, and bursts on the first wall it meets.
+func _mind_3b(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:                                  # $C97E
+		0: _wake_3b(s)
+		1: _curl_3b(n, s)
+		2: _burst_3b(n, s)
+
+
+## $B416 -- two lives and a long life of its own.
+func _wake_3b(s: PackedByteArray) -> void:
+	s[F_LIFE] = 0x02                                   # $BE5A 02
+	s[F_MARK] = 0x01
+	s[F_PUSH] = 0xFF                                   # $BE91 FF
+	_aim_3b(s)                                         # $B455
+	s[F_STATE] += 1                                    # $C966
+
+
+## $B424 -- the curl.  $FF00 turns it two at a time toward a point ten across
+## from him, and whenever the angle has moved the speed is laid down afresh.
+func _curl_3b(n: int, s: PackedByteArray) -> void:
+	if s[F_PUSH] != 0:
+		s[F_PUSH] = (s[F_PUSH] - 1) & 0xFF
+		var was: int = s[F_SELF]
+		aim_clock(s, 0x06, s[F_KEEP2])                 # $C9C6
+		if s[F_SELF] != was:                           # $B439
+			_aim_3b(s)
+	_wall_3b(n, s)                                     # $B487
+	# $C9D2 sets its bit in $0117, which is the drawing's own book and is not
+	# kept here.
+	step_both(s)                                       # $C8F1
+
+
+## $B44A -- the burst, which lasts as long as its picture.
+func _burst_3b(n: int, s: PackedByteArray) -> void:
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] != 0:
+		step_anim(s)                                   # $C837
+	else:
+		clear(n)                                      # $C810
+
+
+## $B455 -- lay the speed along the angle, and pick the look to match.
+func _aim_3b(s: PackedByteArray) -> void:
+	set_speed_at(s, 0x0C, s[F_SELF])                   # $C8AF
+	var i: int = ((s[F_SELF] + 0x10) >> 5) & 0x07      # $B45D
+	s[F_KIND] = KIND_3B[i]
+	s[F_BITS] = BITS_3B[i]
+
+
+## $B487 -- a wall under its nose ends it.
+func _wall_3b(n: int, s: PackedByteArray) -> void:
+	if ground_turn_clear(n, s, 0x00, 0x00) < 0x80:     # $BECB 00 00
+		return
+	start_anim(s, 0x01)                                # $BEAD 01
+	s[F_SELF] = 0x10                                   # $BE75 10
+	s[F_TYPE] = 0x3B
+	s[F_STATE] = 2                                     # $C972
+
+
+## $B914 -- the nine pictures, three to a pose: leaning back, straight on,
+## leaning forward.
+const LOOK_40 := [0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30]
+## $B979 -- what it does when it fires, by which way it looks and whether he
+## is above it: the pose to hold, the angle, and where the shot comes out.
+const SHOT_40 := [[0x02, 0x60, 0xF6, 0xEA], [0x01, 0xA0, 0xF6, 0xCC],
+		[0x02, 0x20, 0x0A, 0xEA], [0x01, 0xE0, 0x0A, 0xCC]]
+
+
+## $B7AD (bank 11) -- the hovering gunner.  It keeps station beside him, holds
+## itself at the line $68 of the screen when he is close, and fires down the
+## angle it happens to be leaning at.
+func _mind_40(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:                                # $B7AD
+		record_home_along(s)                           # $C9B1
+		s[F_LIFE] = 0x08                               # $BE5A 08
+		s[F_MARK] = 0x01
+		start_anim(s, 0x2A)                            # $BEAD 2A
+		s[F_REC_BYTE] = 0x40                           # $BE9F 40
+		_steer_40(s)                                   # $B7FA
+		s[F_STATE] += 1                                # $C966
+		return
+	face_hero(s)                                       # $C8FD
+	_steer_40(s)                                       # $B7FA
+	_climb_40(s)                                       # $B8A7
+	mover(n, s, 2)                                     # $BCBB with two
+	if s[F_ANG] == 0:                                  # $B7D5
+		s[F_PUSH] = 0x00
+	else:
+		s[F_ANG] = (s[F_ANG] - 1) & 0xFF
+		if s[F_ANG] == 0:
+			s[F_PUSH] = 0x00                           # $B7DF
+	if s[F_ANG] == 0:                                  # $B7E4
+		s[F_REC_BYTE] = (s[F_REC_BYTE] - 1) & 0xFF
+		if s[F_REC_BYTE] == 0:
+			_shoot_40(s)                               # $B91D
+	s[F_ANIM] = _look_40(s)                            # $B8E1
+	step_anim(s)                                       # $C837
+
+
+## $B7FA -- which way to lean.  $05E4 is a rest it takes after every change of
+## mind, $05CE the way it settled on.
+func _steer_40(s: PackedByteArray) -> void:
+	if s[F_COUNT] != 0:                                # $B7FA
+		s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF           # $B865
+		_push_40(s, s[F_SELF] >= 0x80)                 # $B868
+		return
+	if strayed_far(s):                                 # $ACD0
+		s[F_SELF] = 0x00 if s[F_VX] >= 0x80 else 0x80  # $B80F
+		_halt_40(s)                                    # $B834
+		return
+	var wall: int = s[F_GROUND] & 0xC0                 # $B804
+	var sd: Array = hero_side(s)                       # $C93C
+	if wall != 0:
+		s[F_SELF] = 0x00 if (wall & 0x80) != 0 else 0x80
+		if bool(sd[2]) or int(sd[0]) < 0x30:           # $B82C, $B82F
+			_halt_40(s)
+			return
+		var go: int = _band_40(s, int(sd[0]), bool(sd[1]))
+		if go >= 0:
+			_push_40(s, go == 1)
+		return
+	# $B840 -- nothing in the way.
+	var go2: int
+	if bool(sd[2]):                                    # $B843
+		go2 = 1 if bool(sd[1]) else 0
+	elif int(sd[0]) < 0x50:                            # $B846
+		# $B85C turns the kept carry over: this close it backs off instead.
+		go2 = 0 if bool(sd[1]) else 1
+	else:
+		go2 = _band_40(s, int(sd[0]), bool(sd[1]))
+	if go2 >= 0:
+		_push_40(s, go2 == 1)
+
+
+## $B84A -- the middle band.  Past $60 it simply leans his way; between $50
+## and $60 it does so only when he is above it, and holds that lean for forty
+## frames.  A -1 means it leaves the lean it had.
+func _band_40(s: PackedByteArray, far: int, past_him: bool) -> int:
+	if far >= 0x60:                                    # $B84A
+		return 1 if past_him else 0
+	var d: Array = hero_down(s)                        # $C93F
+	if not bool(d[1]):                                 # $B851
+		return -1
+	s[F_COUNT] = 0x28                                  # $BE7C 28
+	return 1 if past_him else 0
+
+
+## $B834 -- it stops dead and thinks again in sixty frames.
+func _halt_40(s: PackedByteArray) -> void:
+	set_speed_side(s, 0x00, 0x00)                      # $BEB3 00 00
+	s[F_COUNT] = 0x3C                                  # $BE7C 3C
+	_push_40(s, s[F_SELF] >= 0x80)                     # $B868
+
+
+## $B86D and $B88A -- the lean itself.  The push is a thirty-second of a line
+## when it already goes that way and a sixteenth when it must turn round
+## first, and two lines a frame is as fast as it may go.
+func _push_40(s: PackedByteArray, left: bool) -> void:
+	if left:
+		s[F_SELF] = 0x80                               # $B88A
+		sub_speed_side(s, 0x08 if s[F_VX] >= 0x80 else 0x10)
+		if s[F_VX] >= 0x80 and s[F_VX] < 0xFE:         # $B89B, $B89D
+			set_speed_side(s, 0xFE, 0x00)              # $BEB3 00 FE
+		return
+	s[F_SELF] = 0x00                                   # $B86D
+	add_speed_side(s, 0x08 if s[F_VX] < 0x80 else 0x10)
+	if s[F_VX] < 0x80 and s[F_VX] >= 0x02:             # $B87E, $B880
+		set_speed_side(s, 0x02, 0x00)                  # $BEB3 00 02
+
+
+## $B8A7 -- how it holds its height.  Far off it makes for him; close up it
+## makes for the line $68 instead, so that it comes to rest above his head.
+func _climb_40(s: PackedByteArray) -> void:
+	var d: Array = hero_down(s)                        # $C93F
+	var up: bool
+	if bool(d[2]) or int(d[0]) >= 0x40:                # $B8AB, $B8AD
+		up = bool(d[1])
+	else:
+		up = slots[0][F_Y] >= 0x68                     # $B8B6
+	if up:
+		sub_speed_down(s, 0x10)                        # $C90F
+	else:
+		add_speed_down(s, 0x10)                        # $C90C
+	if s[F_VY] < 0x80:                                 # $B8C8
+		if s[F_VY] >= 0x02:
+			set_speed_down(s, 0x02, 0x00)              # $BEB9 00 02
+	elif s[F_VY] < 0xFE:                               # $B8D7
+		set_speed_down(s, 0xFE, 0x00)                  # $BEB9 00 FE
+
+
+## $B8E1 -- which of the nine pictures to show: the pose it holds, and within
+## that whether it leans back, stands straight or leans forward.
+func _look_40(s: PackedByteArray) -> int:
+	var y: int = (s[F_PUSH] * 3) & 0xFF                # $B8E1
+	var lean := 2                                      # $B90E
+	if (s[F_VX] | s[F_VXFR]) != 0 and (s[F_GROUND] & 0xC0) == 0:
+		if (s[F_BITS] & 0x40) != 0:                    # $C990
+			if s[F_VX] >= 0x80:                        # $B908
+				lean = 1
+			elif s[F_VX] == 0x02:                      # $B90A
+				lean = 0
+		elif s[F_VX] < 0x80:                           # $B900
+			lean = 1
+		elif s[F_VX] == 0xFE:                          # $B902
+			lean = 0
+	return LOOK_40[y + lean]
+
+
+## $B91D -- the shot.  With no room for a child it drops the pose and tries
+## again in seventeen frames; with one it holds the pose for forty-eight and
+## waits a hundred and twenty-eight before the next.
+func _shoot_40(s: PackedByteArray) -> void:
+	var i := 0                                         # $B925
+	if (s[F_BITS] & 0x40) != 0:                        # $C990
+		i = 2
+	var d: Array = hero_down(s)                        # $C93F
+	if bool(d[1]):                                     # $B931
+		i += 1
+	var r: Array = SHOT_40[i]
+	s[F_PUSH] = r[0]                                   # $B937
+	var c: int = make_child_aimed(s, r[2], r[3], 0x41, 0x10, r[1])
+	if c < 0:                                          # $B94E
+		s[F_PUSH] = 0x00                               # $BE91 00
+		s[F_REC_BYTE] = 0x11                           # $BE9F 11
+		return
+	slots[c][F_SELF] = r[1]                            # $B954
+	start_anim(s, _look_40(s))                         # $B957, $C83A
+	s[F_ANG] = 0x30                                    # $BE98 30
+	s[F_REC_BYTE] = 0x80                               # $BE9F 80
+	set_speed_side(s, 0x00, 0x00)                      # $BEB3 00 00
+	set_speed_down(s, 0x00, 0x00)                      # $BEB9 00 00

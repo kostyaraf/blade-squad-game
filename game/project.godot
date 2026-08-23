@@ -1,20 +1,32 @@
-; PB3 -- both games on one engine.  See docs/ver3_spec.md.
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
 config_version=5
 
 [application]
+
 config/name="PB3"
 run/main_scene="res://src/main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 
 [display]
-; The console's picture, scaled up whole so no pixel is ever half a pixel.
+
 window/size/viewport_width=256
 window/size/viewport_height=240
 window/size/window_width_override=1024
 window/size/window_height_override=960
 window/stretch/mode="viewport"
-window/stretch/aspect="keep"
+
+[dotnet]
+
+project/assembly_name="PB3"
 
 [rendering]
-renderer/rendering_method="gl_compatibility"
+
 textures/canvas_textures/default_texture_filter=0
+renderer/rendering_method="gl_compatibility"
