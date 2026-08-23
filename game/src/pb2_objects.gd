@@ -132,7 +132,9 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x40: "_mind_40", 0x41: "_mind_41",
 		0x43: "_mind_43",
 		0x36: "_mind_36", 0x34: "_mind_34", 0x35: "_mind_35",
-		0x14: "_mind_14", 0x21: "_mind_21"}
+		0x14: "_mind_14", 0x21: "_mind_21",
+		0x0F: "_mind_0f", 0x47: "_mind_47",
+		0x3F: "_mind_3f", 0x0D: "_mind_0d"}
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
@@ -5676,3 +5678,234 @@ func _hold_21(n: int, s: PackedByteArray) -> void:
 		var h: PackedByteArray = slots[0]
 		h[F_HOLD] = 0x80                               # $90F8
 		slots[0] = h
+
+
+## --- Площадка, что сама себе земля ($0F с напарником $47, банк 11) --------
+##
+## Она идёт по тем же дорожкам ($A22E и дальше), что и площадка на рельсе, и
+## пользуется тем же счётом колен ($A15A и $A169).  Своего у неё две вещи.
+##
+## Первая: она родит напарника ($47) -- второй конец, что идёт по своей
+## дорожке и стирает за собой то, что она за собой оставляет.
+##
+## Вторая: раз в $20 ходов она пишет прямо в местность ($C8AC ставит клетку в
+## два, $C8A9 её гасит) и рисует поверх неё две плитки.  Ни то, ни другое не
+## трогает полей вещей: движок читает местность из уровня, а не из своего
+## запаса на $0680, и держать этот запас пока не умеет -- долг записан к Э3.4
+## вместе с остальной ездой.  Из всего $A3D0 полю достаётся только F_ANG.
+
+## $A333 -- пары: сколько ждать до хода и какая жизнь достанется напарнику.
+## Второй байт пары -- это первый байт следующей, и картридж читает их двумя
+## указателями, что стоят рядом ($A333 и $A334).
+const START_0F := [0x70, 0x04, 0x70, 0x05, 0x70, 0x06, 0x73, 0x07,
+		0x10, 0x08, 0x10, 0x09, 0x10, 0x0A, 0x10, 0x0B, 0x10, 0x0C,
+		0x10, 0x0D, 0x00, 0x00, 0x50, 0x0F, 0x40, 0x10, 0xA0, 0x0F,
+		0xA0, 0x10]
+
+
+## $A309.
+func _mind_0f(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_0f(n, s)
+		1: _hatch_0f(n, s)
+		2: _run_0f(n, s)
+
+
+## $A312 -- напарник входит в тот же ум со второго хода.
+func _mind_47(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _hatch_0f(n, s)
+		1: _run_0f(n, s)
+
+
+## $A319 -- встать на восемь вбок и на одну вверх и отсчитать своё до старта;
+## младшие три бита места разводят соседок по разным кадрам.
+func _wake_0f(n: int, s: PackedByteArray) -> void:
+	nudge_side(s, 0x00, 0x08)                          # $C936
+	nudge_down(s, 0x00, 0xFF)                          # $C930
+	s[F_SELF] = ((n & 0x07) + START_0F[s[F_LIFE]]) & 0xFF
+	s[F_STATE] += 1                                    # $C966
+
+
+## $A351 -- срок вышел: родить напарника, раздать обоим новую жизнь и взять
+## первое колено дорожки.
+func _hatch_0f(n: int, s: PackedByteArray) -> void:
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] != 0:
+		return
+	s[F_ANG] = 0x20                                    # $BE98
+	if s[F_TYPE] != 0x47:                              # $A35B
+		var c: int = make_child(s, 0x00, 0x00, 0x47)   # $C8DF
+		if c < 0:
+			clear(n)                                   # $A38A
+			return
+		var life: int = START_0F[s[F_LIFE] + 1]        # $A334
+		s[F_LIFE] = life
+		var b: PackedByteArray = slots[c]
+		b[F_LIFE] = life
+		b[F_SELF] = 0x61                               # $A37C
+		slots[c] = b
+	_rail_pick(s)                                      # $A15A
+	_place_0f(s)                                       # $A3D0
+	s[F_STATE] += 1                                    # $C966
+
+
+## $A38D -- ход.  Дорожка, что вывернулась ($0610 со старшим битом), для этой
+## площадки значит конец: она уходит.
+func _run_0f(n: int, s: PackedByteArray) -> void:
+	if s[F_KEEP2] >= 0x80:                             # $A390
+		clear(n)                                       # $C810
+		return
+	# $A392 -- $0165 и $0166 держат звук на одну площадку в кадр; полей не
+	# трогают.
+	step_both(s)                                       # $C8F1
+	s[F_PUSH] = (s[F_PUSH] - 1) & 0xFF                 # $A3AC
+	if s[F_PUSH] == 0:
+		s[F_KEEP] = (s[F_KEEP] + 1) & 0xFF             # $A3B1
+		_rail_step_leg(s)                              # $A169
+	if s[F_TYPE] == 0x0F:                              # $A3B7
+		held = 0                                       # $0164
+		ride_apply(s, 0x07, 0xF1)                      # $BF26
+	s[F_ANG] = (s[F_ANG] - 1) & 0xFF                   # $A3CA
+	if s[F_ANG] != 0:
+		return
+	_place_0f(s)                                       # $A3D0
+
+
+## $A3D0 -- где стоит клетка, что площадка кладёт под себя, и куда она встанет
+## в следующий раз.  Пятнадцать вверх и восемь влево от самой площадки; шаг --
+## ровно клетка в ту сторону, куда площадка идёт.  Напарник свою клетку не
+## переставляет: он гасит ту, что уже помнит.
+func _place_0f(s: PackedByteArray) -> void:
+	var y: int = (((s[F_YHI] << 8) | s[F_Y]) - 0x0F) & 0xFFFF
+	var x: int = (((s[F_XHI] << 8) | s[F_X]) - 0x08) & 0xFFFF
+	var here: bool = not _off_place(y, x)              # $A4F8
+	# Здесь картридж пишет в местность: $C8AC для $0F, $C8A9 для $47.
+	if here and s[F_TYPE] != 0x0F:                     # $A3F7
+		s[F_ANG] = 0x20                                # $A3FC
+		ridden = [x & 0xFF, y & 0xFF]
+		return
+	s[F_ANG] = 0x20                                    # $BE98
+	if (s[F_VX] | s[F_VXFR]) == 0:                     # $A409
+		var down: int = 0xF0 if s[F_VY] >= 0x80 else 0x10
+		var lift: int = -1 if s[F_VY] >= 0x80 else 0
+		y = (((s[F_YHI] + lift) << 8) + s[F_Y] + down) & 0xFFFF
+		x = (s[F_XHI] << 8) | s[F_X]                   # $A4CD
+	else:
+		var side: int = 0xF0 if s[F_VX] >= 0x80 else 0x10
+		var lift: int = -1 if s[F_VX] >= 0x80 else 0
+		x = (((s[F_XHI] + lift) << 8) + s[F_X] + side) & 0xFFFF
+		y = (s[F_YHI] << 8) | s[F_Y]                   # $A4C1
+	y = (y - 0x0F) & 0xFFFF                            # $A4D9
+	x = (x - 0x08) & 0xFFFF
+	ridden = [x & 0xFF, y & 0xFF]
+	# $A457 и дальше -- две плитки поверх, картинка и только.
+
+
+## $A4F8 -- клетка на виду: оба старших байта нули и вниз не дальше $BF.
+func _off_place(y: int, x: int) -> bool:
+	if (y >> 8) != 0:
+		return true
+	if (y & 0xFF) >= 0xBF:
+		return true
+	return (x >> 8) != 0
+
+
+## --- Выстрел висящей вещи ($3F, $B49F в банке 11) --------------------------
+##
+## Падает, а упав, расползается по земле четырьмя шагами и пропадает.  Оба
+## хода расползания -- общие ($8279 и $82A8 в банке 10), и картридж зовёт их,
+## подменив на время свой тип на $33, чтобы они не подали голос.
+
+## $82EB -- четыре шага, каждый вбок и вниз, оба со знаком.
+const CRAWL_3F := [[0x00, 0xFC], [0xFC, 0x08], [0x08, 0x00], [0xFC, 0xFC]]
+
+
+func _mind_3f(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_3f(s)
+		1: _fall_3f(n, s)
+		2: _crawl_3f(n, s)
+
+
+func _wake_3f(s: PackedByteArray) -> void:
+	s[F_MARK] = 0x02                                   # $C9A2
+	start_anim(s, 0x25)                                # $BEAD
+	s[F_STATE] += 1                                    # $C966
+
+
+## $B4B2 -- падать не быстрее четырёх точек за ход.  Сравнение здесь без
+## знака, так что скорость вверх тоже попала бы под этот предел; вверх этот
+## выстрел не ходит, и так и оставлено.
+func _fall_3f(n: int, s: PackedByteArray) -> void:
+	add_speed_down(s, 0x40)                            # $C90C
+	if s[F_VY] >= 0x04:                                # $B4BA
+		set_speed_down(s, 0x04, 0x00)                  # $BEB9 00 04
+	if ground_turn_clear(n, s, 0x00, 0x00) < 0x80:     # $BECB 00 00
+		step_anim(s)                                   # $C8EE
+		step_both(s)
+		return
+	_start_crawl(s)                                    # $8279
+	s[F_MARK] = 0x80                                   # $C9AB
+	s[F_STATE] = 2                                     # $C972
+
+
+## $8279 (банк 10) -- встать на месте и завести отсчёт первого шага.
+func _start_crawl(s: PackedByteArray) -> void:
+	start_anim(s, 0x01)                                # $C83A
+	s[F_COUNT] = 0x10
+	s[F_SELF] = 0x00
+	set_speed_side(s, 0x00, 0x00)                      # $C906
+	set_speed_down(s, 0x00, 0x00)                      # $C909
+	s[F_STATE] += 1                                    # $C966
+
+
+## $82A8 (банк 10) -- шаг раз в шестнадцать ходов; после четвёртого ход
+## кончается, и $B4F5 убирает то, что осталось.
+func _crawl_3f(n: int, s: PackedByteArray) -> void:
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		step_anim(s)                                   # $C837
+	else:
+		var step: Array = CRAWL_3F[s[F_SELF]]          # $82B5
+		_shift_by(s, step[0], step[1])                 # $8A28
+		s[F_SELF] += 1
+		if s[F_SELF] == 0x04:                          # $82CA
+			s[F_STATE] += 1                            # $C966
+		else:
+			s[F_COUNT] = 0x10
+			start_anim(s, 0x01)                        # $C83A
+	if s[F_STATE] != 0x02:                             # $B4F5
+		clear(n)                                       # $C810
+
+
+## $8A28 (банк 10) -- сдвинуть на два числа со знаком, оба байта места.
+func _shift_by(s: PackedByteArray, side: int, down: int) -> void:
+	var x: int = ((s[F_XHI] << 8) | s[F_X]) + _signed(side)
+	s[F_X] = x & 0xFF
+	s[F_XHI] = (x >> 8) & 0xFF
+	var y: int = ((s[F_YHI] << 8) | s[F_Y]) + _signed(down)
+	s[F_Y] = y & 0xFF
+	s[F_YHI] = (y >> 8) & 0xFF
+
+
+## --- Рубильник ($0D, $8B4F в банке 10) -------------------------------------
+##
+## Один на всю игру, в области 5:1.  Его запись ($049A) называет, какой из
+## восьми битов $3B он держит: поднят -- рубильника уже нет, опущен -- он
+## стоит и ждёт, пока его собьют.  Собьют -- через $40 ходов бит выворачивается
+## и рубильник уходит.  Восемь байтов $BE36 -- те же, что и $AF54.
+func _mind_0d(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_MARK] = 0x80                               # $C9AB
+		if (MASK_36[s[F_LIFE]] & switch) != 0:         # $8B5E, $3B
+			clear(n)                                   # $C810
+			return
+		s[F_SELF] = 0x40                               # $8B62
+		s[F_STATE] += 1                                # $C966
+		return
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] != 0:
+		return
+	switch = switch ^ MASK_36[s[F_LIFE]]               # $8B7F
+	clear(n)                                           # $C810
