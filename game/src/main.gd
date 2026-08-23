@@ -340,6 +340,14 @@ func _run_spawns(path: String) -> void:
 			things.hero_told = true
 			things.contact()
 			things.shift(int(f["shifts"][i_tbl]))
+			# $66:$67 -- where the view stood when the sweep looked.  The
+			# engine's own view is judged a step at a time, but a step can run
+			# over two frames of the console and the view slides in each of
+			# them, so which frame laid down which pixel it cannot say.  A mind
+			# that snaps itself to a sixteen-line grid down a level reads the
+			# low byte straight ($FD16), so it is handed over with the table,
+			# for the same reason the slide is.
+			things.cam = int(f["cams"][i_tbl])
 			# $0119 -- half the questions a thing asks about the ground it
 			# only asks on the frames where this and its own place in the
 			# table agree in the lowest bit, and takes a settled answer on

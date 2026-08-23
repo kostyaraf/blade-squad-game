@@ -122,7 +122,9 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x2E: "_mind_2c",
 		0x22: "_mind_22", 0x37: "_mind_37", 0x2F: "_mind_2f",
 		0x1E: "_mind_1e", 0x38: "_mind_38", 0x24: "_mind_24",
-		0x3C: "_mind_3c", 0x1B: "_mind_1b", 0x1A: "_mind_1a", 0x15: "_mind_15"}
+		0x3C: "_mind_3c", 0x1B: "_mind_1b", 0x1A: "_mind_1a", 0x15: "_mind_15",
+		0x27: "_mind_27", 0x28: "_mind_28",
+		0x07: "_mind_07", 0x08: "_mind_08", 0x2B: "_mind_2b"}
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
@@ -2890,6 +2892,361 @@ func _mind_2f(_n: int, s: PackedByteArray) -> void:
 			slots[k] = c
 			break
 	s[F_SELF] = 0xFF                                   # $BE75
+
+
+## $A8B4 (банк 11) -- двойня.  Дождавшись героя ближе тридцати двух шагов
+## вдоль, вещь снимает с себя точную копию в список уровня, копию
+## разворачивает, и дальше обе идут одним и тем же путём в разные стороны:
+## отступить вбок, упасть, поехать вбок, всплыть и погаснуть.
+func _mind_2b(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _split_2b(n, s)
+		1: _step_off_2b(s)
+		2: _sink_2b(s)
+		4: _slide_2b(s)
+		6: _last_2b(n, s)
+		_: _pause_2b(s)
+
+
+## $A8C5 -- ждать и раздвоиться.  Свободного места в списке уровня нет --
+## считает до сорока и пропадает.
+func _split_2b(n: int, s: PackedByteArray) -> void:
+	if s[F_COUNT] == 0:
+		var sd: Array = hero_side(s)                   # $C93C
+		if sd[2] or sd[0] >= 0x20:
+			return
+		s[F_COUNT] = (s[F_COUNT] + 1) & 0xFF
+	for k in range(FIRST_PLACED, SLOTS):               # $C86A
+		if slots[k][F_TYPE] != 0:
+			continue
+		copy_row(k, s)                                 # $C963
+		var c: PackedByteArray = slots[k]
+		turn_about(c)                                  # $C91B
+		c[F_STATE] = (c[F_STATE] + 1) & 0xFF
+		slots[k] = c
+		s[F_STATE] += 1                                # $C966
+		return
+	s[F_SELF] = (s[F_SELF] + 1) & 0xFF
+	if s[F_SELF] == 0x40:
+		clear(n)                                       # $C810
+
+
+## $A8FD -- отступить вбок и приготовиться падать.
+func _step_off_2b(s: PackedByteArray) -> void:
+	nudge_side(s, 0x00, 0x50 if (s[F_BITS] & 0x40) != 0 else 0xB0)
+	s[F_LIFE] = 0xFF                                   # $BE5A
+	s[F_MARK] = 0x01
+	s[F_KIND] = 0x70                                   # $BE6E
+	set_speed_down(s, 0xFF, 0x00)                      # $BEB9
+	s[F_SELF] = 0x30
+	s[F_COUNT] = 0x30
+	s[F_STATE] += 1                                    # $C966
+
+
+## $A921 -- сорок восемь кадров вверх, потом разворот вбок.
+func _sink_2b(s: PackedByteArray) -> void:
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] != 0:
+		step_down(s)                                   # $C8F4
+		return
+	set_speed_side_facing(s, 0x01, 0x80)               # $BEC5
+	s[F_KEEP] = 0x35                                   # $BE83
+	s[F_SELF] = 0x30                                   # $BE75
+	s[F_STATE] += 1                                    # $C966
+
+
+## $A939 -- пережидание между ходами; оно же и третье, и пятое состояние.
+func _pause_2b(s: PackedByteArray) -> void:
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] == 0:
+		s[F_STATE] += 1                                # $C966
+
+
+## $A93F -- пятьдесят три кадра вбок, потом обратно вниз.
+func _slide_2b(s: PackedByteArray) -> void:
+	s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF
+	if s[F_KEEP] != 0:
+		step_side(s)                                   # $C8F7
+		return
+	flip_speed_down(s)                                 # $C921
+	s[F_SELF] = 0x30
+	s[F_STATE] += 1                                    # $C966
+
+
+## $A951 -- последний путь: сорок восемь кадров и конец.
+func _last_2b(n: int, s: PackedByteArray) -> void:
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] == 0:
+		clear(n)                                       # $C810
+		return
+	step_down(s)                                       # $C8F4
+
+
+## $9FDE и $9FB8 (банк 10) -- два челнока.  Один ходит вниз и вверх, другой
+## вбок; всё, что их отличает, -- какую скорость они заводят, каким шагом
+## идут и какую скорость переворачивают, когда счёт вышел.
+##
+## Оба зовут ещё $A053 и $A05A -- а те через $BF20/$BF26 и $C8CD уходят в
+## банки 8/9, к складу лишних картинок ($B90D, $B91C).  Читают они оттуда
+## только место вещи, а пишут в $08..$11, $0160, $0161 и $0164 -- ни одного
+## поля вещи, так что приёмке до них дела нет.
+const COUNT_07 := [0x70, 0x62, 0x40, 0xE0, 0xB0, 0x60, 0x50, 0xC0, 0x60,
+		0xA4, 0x80, 0x70, 0x62, 0x40, 0xE0, 0xB0, 0x60, 0x50, 0xC0, 0xC0,
+		0xA4, 0xA0, 0x00, 0x00]
+const KEEP_07 := [0x70, 0x62, 0x40, 0xE0, 0xB0, 0x60, 0x50, 0xC0, 0xC0,
+		0xA4, 0xA0, 0x00, 0x00, 0x80, 0x80, 0x01, 0xFF, 0x00, 0xFF, 0xA9,
+		0x0F, 0xA0, 0xF1, 0x4C]
+const FRAC_07 := [0x00, 0x00, 0x80, 0x80]
+const WHOLE_07 := [0x01, 0xFF, 0x00, 0xFF]
+
+
+## $A004 (банк 11) -- просыпание, общее на обоих.  Верхние шесть бит жизни
+## выбирают, сколько идти в одну сторону, нижние два -- как быстро.
+func _wake_07(s: PackedByteArray) -> Array:
+	s[F_MARK] = 0x80                                   # $C9AB
+	if lvl.vertical:                                   # $97
+		nudge_down(s, 0x00, 0xFF)                      # $C930
+	var i: int = s[F_LIFE] >> 2
+	s[F_COUNT] = COUNT_07[i]
+	s[F_KEEP] = KEEP_07[i]
+	var j: int = s[F_LIFE] & 0x03
+	s[F_STATE] += 1                                    # $C966
+	return [WHOLE_07[j], FRAC_07[j]]
+
+
+## $9FDE -- челнок вниз и вверх.
+func _mind_07(_n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_KIND] = 0x0D                               # $BE6E
+		var sp: Array = _wake_07(s)                    # $A004
+		set_speed_down(s, sp[0], sp[1])                # $C909
+		return
+	step_down(s)                                       # $C8F4
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		return
+	s[F_COUNT] = s[F_KEEP]
+	flip_speed_down(s)                                 # $C921
+
+
+## $9FB8 -- челнок вбок.
+func _mind_08(_n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_KIND] = 0x0D                               # $BE6E
+		var sp: Array = _wake_07(s)                    # $A004
+		set_speed_side(s, sp[0], sp[1])                # $C906
+		return
+	step_side(s)                                       # $C8F7
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		return
+	s[F_COUNT] = s[F_KEEP]
+	flip_speed_side(s)                                 # $C91E
+
+
+## $9780 (банк 10) -- ползун по стенам.  У него двенадцать положений
+## ($05CE): по три на каждую из четырёх сторон, за которую он держится.  Он
+## ползёт, пока не упрётся, тогда переваливает за угол; сбитый вниз -- падает
+## с весом, своим для каждого положения.  Раненый становится вещью $28 --
+## тем же умом, но входящим сразу в тело ($977D → $97FB) и с другими вылетами
+## щупа ($FB/$FE и $F8/$FC), потому что перевёрнутый он крупнее.
+##
+## Все таблицы взяты длиннее, чем нужно живому: раненый прибавляет к своему
+## положению шесть ($97B1), и картридж при этом спокойно читает за конец
+## таблицы -- то, что лежит следом.
+const WEIGHT_27 := [0x28, 0x24, 0x02, 0xD8, 0xDC, 0xFE, 0x14, 0x12, 0x02,
+		0xEC, 0xEE, 0xFE, 0x03, 0x05, 0x03, 0x03, 0x05, 0x03, 0x09, 0x0B]
+const NEXT_UP_27 := [0x03, 0x05, 0x03, 0x03, 0x05, 0x03, 0x09, 0x0B, 0x09,
+		0x09, 0x0B, 0x09, 0x00, 0x02, 0x00, 0x00, 0x02, 0x00, 0x06, 0x08]
+const NEXT_DOWN_27 := [0x00, 0x02, 0x00, 0x00, 0x02, 0x00, 0x06, 0x08, 0x06,
+		0x06, 0x08, 0x06, 0x00, 0x01, 0x01, 0x02, 0x03, 0x03, 0x04, 0x05]
+const PIC_27 := [0x00, 0x01, 0x01, 0x02, 0x03, 0x03, 0x04, 0x05, 0x05, 0x06,
+		0x07, 0x07, 0x5E, 0x5D, 0x61, 0x60, 0x64, 0x63, 0x67, 0x66]
+const KIND_MOVE_27 := [0x5E, 0x5D, 0x61, 0x60, 0x64, 0x63, 0x67, 0x66, 0x5F,
+		0x5F, 0x62, 0x62, 0x65, 0x65, 0x68, 0x68, 0xF4, 0xEC, 0xFC, 0xFC]
+const KIND_STILL_27 := [0x5F, 0x5F, 0x62, 0x62, 0x65, 0x65, 0x68, 0x68, 0xF4,
+		0xEC, 0xFC, 0xFC, 0xF8, 0xF4, 0xFC, 0xFC, 0x04, 0x04, 0x0C, 0x14]
+const UP_27 := [0xF4, 0xEC, 0xFC, 0xFC, 0xF8, 0xF4, 0xFC, 0xFC, 0x04, 0x04,
+		0x0C, 0x14, 0x04, 0x04, 0x08, 0x0C, 0xF6, 0xEE, 0x0A, 0x12]
+const DOWN_27 := [0x04, 0x04, 0x0C, 0x14, 0x04, 0x04, 0x08, 0x0C, 0xF6, 0xEE,
+		0x0A, 0x12, 0xFA, 0xF6, 0x06, 0x0A, 0xFF, 0xFF, 0x01, 0x01]
+const AHEAD_27 := [0xF6, 0xEE, 0x0A, 0x12, 0xFA, 0xF6, 0x06, 0x0A, 0xFF, 0xFF,
+		0x01, 0x01, 0xFF, 0xFF, 0x01, 0x01, 0xFE, 0xFC, 0xFD, 0x02]
+const AHEAD2_27 := [0xFF, 0xFF, 0x01, 0x01, 0xFF, 0xFF, 0x01, 0x01, 0xFE,
+		0xFC, 0xFD, 0x02, 0x04, 0x03, 0xFF, 0xFE, 0xFD, 0x01, 0x02, 0x03]
+const VY_27 := [0xFE, 0xFC, 0xFD, 0x02, 0x04, 0x03, 0xFF, 0xFE, 0xFD, 0x01,
+		0x02, 0x03, 0x00, 0x00, 0x00, 0x03, 0x03, 0x03, 0x06, 0x06]
+const AROUND_27 := [0x00, 0x00, 0x00, 0x03, 0x03, 0x03, 0x06, 0x06, 0x06,
+		0x09, 0x09, 0x09, 0xEC, 0xEC, 0xEC, 0x14, 0x14, 0x14, 0xF4, 0xF4]
+const PROBE_27 := [0xEC, 0xEC, 0xEC, 0x14, 0x14, 0x14, 0xF4, 0xF4, 0xF4, 0x0C,
+		0x0C, 0x0C, 0xBD, 0x8C, 0x05, 0xD0, 0x0A, 0x20, 0xA2, 0xC9]
+
+## $FD31 -- на сколько сдвинуть, чтобы стать вплотную к нижней черте клетки
+## в шестнадцать точек.  Ноль..семь тянут назад, восемь..пятнадцать -- вперёд;
+## после этого младшие четыре бита всегда пятнадцать.
+const SNAP16 := [0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA, 0xF9, 0xF8,
+		0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00]
+
+
+## $FD16 ($C984, $C987, $C98A) -- поставить на черту клетки.  В области,
+## идущей вниз, к своей высоте прибавляется младший байт вида ($67), потому
+## что там клетки считаются от карты, а не от экрана.
+func snap16(s: PackedByteArray, extra: int) -> void:
+	var t: int = (extra + s[F_Y]) & 0xFF
+	if lvl.vertical:                                   # $97
+		t = (t + (cam & 0xFF)) & 0xFF
+	nudge_down(s, 0x00, SNAP16[t & 0x0F])              # $FA53
+
+
+func _mind_27(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_LIFE] = 0x7F                               # $BE5A
+		s[F_MARK] = 0x01
+		set_speed_side_at_hero(s, 0xFF, 0x80)          # $BEBF
+		var r: int = random()                          # $C939
+		s[F_COUNT] = ((r & 0x0F) + 1
+				+ (1 if rng_carry else 0)) & 0xFF
+		s[F_STATE] += 1                                # $C966
+		return
+	if s[F_LIFE] != 0x7F:                              # $979E
+		_hurt_27(s)
+	_body_27(n, s)
+
+
+## $977D -- раненый.  Он входит прямо в тело: ни просыпания, ни второй раны.
+func _mind_28(n: int, s: PackedByteArray) -> void:
+	_body_27(n, s)
+
+
+## $97A2 -- рана.  Он делается вещью на единицу старше, переворачивается
+## (положение плюс шесть) и оставляет в списке уровня свою копию.
+func _hurt_27(s: PackedByteArray) -> void:
+	s[F_TYPE] = (s[F_TYPE] + 1) & 0xFF
+	s[F_LIFE] = 0x01                                   # $BE63
+	s[F_STUN] = 0x08
+	s[F_SELF] = (s[F_SELF] + 6) & 0xFF
+	var g: int = PIC_27[s[F_SELF]]
+	if s[F_COUNT] != 0:
+		s[F_COUNT] = 0x01                              # $BE7C
+		s[F_KIND] = KIND_STILL_27[g]
+	else:
+		s[F_KIND] = KIND_MOVE_27[g]
+	if (s[F_VXFR] | s[F_VX]) != 0:
+		set_speed_side_facing(s, 0xFF, 0x00)           # $BEC5
+	for k in range(FIRST_PLACED, SLOTS):               # $C86A
+		if slots[k][F_TYPE] != 0:
+			continue
+		copy_row(k, s)                                 # $C963
+		var c: PackedByteArray = slots[k]
+		if c[F_COUNT] != 0:
+			c[F_COUNT] = 0x20                          # $BE7C
+			slots[k] = c
+		break
+	turn_about(s)                                      # $C91B
+
+
+## $97FB -- тело.  Пока счёт идёт, он ползёт; счёт вышел -- выбирает,
+## куда дальше; счёт в нуле -- он падает.
+func _body_27(n: int, s: PackedByteArray) -> void:
+	if s[F_COUNT] == 0:
+		_fall_27(n, s)
+		return
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		return
+	_turn_27(s)
+
+
+## $9809 -- счёт вышел.  Упёрся щупом -- переваливает за угол; стоит прямо --
+## иногда бросается к герою, иначе плетётся наугад.
+func _turn_27(s: PackedByteArray) -> void:
+	var cornered := false
+	var probe: int = 0xFB if s[F_TYPE] == 0x27 else 0xFE
+	if walled_either(s, probe, PROBE_27[s[F_SELF]]) >= 0x80:   # $C94B
+		s[F_SELF] = AROUND_27[s[F_SELF]]
+		s[F_KEEP] = s[F_KEEP] | 0x01
+		cornered = true
+	var upright: int = s[F_SELF]
+	if upright == 0 or upright == 3 or upright == 6 or upright == 9:
+		var rushed := false
+		if s[F_KEEP] != 0:
+			s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF
+		else:
+			var sd: Array = hero_side(s)               # $C93C
+			if not sd[2]:
+				s[F_KEEP] = 0x03                       # $BE83
+				set_speed_side_at_hero(s, 0xFE, 0x00)  # $BEBF
+				s[F_SELF] = (s[F_SELF] + 1) & 0xFF
+				rushed = true
+		if not rushed:
+			# $986A -- бредёт, и раз в пятую шестую поворачивает.
+			set_speed_side_at_hero(s, 0xFF, 0x40)      # $BEBF
+			if random() >= 0xD0:                       # $C939
+				turn_about(s)                          # $C91B
+	else:
+		set_speed_side_at_hero(s, 0xFF, 0xE0)          # $BEBF
+	# $9881 -- стена прямо перед лицом останавливает ход вбок.
+	var side: int = 0xF8 if s[F_TYPE] == 0x27 else 0xFC
+	var g: int = PIC_27[s[F_SELF]]
+	var v: int = AHEAD_27[g]
+	var half: int = (v >> 1) | (0x80 if v >= 0x80 else 0x00)   # $9899 ROR
+	if walled_ahead(s, side, v, half) >= 0x80:         # $C954
+		set_speed_side(s, 0x00, 0x00)                  # $BEB3
+	set_speed_down(s, VY_27[s[F_SELF]], 0x00)          # $C909
+	if cornered:
+		set_speed_down(s, 0x01 if s[F_VY] < 0x80 else 0xFF, 0x00)
+
+
+## $98C4 -- падение.  Вес свой на каждое положение, и обе скорости зажаты.
+func _fall_27(n: int, s: PackedByteArray) -> void:
+	var w: int = WEIGHT_27[s[F_SELF]]
+	if w < 0x80:
+		add_speed_down(s, w)                           # $C90C
+	else:
+		sub_speed_down(s, (0x100 - w) & 0xFF)          # $C858, $C90F
+	if s[F_VY] < 0x80:
+		if s[F_VY] >= 0x04:
+			set_speed_down(s, 0x04, 0x00)              # $BEB9
+	elif s[F_VY] < 0xFC:
+		set_speed_down(s, 0xFC, 0x00)                  # $BEB9
+	if s[F_VX] < 0x80:
+		if s[F_VX] >= 0x01:
+			sub_speed_side(s, 0x10)                    # $C915
+	elif s[F_VX] < 0xFF:
+		add_speed_side(s, 0x10)                        # $C912
+	# $990C
+	var g: int = PIC_27[s[F_SELF]]
+	var side: int = 0xF8 if s[F_TYPE] == 0x27 else 0xFC
+	if walled_ahead_turn(n, s, side, AHEAD2_27[g],
+			AHEAD_27[g], 0x00) >= 0x80:                # $C957
+		nudge_side(s, 0x00, 0xFE if (s[F_BITS] & 0x40) != 0 else 0x02)
+		set_speed_side(s, 0x00, 0x00)                  # $BEB3
+	step_side(s)                                       # $C8F7
+	var under: int = 0xFB if s[F_TYPE] == 0x27 else 0xFF
+	if s[F_VY] < 0x80:
+		if walled_either_turn(n, s, under, DOWN_27[g], 0x00) >= 0x80:
+			_land_27(s, true)                          # $997C
+			return
+	elif walled_either_turn(n, s, under, UP_27[g], 0x00) >= 0x80:
+		_land_27(s, false)                             # $999E
+		return
+	s[F_KIND] = KIND_MOVE_27[g]
+	step_down(s)                                       # $C8F4
+
+
+## $997C и $999E -- прилип.  Он встаёт вплотную к тому, во что упёрся,
+## берёт новое положение и снова заводит счёт.
+func _land_27(s: PackedByteArray, downward: bool) -> void:
+	# $99D5 -- только звук, а его приёмка не смотрит.
+	var g: int = PIC_27[s[F_SELF]]
+	nudge_down(s, 0x00, DOWN_27[g] if downward else UP_27[g])   # $C930
+	snap16(s, 0x00)                                    # $C987 / $C98A
+	s[F_SELF] = NEXT_DOWN_27[s[F_SELF]] if downward \
+			else NEXT_UP_27[s[F_SELF]]
+	# $99BD
+	var r: int = random()                              # $C939
+	s[F_COUNT] = ((r & 0x0F) + 0x0F + (1 if rng_carry else 0)) & 0xFF
+	s[F_KIND] = KIND_STILL_27[PIC_27[s[F_SELF]]]
 
 
 ## $9EF1 (банк 10) -- лифт по расписанию.  Байт записи выбирает одну из

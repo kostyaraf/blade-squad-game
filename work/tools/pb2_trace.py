@@ -396,6 +396,14 @@ def _trace(d, state, script, first, frames):
         row['waters'] = [] if whole is None else [water]
         row['helds'] = [] if whole is None else [held]
         row['draws'] = [] if whole is None else [draw]
+        # $66:$67 -- where the view stood when the sweep looked.  A step of
+        # the game can run over more than one frame of the console and the
+        # view slides in each of them, so which frame inside a step laid down
+        # which pixel of the slide the engine cannot say -- the same reason
+        # the slide itself is handed over.  A mind that snaps itself to a
+        # sixteen-line grid down a level ($FD16 adds $67) reads it, so it goes
+        # over with the table.
+        row['cams'] = [] if whole is None else [row['cam']]
         row['taken'] = [t for t in taken if t[0] not in born]
         row['seized'] = fr in seized
         out.append(row)
