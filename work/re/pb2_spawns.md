@@ -292,7 +292,7 @@ E49B  A9 80    LDA #$80 / STA $00     ; $00 = $80 = "no free slot found yet"
 loc_E49F
 E49F  BD 00 04 LDA $0400,X
 E4A2  D0 03    BNE loc_E4A7
-E4A4  4C 0D E5 JMP loc_E50D           ; free slot -> remember the FIRST one in $00
+E4A4  4C 0D E5 JMP loc_E50D           ; free slot -> remember it in $00 (see below)
 loc_E4A7
 E4A7  BD 84 04 LDA $0484,X
 E4AA  C5 02    CMP $02
@@ -308,7 +308,14 @@ E50D  86 00    STX $00
 E50F  4C B1 E4 JMP loc_E4B1
 ```
 
-Placed objects therefore live **only in slots `$0E`..`$15`** (8 slots).  Slot 0
+`loc_E50D` stores `X` into `$00` **unconditionally** and then carries on with
+the loop, so `$00` ends up holding the **last** free slot, not the first.  Seen
+on the cartridge: in area 0:2 the only record on screen at load time
+(`along = 6`, type `$29`) is put into slot `$15`, the highest of the eight, and
+not into `$0E`.
+
+Placed objects therefore live **only in slots `$0E`..`$15`** (8 slots), and
+they fill from the top down.  Slot 0
 is the player, `$06..$0D` is the pool `$CB1B` hands out to shots and to
 dynamically spawned children, and `$CB0B` hands out `$0E..$15` to whatever else
 needs it.  `$0484,X` holds the 1-based record index and is what stops a record
