@@ -89,6 +89,9 @@ var solids: Array = []
 ## a floor, bit 5 a wall to his left, bit 4 one to his right.  A boss room sets
 ## all four and he cannot move at all.
 var held := 0
+## $94 -- how far the view slid this frame, which is taken off him before
+## anything else ($D34D).
+var shift := 0
 ## $063C and $0652 -- how far a moving floor is carrying him this frame.
 var push_x := 0
 var push_y := 0
@@ -125,14 +128,15 @@ func step(buttons: int, pressed: int, camera: int,
 	# him is said afresh each frame -- on top of whatever the level says.
 	sunk = (held & 0x40) != 0
 	ticks = (ticks + 1) & 0xFF          # $8E1A
-	# $D389 runs before his update: the objects are kept in the camera's frame
+	# $D34D runs before his update: the objects are kept in the camera's frame
 	# of reference, so when the view slides everything in it slides the other
 	# way.  He runs against the edge of the screen and stops moving across it
-	# -- the world moves.
+	# -- the world moves.  How far the view slid is $94, which the cartridge
+	# hands us; the camera itself is only wanted for reading the map.
 	if lvl.vertical:
-		y -= (camera - cam) << 8
+		y -= shift << 8
 	else:
-		x -= (camera - cam) << 8
+		x -= shift << 8
 	cam = camera
 	_terrain()
 	match sub:
@@ -408,7 +412,7 @@ func _land() -> void:
 	# has landed on puts him just above itself ($9F72); mud leaves him exactly
 	# where it swallowed him to.  In every case the fraction is thrown away.
 	if floor_kind == 0x01:
-		px += int(cfg["snap_down"][px & 0x0F])
+		px += int(cfg["snap_down"][_grid_y(px)])
 	elif floor_kind == 0x80 and floor_obj < solids.size():
 		px = int(solids[floor_obj][2]) - 1
 	y = px << 8
@@ -712,14 +716,14 @@ func _class_byte(sx: int, sy: int) -> int:
 	if sx < 0 or sx > 0xFF:
 		return 0x80
 	var top: int = int(cfg["view_top"])
-	var bottom: int = int(cfg["view_bottom"])
 	if lvl.vertical:
 		# $F52C: the view slides down the map, so the camera is added to the
-		# row, and nothing is clamped -- past the bottom line of the screen
-		# there is simply no map to read.
-		if sy < 0 or sy >= bottom:
-			return 0x80
-		return lvl.class_byte(sx, Pb2Level.map_row(sy + cam))
+		# line, in eight bits -- and past the two hundred and twenty fourth
+		# line nothing is read at all.
+		sy &= 0xFF
+		if sy >= 0xE0:
+			return 0x00
+		return lvl.class_byte(sx, Pb2Level.map_row(cam, sy))
 	# $F57E: below the two hundred and twenty fourth line nothing is read at
 	# all, and above the top of the view the cache holds the last area's rows,
 	# which we have no way of keeping -- so the first row stands in for them.
@@ -853,8 +857,18 @@ func _feel(ox: int, oy: int) -> int:
 			if sy - 4 >= lvl.line:
 				return 2
 	if lvl.vertical:
-		return lvl.terrain_at(sx, Pb2Level.map_row(sy + cam))
+		return lvl.terrain_at(sx, Pb2Level.map_row(cam, sy & 0xFF))
 	return lvl.terrain_at(cam + sx, sy - int(cfg["view_top"]))
+
+
+## $AFC1 -- where in its sixteen pixel cell a line of the screen falls.
+##
+## In a level that scrolls downwards his own line means nothing on its own: the
+## cells are the map's and the map has slid past him, so the camera goes in too.
+func _grid_y(v: int) -> int:
+	if lvl.vertical:
+		v += cam & 0xFF
+	return v & 0x0F
 
 
 ## $B4A0 -- which half of a sixteen pixel cell he is standing in, which is how

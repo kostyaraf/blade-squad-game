@@ -112,28 +112,38 @@ def settled(stage, area, spot):
 
     Some of them are not: a room the game only ever enters with a scripted
     walk-on, or one where slot zero is a boss's and not the hero's.  There the
-    numbers we compare mean nothing, so the area is left out.  A quiet man who
-    stays put and blinks is the sign that everything is ordinary.
+    numbers we compare mean nothing, so the area is left out.  Left alone for a
+    while, a hero who is really being played comes to rest on his feet, unhurt,
+    with the game in its ordinary mode throughout.
     """
-    rows = pb2_trace.trace([(2, '-')], 40, stage=stage, area=area, spot=spot)
-    a, b = rows[0], rows[-1]
-    return (a['mode'] == 3 and b['mode'] == 3 and a['sub'] == b['sub'] == 4
-            and a['x'] == b['x'] and a['y'] == b['y']
-            and a['alive'] == b['alive'] and a['alive'] != 0
-            and a['state'] == b['state'] == 0)
+    rows = pb2_trace.trace([(2, '-')], 60, stage=stage, area=area, spot=spot)
+    if any(r['mode'] != 3 or r['alive'] != rows[0]['alive'] for r in rows):
+        return False
+    if rows[0]['alive'] == 0:
+        return False
+    return all(r['sub'] == 4 and r['state'] == 0 for r in rows[-20:])
 
 
 def logic_frames(rows):
-    """Drop the frames the console itself did not think on.
+    """Put the console's frames back together into the game's own steps.
 
-    When a frame has more work in it than fits between two pictures the game
-    simply does not run its logic that time; its own frame count stands still.
-    The engine has one step per thought, so those frames are left out of the
-    comparison rather than pretended away.
+    The cartridge's thinking is not tied to the picture: it counts a step of its
+    own ($0110), and one step can run on past the end of a frame -- so a frame
+    may show the view already moved and the hero not yet, and a step with more
+    work in it than fits gets no frame of its own at all.  What is wanted is one
+    line per step: the buttons and the view as the step began, how far the view
+    slid in all of it, and the hero as the step left him.
     """
-    out = [rows[0]]
-    for r in rows[1:]:
-        if r['tick'] != out[-1]['tick']:
+    out = []
+    for r in rows:
+        if out and r['tick'] == out[-1]['tick']:
+            merged = dict(r)
+            for k in ('pad', 'hit', 'cam', 'shots', 'lim', 'solids', 'hold',
+                      'push'):
+                merged[k] = out[-1][k]
+            merged['shift'] = out[-1]['shift'] + r['shift']
+            out[-1] = merged
+        else:
             out.append(r)
     return out
 
@@ -151,7 +161,7 @@ def replay(rows):
         fall=start['fall'], tick=start['tick'],
         frames=[dict(pad=r['pad'], hit=r['hit'], cam=r['cam'],
                      shots=r['shots'], lim=r['lim'], solids=r['solids'],
-                     hold=r['hold'], push=r['push'])
+                     hold=r['hold'], push=r['push'], shift=r['shift'])
                 for r in rows[1:]],
     )
 
@@ -172,11 +182,19 @@ def ordinary(rows):
     return rows
 
 
+# An area opened out of turn is entered by writing the hero into it, and the
+# step in which that lands is neither one thing nor the other -- half of what he
+# is was decided before he was moved.  A few steps later he is himself again.
+SETTLE = 8
+
+
 def check(name, script, stage, area, tmp, spot=None):
     """Play one script on the cartridge and in the engine.  Returns the frames
     compared, or a description of the first frame that disagreed."""
     rows = logic_frames(ordinary(pb2_trace.trace(
         script, FRAMES, stage=stage, area=area, spot=spot)))
+    if spot is not None:
+        rows = rows[SETTLE:]
     got = run_engine(replay(rows), os.path.join(tmp, 'r.json'))
     want = [(s24(r['xh'], r['xp'], r['xf']), s24(r['yh'], r['yp'], r['yf']),
              r['vx'], r['vy'], r['state'], r['sub'], r['pose'])

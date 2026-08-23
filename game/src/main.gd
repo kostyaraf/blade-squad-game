@@ -85,6 +85,7 @@ func _run_replay(path: String) -> void:
 		p.held = int(f["hold"])
 		p.push_x = int(f["push"][0])
 		p.push_y = int(f["push"][1])
+		p.shift = int(f["shift"])
 		p.step(int(f["pad"]), int(f["hit"]), int(f["cam"]),
 				int(f["shots"]), int(f["lim"]))
 		out.append("%d %d %d %d %d %d %d %d" % [p.x, p.y, p.vx, p.vy,

@@ -98,13 +98,19 @@ func _build(a: Dictionary) -> void:
 		tiles[i] = buf[i * 4]
 
 
-## Where a line of a scrolling screen sits in the map.
+## Which line of the map a line of the screen shows, when the view slides down.
 ##
-## A screen of the console is two hundred and forty lines tall but the map is
-## kept in blocks of two hundred and fifty six, so every screen the view slides
-## past leaves sixteen lines of nothing behind it ($F52C adds them back).
-static func map_row(v: int) -> int:
-	return v + 16 * (v / 240) if v >= 0 else v
+## The console keeps the level in a ring of sixteen rows of cells and finds the
+## row by adding the camera to the line, in eight bits ($F52C).  The sixteen
+## lines that separate a screen of two hundred and forty from a page of two
+## hundred and fifty six are skipped over as the sum passes them.
+static func map_row(cam: int, sy: int) -> int:
+	var n: int = (cam & 0xFF) + sy
+	if n >= 0x100:
+		return cam + sy + 16
+	if n >= 0xF0:
+		return cam + sy + 15
+	return cam + sy
 
 
 ## What the ground does at this world pixel: solid, ladder, water, spikes...

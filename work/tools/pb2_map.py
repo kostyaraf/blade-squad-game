@@ -49,14 +49,19 @@ class Area:
         return CLASS_BYTES[self.cls[self.tiles[ty][tx]]]
 
     @staticmethod
-    def map_row(v):
-        """Where a screen line sits in the map: see Pb2Level.map_row."""
-        return v + 16 * (v // 240) if v >= 0 else v
+    def map_row(cam, sy):
+        """Which map line a screen line shows: see Pb2Level.map_row."""
+        n = (cam & 0xFF) + sy
+        if n >= 0x100:
+            return cam + sy + 16
+        if n >= 0xF0:
+            return cam + sy + 15
+        return cam + sy
 
     def screen_y(self, map_y, cam, top=16, bottom=176):
         """The line of the screen a map row shows on, or None if it is off."""
         for sy in range(top, bottom):
-            if self.map_row(sy + cam) == map_y:
+            if self.map_row(cam, sy) == map_y:
                 return sy
         return None
 

@@ -56,6 +56,11 @@ HOLD_PC = ('B47B', '8E4C')
 # $063C and $0652: how far a moving floor is carrying him this frame, along and
 # down.  Wiped at the end of his update like the rest, so read the same way.
 PUSH = ((0x063C, '8E46'), (0x0652, '8E49'))
+# $D34D and $D389: before anything else moves, the view's own movement is taken
+# off every object, because they are all kept in the view's frame of reference.
+# How far is $94, which is not worth following on its own -- the store itself
+# says it, being the old value less the shift.
+SHIFT = ((0x04C6, 'D363'), (0x0508, 'D392'))
 SPAWN_PC = 'A2A9'        # where a new shot takes its slot in the object table
 
 LO = min(WATCH.values())
@@ -121,7 +126,11 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
         solids = None
         hold = None
         push = [None, None]
+        shift = 0
         for addr, val, pc in changes.get(fr, ()):
+            for a, apc in SHIFT:
+                if addr == a and pc == apc:
+                    shift = _s8((mem[a] - val) & 0xFF)
             if addr == HOLD and pc in HOLD_PC and hold is None:
                 hold = mem[HOLD]
             for k, (a, apc) in enumerate(PUSH):
@@ -150,6 +159,7 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
         row['hold'] = mem[HOLD] if hold is None else hold
         row['push'] = [_s8(mem[a] if push[k] is None else push[k])
                        for k, (a, _pc) in enumerate(PUSH)]
+        row['shift'] = shift
         out.append(row)
     return out
 
