@@ -206,6 +206,10 @@ def check(name, script, stage, area, tmp, spot=None):
     compared, or a description of the first frame that disagreed."""
     rows = logic_frames(ordinary(pb2_trace.trace(
         script, FRAMES, stage=stage, area=area, spot=spot)))
+    # The recording stops at a frame, not at a step, and the step the last frame
+    # was in the middle of has only half happened in it -- the game's own count
+    # already moved on while the hero had not.  That half a step is thrown away.
+    rows = rows[:-1]
     if spot is not None:
         rows = rows[SETTLE:]
     got = run_engine(replay(rows), os.path.join(tmp, 'r.json'))
