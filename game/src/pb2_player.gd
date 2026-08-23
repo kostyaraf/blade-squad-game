@@ -20,6 +20,9 @@ const SUB_CROUCH := 5
 const SUB_SLIDE := 7
 const SUB_AIR := 8
 const SUB_LANDED := 9
+const SUB_LADDER := 16
+const SUB_LADDER_ON := 17
+const SUB_LADDER_OFF := 18
 
 const POSE_STAND := 0x11
 const POSE_IDLE := 0x12
@@ -145,6 +148,9 @@ func step(buttons: int, pressed: int, camera: int,
 		SUB_CROUCH: _crouch()
 		SUB_SLIDE: _slide()
 		SUB_LANDED: _landed()
+		SUB_LADDER: _ladder()
+		SUB_LADDER_ON: _ladder_on()
+		SUB_LADDER_OFF: _ladder_off()
 		_: _ground()
 
 
@@ -183,13 +189,15 @@ func _ground_exits() -> void:
 		_step_off()
 		return
 	if pad & UP:
-		return                             # ladders come with E2's next step
+		return                             # $8F33 -- climbing up is not his
 	if state & 0x80:
 		return                             # $8F5A -- no jumping while swinging
 	if _jump_wanted():
 		_jump()
 	elif pad & DOWN:
-		_crouch_start()
+		# $8F77: down over a ladder takes the ladder, not a crouch.
+		if not _ladder_grab():
+			_crouch_start()
 
 
 ## $91B5 -- in the air.
@@ -213,15 +221,20 @@ func _air() -> void:
 			vy = 0
 			y &= ~0xFF                     # $92BD: the fraction is dropped
 			_set_pose(POSE_RISE)
-		else:
-			_set_pose(POSE_RISE)
-			_move_y()
-		return
-	if _floor_hit(8):
+			return
+		_set_pose(POSE_RISE)
+	elif _floor_hit(8):
 		_land()
+		return
 	else:
 		_set_pose(POSE_RISE if dy < 2 * 256 else POSE_FALL)
-		_move_y()
+	# $93B9: up, in mid air, with a ladder level with his chest -- he catches
+	# hold of it where he is, and the movement he had begun is never made.
+	if not (state & 0x80) and (pad & UP) \
+			and _class_byte(x >> 8, (y >> 8) + int(cfg["ladder_air"])) == 0x01:
+		_ladder_hold()
+		return
+	_move_y()
 
 
 ## $8F8C -- crouching.
@@ -242,8 +255,12 @@ func _crouch() -> void:
 		if pad & (LEFT | RIGHT):
 			face_left = (pad & LEFT) != 0
 		return
+	# $8FBA: crouched over a ladder, down takes the ladder.
+	if pad & DOWN:
+		if _ladder_grab():
+			return
 	# $8FB0: he only straightens up if there is room over his head.
-	if not (pad & DOWN) and _ceiling_free(11):
+	elif _ceiling_free(11):
 		_stand()
 		return
 	# $8FC5: there is no sliding in mud.
@@ -336,6 +353,116 @@ func _landed() -> void:
 
 
 # ------------------------------------------------------------- the pieces
+
+# ------------------------------------------------------------- the ladder
+
+## $A003 -- he is over a ladder and has asked to go down it.
+##
+## Both points just under his feet have to be ladder, not one; then he lets go
+## of the ground, is set ten pixels down into it, and stands there for eight
+## frames before he begins to climb.
+func _ladder_grab() -> bool:
+	for pt in cfg["ladder_probe"]:
+		if _class_byte((x >> 8) + int(pt[0]), (y >> 8) + int(pt[1])) != 0x01:
+			return false
+	vx = 0
+	vy = 0
+	y += int(cfg["ladder_mount"])
+	fall = (fall & ~0xFF) | int(cfg["ladder_mount_wait"])
+	# $A026: the pose is set outright, without asking whether he is swinging.
+	pose = int(cfg["ladder_pose"])
+	state = 0x04
+	sub = SUB_LADDER_ON
+	return true
+
+
+## $9491 -- catching a ladder out of the air: he stops dead where he is.
+func _ladder_hold() -> void:
+	vx = 0
+	vy = 0
+	_anim_start(2)
+	state = 0x04
+	sub = SUB_LADDER
+
+
+## $9F9C -- a ladder is climbed down the middle of it.
+##
+## Every frame on a ladder he is drawn a pixel towards the centre line of the
+## sixteen pixel cell, and once he is on it he stays.
+func _ladder_centre() -> void:
+	var v: int = (x >> 8) & 0xFF
+	if not lvl.vertical:
+		v = (v + (cam & 0xFF)) & 0xFF
+	v &= 0x0F
+	if v == 8:
+		return
+	x += 0x100 if v < 8 else -0x100
+
+
+## $945F -- taking hold of the ladder: eight frames, then one step down it.
+func _ladder_on() -> void:
+	_ladder_centre()
+	fall = (fall & ~0xFF) | ((fall - 1) & 0xFF)
+	if (fall & 0xFF) != 0:
+		return
+	y += int(cfg["ladder_step"])
+	_anim_start(2)
+	sub = SUB_LADDER
+
+
+## $9477 -- letting go of the top of it: eight frames, then back on his feet.
+func _ladder_off() -> void:
+	_ladder_centre()
+	fall = (fall & ~0xFF) | ((fall - 1) & 0xFF)
+	if (fall & 0xFF) != 0:
+		return
+	y += int(cfg["ladder_off_lift"])
+	# $9ED2: and his feet are put on a line of the map, as after a fall.
+	y += int(cfg["snap_down"][_grid_y(y >> 8)]) << 8
+	_stand()
+
+
+## $94A9 -- climbing.
+##
+## Up and down each pick a speed and turn the animation over; with neither held
+## he simply hangs there, and the jump button lets go.  Nothing on a ladder
+## looks at walls or floors: what stops him is the ladder itself running out.
+func _ladder() -> void:
+	_ladder_centre()
+	_a1c2()
+	if state & 0x80:
+		vy = 0                              # $94E8 -- a swing holds him still
+	elif pad & DOWN:
+		var d: Array = cfg["ladder_down"]
+		vy = _toward(vy, int(d[0]), int(d[1]))
+		_anim_step(2)
+	elif pad & UP:
+		var u: Array = cfg["ladder_up"]
+		vy = _toward(vy, int(u[0]), int(u[1]))
+		_anim_step(2)
+	elif hit & A:
+		_step_off(int(cfg["ladder_jump"]))
+		return
+	else:
+		# $A111: he can still turn to face the way he is shooting.
+		if pad & (LEFT | RIGHT):
+			face_left = (pad & LEFT) != 0
+		vy = 0
+	dy += vy
+	_move_y()
+	# $94F1: no ladder left where his chest is -- he has come off the bottom.
+	if _class_byte(x >> 8, (y >> 8) + int(cfg["ladder_hold"])) != 0x01:
+		_step_off()
+		return
+	# $94FF: none left over his head either -- he is at the top and climbs off.
+	if _class_byte(x >> 8, (y >> 8) + int(cfg["ladder_top"])) == 0x01:
+		return
+	vy = 0
+	y += int(cfg["ladder_top_lift"])
+	fall = (fall & ~0xFF) | int(cfg["ladder_top_wait"])
+	pose = int(cfg["ladder_pose"])
+	sub = SUB_LADDER_OFF
+
 
 ## $A08D -- what the direction keys do.
 ##

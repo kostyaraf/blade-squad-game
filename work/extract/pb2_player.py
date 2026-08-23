@@ -107,6 +107,34 @@ def export():
         # $AF91/$AF99: the same trick sideways, into and out of a wall
         snap_right=[s8(x) for x in a9(0xAFD7, 16)],
         snap_left=[s8(x) for x in a9(0xAFE7, 16)],
+        # The ladder.  $A003 lets go of the ground when both points just under
+        # his feet are ladder; then he is set down, waits, and is set down
+        # again, and only then does he begin to climb ($945F).  Coming off the
+        # top he is lifted twice the same way ($94FF, $9477).
+        ladder_probe=[[s8(a9(0xA006)[0]), s8(a9(0xA004)[0])],
+                      [s8(a9(0xA011)[0]), s8(a9(0xA00F)[0])]],
+        ladder_mount=s16(a9(0xA01F)[0] * 256 + a9(0xA020)[0]),
+        ladder_mount_wait=a9(0xA022)[0],
+        ladder_step=s16(a8(0x946A)[0] * 256 + a8(0x946B)[0]),
+        ladder_top_lift=s16(a8(0x9510)[0] * 256 + a8(0x9511)[0]),
+        ladder_top_wait=a8(0x9513)[0],
+        ladder_off_lift=s16(a8(0x9482)[0] * 256 + a8(0x9483)[0]),
+        ladder_pose=a8(0x9518)[0],
+        # $94C0 and $94CA: up and down, each a limit and a step towards it
+        ladder_up=[s16(a8(0x94C3)[0] * 256 + a8(0x94C4)[0]),
+                   s16(a8(0x94C5)[0] * 256 + a8(0x94C6)[0])],
+        ladder_down=[s16(a8(0x94CD)[0] * 256 + a8(0x94CE)[0]),
+                     s16(a8(0x94CF)[0] * 256 + a8(0x94D0)[0])],
+        # $94DE: letting go of a ladder with the jump button is a small hop
+        ladder_jump=s16(a8(0x94E1)[0] * 256 + a8(0x94DF)[0]),
+        # $94F1 and $94FF: how far above him the ladder has to go on -- the
+        # first says he is still on it at all, the second that its top is not
+        # yet in reach
+        ladder_hold=s8(a8(0x94F2)[0]),
+        # $93C7: and how far above him one has to be for him to catch it out
+        # of the air
+        ladder_air=s8(a8(0x93C8)[0]),
+        ladder_top=s8(a8(0x9500)[0]),
         # $9442: a fall longer than this lands hard
         hard_landing=a8(0x9443)[0],
         # $F5A9: what the two collision bits mean
