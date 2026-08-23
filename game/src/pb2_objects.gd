@@ -122,7 +122,7 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x2E: "_mind_2c",
 		0x22: "_mind_22", 0x37: "_mind_37", 0x2F: "_mind_2f",
 		0x1E: "_mind_1e", 0x38: "_mind_38", 0x24: "_mind_24",
-		0x3C: "_mind_3c"}
+		0x3C: "_mind_3c", 0x1B: "_mind_1b", 0x1A: "_mind_1a", 0x15: "_mind_15"}
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
@@ -2849,6 +2849,144 @@ func _mind_2f(_n: int, s: PackedByteArray) -> void:
 			slots[k] = c
 			break
 	s[F_SELF] = 0xFF                                   # $BE75
+
+
+## $9EF1 (банк 10) -- лифт по расписанию.  Байт записи выбирает одну из
+## четырёх записок ($9F64..$9F94); в записке тройками лежат "сколько кадров",
+## "какая скорость вбок" и "какая вниз", а ноль в начале тройки отсылает
+## обратно к её началу.  Скорости берутся из пяти готовых ($9FA4..$9FB7).
+const SCRIPT_15 := [
+		[0x18, 0x03, 0x00, 0x20, 0x00, 0x03, 0x30, 0x01, 0x00,
+			0x20, 0x00, 0x01, 0x18, 0x03, 0x00, 0x00],
+		[0x30, 0x04, 0x00, 0x40, 0x00, 0x04, 0x60, 0x02, 0x00,
+			0x40, 0x00, 0x02, 0x30, 0x04, 0x00, 0x00],
+		[0x18, 0x01, 0x00, 0x20, 0x00, 0x03, 0x30, 0x03, 0x00,
+			0x20, 0x00, 0x01, 0x18, 0x01, 0x00, 0x00],
+		[0x30, 0x02, 0x00, 0x40, 0x00, 0x04, 0x60, 0x04, 0x00,
+			0x40, 0x00, 0x02, 0x30, 0x02, 0x00, 0x00]]
+const XFR_15 := [0x00, 0x00, 0x80, 0x00, 0x80]
+const XWH_15 := [0x00, 0x01, 0x00, 0xFF, 0xFF]
+const YFR_15 := [0x00, 0x00, 0x80, 0x00, 0x80]
+const YWH_15 := [0x00, 0xFF, 0xFF, 0x01, 0x00]
+
+func _mind_15(_n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		start_anim(s, 0x02)                            # $BEAD
+		s[F_REC_BYTE] = s[F_LIFE]
+		s[F_LIFE] = 0xFF                               # $BE5A
+		s[F_MARK] = 0x01
+		_script_15(s)                                  # $9F15
+		s[F_STATE] += 1                                # $C966
+		return
+	s[F_PUSH] = (s[F_PUSH] - 1) & 0xFF
+	if s[F_PUSH] == 0:
+		_script_15(s)
+	step_anim(s)                                       # $C8EE
+	step_both(s)
+
+
+## $9F15 -- взять из записки следующую тройку.
+func _script_15(s: PackedByteArray) -> void:
+	var prog: Array = SCRIPT_15[s[F_REC_BYTE]]
+	var pc: int = s[F_ANG]
+	if prog[pc] == 0:                                  # $9F29
+		pc = 0
+	s[F_PUSH] = prog[pc]
+	var ix: int = prog[pc + 1]
+	s[F_VXFR] = XFR_15[ix]
+	s[F_VX] = XWH_15[ix]
+	var iy: int = prog[pc + 2]
+	s[F_VYFR] = YFR_15[iy]
+	s[F_VY] = YWH_15[iy]
+	s[F_ANG] = pc + 3
+
+
+## $9C7D (банк 10) -- плывун.  Он ждёт случайный срок, всплывает и едет
+## вбок с одной из четырёх скоростей, которую выбирает байт записи; упёршись в
+## стену, возвращается на своё место и начинает снова.  Ушёл под черту
+## воды -- исчез ($9D02).
+const SIDE_1A := [0x01, 0x00, 0xFF, 0xFF]
+const FRAC_1A := [0x00, 0x80, 0x00, 0x80]
+
+func _mind_1a(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_1a(s)
+		1: _wait_1a(s)
+		_: _swim_1a(n, s)
+
+
+## $9C86 -- байт записи убирается в своё поле, а жизнь становится $FF.
+func _wake_1a(s: PackedByteArray) -> void:
+	s[F_REC_BYTE] = s[F_LIFE]
+	s[F_LIFE] = 0xFF                                   # $BE6A
+	var i: int = s[F_REC_BYTE] & 0x7F
+	set_speed_side(s, SIDE_1A[i], FRAC_1A[i])          # $C906
+	s[F_COUNT] = (random() & 0x7F) | 0x01       # $C939
+	record_home(s)                                     # $C9AE
+	s[F_STATE] += 1                                    # $C966
+
+
+## $9CBA -- срок вышел, он показывается и начинает биться.
+func _wait_1a(s: PackedByteArray) -> void:
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		return
+	s[F_MARK] = 0x01                                   # $C99F
+	start_anim(s, 0x0C)                                # $BEAD
+	s[F_STATE] += 1                                    # $C966
+
+
+## $9CCA -- ход.  О стену он смотрит лишь каждый восьмой кадр.
+func _swim_1a(n: int, s: PackedByteArray) -> void:
+	if under_line(s)[1]:                               # $9D02
+		clear(n)                                       # $C810
+		return
+	step_anim(s)                                       # $C837
+	step_side(s)                                       # $C8F7
+	if ((n ^ clock) & 0x07) != 0:                      # $0119
+		return
+	var side: int = 0x08 if s[F_REC_BYTE] < 0x80 else 0xF8
+	if ground_turn_clear(n, s, side, 0x00) < 0x80:     # $C945
+		return
+	restore_home(s)                                    # $C9BA
+	s[F_KIND] = 0x00                                   # $BE6E
+	s[F_MARK] = 0x80                                   # $C9AB
+	s[F_COUNT] = 0x40                                  # $BE7C
+	s[F_STATE] -= 1                                    # $C969
+
+
+## $8DE4 (банк 10) -- гнездо.  Оно стоит на месте и рожает $1C, когда герой
+## подходит ближе чем на $40 вдоль, но не вплотную ($08).  Ребёнок ложится
+## ровно туда же, где гнездо, и в те же восемь мест, что держат детей ($C873).
+func _mind_1b(_n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_MARK] = 0x80                                # $C9AB
+		s[F_STATE] += 1                                # $C966
+		return
+	if s[F_STATE] == 1:
+		if (s[F_XHI] | s[F_YHI]) != 0:                 # $C9C3
+			return
+		var d: int = hero_side(s)[0]                   # $C86D
+		if d >= 0x40 or d < 0x08:
+			return
+		var px: int = s[F_X]                           # $C924
+		var py: int = s[F_Y]
+		for k in range(FIRST_LIVE, FIRST_PLACED):      # $C873
+			var c: PackedByteArray = slots[k]
+			if c[F_TYPE] != 0:
+				continue
+			c[F_X] = px                                # $C927
+			c[F_Y] = py
+			c[F_TYPE] = 0x1C
+			slots[k] = c
+			s[F_COUNT] = 0x80                          # $BE7C
+			s[F_STATE] += 1                            # $C966
+			return
+		return
+	# $8E21 -- отдых между выводками.
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] == 0:
+		s[F_STATE] -= 1                                # $C969
 
 
 ## $910D -- the one that hangs in the air and spits.  The bottom bit of the
