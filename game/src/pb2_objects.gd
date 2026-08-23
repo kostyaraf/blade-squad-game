@@ -85,6 +85,11 @@ var trig := PackedByteArray()
 var snap := PackedByteArray()
 ## $F64F -- the same quarter turn as $F301, scaled to $20 for $F5BA.
 var aim := PackedByteArray()
+## $F783, $F76F and $F77F -- the three tables $F6E2 turns a pair of
+## lengths into an angle with.
+var atan := PackedByteArray()
+var octant := PackedByteArray()
+var quarter := PackedByteArray()
 ## $8212 and $820A -- which sweep a type belongs to and how far past the edge
 ## that sweep lets a thing get.  Read from data/pb2/objects.json.
 var cull_class := PackedByteArray()
@@ -93,9 +98,12 @@ var cull_rules: Array = []
 
 ## $8080 -- the minds the engine has of its own.  A type that is not in here
 ## is still told what it did; a type that is drives itself and is compared.
-const MINDS := {0x02: "_mind_02", 0x10: "_mind_10",
+const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x12: "_mind_12", 0x17: "_mind_17", 0x19: "_mind_19",
-		0x1D: "_mind_1d"}
+		0x13: "_mind_13", 0x1D: "_mind_1d",
+		0x2C: "_mind_2c", 0x2D: "_mind_2c",
+		0x42: "_mind_42",
+		0x2E: "_mind_2c"}
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
@@ -103,6 +111,8 @@ var clock := 0
 var seed := 0
 ## $9A -- which suit he has on; nought is none.
 var suit := 0
+## What the last stirring of the seed left in the carry.
+var rng_carry := false
 ## $2A -- while it is set the level stands still.
 var frozen := 0
 ## $66:$67 -- where the view stands; the minds read the map through it.
@@ -151,6 +161,12 @@ func _init(level: Pb2Level) -> void:
 		snap.append(int(v))
 	for v in t["aim"]:
 		aim.append(int(v))
+	for v in t["atan"]:
+		atan.append(int(v))
+	for v in t["octant"]:
+		octant.append(int(v))
+	for v in t["quarter"]:
+		quarter.append(int(v))
 	for r in t["anims"]:
 		var run := {"last": int(r["last"]), "hold": int(r["hold"]),
 				"first": int(r["first"])}
@@ -530,6 +546,45 @@ func face_hero(s: PackedByteArray) -> void:
 		s[F_BITS] = s[F_BITS] | 0x40
 
 
+## $FB25 ($C93C) -- how far across the hero is.  The cartridge answers three
+## things at once: the length, which side he is on (the carry, set when the
+## thing is the further along) and whether the answer means anything at all
+## (the overflow, set when the thing is a whole screen away, where the length
+## it hands back is only the count of screens).  [length, further, adrift]
+func hero_side(s: PackedByteArray) -> Array:
+	if s[F_XHI] != 0:
+		return [s[F_XHI], s[F_XHI] < 0x80, true]
+	var d: int = s[F_X] - slots[0][F_X]
+	if d < 0:
+		return [-d, false, false]
+	return [d, true, false]
+
+
+## $FB4B ($C93F) -- the same, up and down.
+func hero_down(s: PackedByteArray) -> Array:
+	if s[F_YHI] != 0:
+		return [s[F_YHI], s[F_YHI] < 0x80, true]
+	var d: int = s[F_Y] - slots[0][F_Y]
+	if d < 0:
+		return [-d, false, false]
+	return [d, true, false]
+
+
+## $FD41 ($C98D) -- is it looking his way?  The cartridge weighs only the low
+## bytes of the two places ($CADB), so a hero a screen off still counts as
+## being to one side or the other.
+func facing_hero(s: PackedByteArray) -> bool:
+	var he_is_right: bool = s[F_X] < slots[0][F_X]
+	return he_is_right == ((s[F_BITS] & 0x40) != 0)
+
+
+## $F97D ($C91B) -- turn round: the speed across changes sign and so does the
+## way it looks.
+func turn_about(s: PackedByteArray) -> void:
+	flip_speed_side(s)
+	turn(s)
+
+
 ## $FB81 -- whose turn it is to look at the ground.  The count of frames is
 ## halved and the places share it out between them, so a thing sees the floor
 ## every other frame and never on the same frame as its neighbour.  Its walk
@@ -721,7 +776,12 @@ const VIEW_TOP := 0x10
 ## bytes of $F5A9 while the point is on the screen, and the ground's own kind
 ## once it is not -- the cartridge reads the two through different doors and
 ## does not make them agree, and neither do we.
-func ground(s: PackedByteArray, side_off: int, down_off: int) -> int:
+## `force_far` forces the far road whatever kind of area this is: the fifteenth
+## clatch of $F3AA/$F3BA points straight at $F42C, and a mind that wants the
+## ground's own kind rather than one of the four bytes writes $0F into $87
+## for the length of the question.
+func ground(s: PackedByteArray, side_off: int, down_off: int,
+		force_far := false) -> int:
 	var sx: int = (((s[F_XHI] << 8) | s[F_X]) + _signed(side_off)) & 0xFFFF
 	var sy: int = (((s[F_YHI] << 8) | s[F_Y]) + _signed(down_off)) & 0xFFFF
 	var xhi: int = sx >> 8
@@ -740,6 +800,8 @@ func ground(s: PackedByteArray, side_off: int, down_off: int) -> int:
 	else:
 		ylo = clampi(ylo, VIEW_TOP, 0xAF)
 	var off: bool = xhi != 0 or yhi != 0
+	if force_far:
+		return _ground_far(xhi, xlo, yhi, ylo)
 	if lvl.kind == 7:
 		# $F3CA -- everything below the hundred and forty fourth line of this
 		# kind of area is wall, and past the screen a ground of kind three
@@ -831,9 +893,13 @@ func walled_either_turn(n: int, s: PackedByteArray, side: int, down: int,
 
 
 ## $FAFB ($C939) -- the next number.  The seed is stirred and its new
-## HIGH byte is the answer.
+## HIGH byte is the answer.  The carry the stirring leaves behind is part of
+## the answer too: the callers go straight on into an ADC or an SBC, so a
+## number that ran off the top of the seed comes out one larger.
 func random() -> int:
-	seed = (seed * 5 + 0x3711) & 0xFFFF
+	var t: int = ((seed * 5) & 0xFFFF) + 0x3711
+	rng_carry = t > 0xFFFF
+	seed = t & 0xFFFF
 	return seed >> 8
 
 
@@ -1297,3 +1363,746 @@ func _stuck_1d(n: int, s: PackedByteArray) -> void:
 	turn(s)
 	flip_speed_side(s)
 	s[F_KEEP] = 0x02                                   # $BE83
+
+
+## $A95C -- the one that runs him down and takes hold of him.  Three types
+## share the one mind, and which of the three it is gets written afresh at the
+## end of every turn from the picture it happens to be wearing ($A964), so
+## that how far past the edge of the screen it is allowed to live changes with
+## what it is doing.
+func _mind_2c(n: int, s: PackedByteArray) -> void:
+	ground_stand_deep(s, 0xE8)                         # $9BA5 with $E8
+	_states_2c(n, s)
+	# $A964
+	if s[F_KIND] == 0x48:
+		s[F_TYPE] = 0x2D
+	elif s[F_KIND] == 0x47:
+		s[F_TYPE] = 0x2E
+	else:
+		s[F_TYPE] = 0x2C
+
+
+## $A97D -- seven steps.  The sixth is not reached from in here: a blow puts
+## it there.
+func _states_2c(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_2c(s)
+		1: _watch_2c(s)
+		2: _walk_2c(n, s)
+		3: _charge_2c(n, s, true)
+		4: _rest_2c(n, s)
+		5: _charge_2c(n, s, false)
+		6: _hurt_2c(s)
+
+
+## $A99D
+func _wake_2c(s: PackedByteArray) -> void:
+	s[F_MARK] = 0x01                                   # $FD76
+	start_anim(s, 0x19)                                # $BEAD
+	s[F_SELF] = 0x80                                   # $BE75
+	s[F_STATE] += 1                                    # $FCEE
+
+
+## $A9AB -- stand and watch.  Only while it wears the waiting picture does it
+## weigh whether to set off; in any other it merely turns the pictures over.
+func _watch_2c(s: PackedByteArray) -> void:
+	if _grab_2c(s):
+		return
+	face_hero(s)                                       # $C8FD
+	if s[F_KIND] != 0x47:
+		step_anim(s)                                   # $C837
+		return
+	# Above him it wants twenty points, below him sixteen, before it moves.
+	var r: int = _gap_2c(s, 0x20, 0x10)                # $AACF
+	if r != 0:
+		return
+	_set_off_2c(s)
+
+
+## $A9C9 -- take up the walking picture and go.
+func _set_off_2c(s: PackedByteArray) -> void:
+	s[F_SELF] = 0x80                                   # $BE75
+	s[F_COUNT] = 0x28                                  # $BE7C
+	s[F_KIND] = 0x45                                   # $BE6E
+	s[F_STATE] = 2                                     # $FCFE
+
+
+## $A9D8 -- walk towards him, and when the count runs out throw one at him.
+func _walk_2c(n: int, s: PackedByteArray) -> void:
+	if _grab_2c(s):
+		return
+	if s[F_SELF] == 0:
+		# Thirty points above him or thirty-two below and it gives up.
+		var r: int = _gap_2c(s, 0x30, 0x20)            # $AACF
+		if r < 0:
+			return
+		if r > 0:
+			s[F_SELF] = 0x40                           # $BE75
+			start_anim(s, 0x19)                        # $BEAD
+			s[F_STATE] -= 1                            # $FCF2
+			return
+		if not its_turn(n, clock):
+			return
+		# Somewhere to put its foot means it may break into a run; hemmed
+		# in, it stands where it is and counts down to the throw.
+		if _may_step_2c(n, s):                         # $AAE0
+			_charge_start_2c(s)                        # $AA18
+			return
+	else:
+		s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		return
+	face_hero(s)                                       # $C8FD
+	_throw_2c(s)                                       # $AAB0
+	s[F_COUNT] = 0x38                                  # $BE7C
+
+
+## $AA18 -- lean into a run at him.
+func _charge_start_2c(s: PackedByteArray) -> void:
+	start_anim(s, 0x18)                                # $BEAD
+	set_speed_side_at_hero(s, 0xFE, 0xC0)              # $BEBF with C0 FE
+	s[F_SELF] = 0xFF                                   # $BE75
+	s[F_STATE] = 3                                     # $FD02
+
+
+## $AA28 and $AA2B -- the run.  The two are the same code entered a step
+## apart: once it has hold of him it does not try to take hold again.
+func _charge_2c(n: int, s: PackedByteArray, may_grab: bool) -> void:
+	if may_grab and _grab_2c(s):
+		return
+	if not _may_step_2c(n, s):                         # $AAE0
+		# Nowhere to go: turn, and mark that it has turned once already.
+		if s[F_KEEP] == 0:
+			s[F_SELF] = 0x01                           # $BE75
+		turn_about(s)                                  # $C91B
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] == 0:
+		_give_up_2c(s)
+		return
+	var side: Array = hero_side(s)                     # $C93C
+	var near: bool = not side[2] and side[0] < 0x40
+	if near and facing_hero(s):                        # $C98D
+		var r: int = _gap_2c(s, 0x20, 0x10)            # $AACF
+		if r < 0:
+			_give_up_2c(s)
+			return
+		if r == 0:
+			# On him: leap, with the picture that hurts.
+			set_speed_side_facing(s, 0xFD, 0x80)       # $BEC5 with 80 FD
+			s[F_KIND] = 0x48                           # $BE6E
+			s[F_SELF] = 0x18                           # $BE75
+			s[F_STATE] = 4                             # $FD06
+			return
+	if s[F_KEEP] == 0:
+		var far: int = _gap_2c(s, 0x30, 0x20)          # $AACF
+		if far != 0:
+			_give_up_2c(s)
+			return
+	else:
+		s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF
+	step_anim(s)                                       # $C8EE -- $FA05 is
+	step_both(s)                                       # $E30F and then $FA08
+
+
+## $AA82 -- lost him: face him and fall back to walking.
+func _give_up_2c(s: PackedByteArray) -> void:
+	face_hero(s)                                       # $C8FD
+	_set_off_2c(s)                                     # $A9C9
+
+
+## $AA88 -- after the leap.  It slides to a stop, and either the count runs
+## out or the floor does.
+func _rest_2c(n: int, s: PackedByteArray) -> void:
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] != 0 and _may_step_2c(n, s):          # $AAE0
+		# $AA9D -- two two-hundred-and-fifty-sixths of a point a frame, off
+		# whichever side the speed is on.
+		if s[F_VX] >= 0x80:
+			add_speed_side(s, 0x02)                    # $C912
+		else:
+			sub_speed_side(s, 0x02)                    # $C915
+		step_side(s)                                   # $C8F7
+		return
+	s[F_SELF] = 0x20                                   # $BE75
+	s[F_KIND] = 0x47                                   # $BE6E
+	s[F_STATE] = 1                                     # $FCFA
+
+
+## $A98E -- struck.  Nothing in the mind puts it here.
+func _hurt_2c(s: PackedByteArray) -> void:
+	s[F_MARK] = 0x01                                   # $C99F
+	_charge_start_2c(s)                                # $AA18
+	s[F_SELF] = 0x50                                   # $BE75
+	s[F_KEEP] = 0x40                                   # $BE83
+
+
+## $AACF -- how far above or below him it is, weighed against two thresholds:
+## `over` when it is the lower of the two, `under` when it is the higher.
+## Answers -1 when he is a whole screen away and the question means nothing,
+## 0 when it is within the threshold and 1 when it is not.
+func _gap_2c(s: PackedByteArray, over: int, under: int) -> int:
+	var r: Array = hero_down(s)                        # $C93F
+	if r[2]:
+		return -1
+	var thr: int = over if r[1] else under
+	return 1 if r[0] >= thr else 0
+
+
+## $AAE0 -- is there anywhere to put its foot?  A wall twenty points ahead at
+## either of two heights stops it, and so does a drop ten points ahead.
+func _may_step_2c(n: int, s: PackedByteArray) -> bool:
+	# $BF06 with EC FF EC
+	if walled_ahead_turn(n, s, 0xEC, 0xEC, 0xFF, 0x00) >= 0x80:
+		return false
+	var ahead: int = 0x0A if s[F_BITS] & 0x40 else 0xF6
+	if ground_turn_wall(n, s, ahead, 0x04) >= 0x80:    # $C948
+		return true
+	return in_water(s)                                 # $9C44
+
+
+## $AB02 -- take hold of him.  Six things must all be so, and the cartridge
+## pulls its own way back off the stack when they are, so the rest of the
+## turn never happens.
+func _grab_2c(s: PackedByteArray) -> bool:
+	if suit == 0:                                      # $9A
+		return false
+	if slots[0][F_MARK] & 0x10 == 0:                   # $0416
+		return false
+	if (s[F_BITS] ^ slots[0][F_BITS]) & 0x40:          # they look the same way
+		return false
+	if not facing_hero(s):                             # $C98D
+		return false
+	if _gap_2c(s, 0x04, 0x04) != 0:                    # $AACF
+		return false
+	var side: Array = hero_side(s)                     # $C93C
+	if side[2] or side[0] >= 0x40:
+		return false
+	s[F_SELF] = 0x35                                   # $BE75
+	start_anim(s, 0x18)                                # $BEAD
+	set_speed_side_at_hero(s, 0xFE, 0x80)              # $BEBF with 80 FE
+	turn_about(s)                                      # $C91B
+	s[F_STATE] = 5                                     # $FD0A
+	return true
+
+
+## $AAB0 -- the thing it throws: a length of twelve, level, out to whichever
+## side it looks and twenty-three points up.
+func _throw_2c(s: PackedByteArray) -> void:
+	var ang: int = 0x00
+	var side: int = 0x10
+	if s[F_BITS] & 0x40 == 0:                          # $C990
+		ang = 0x80
+		side = 0xF0
+	make_child_aimed(s, side, 0xE9, 0x16, 0x0C, ang)   # $C8E5
+
+
+## $976B -- how far above itself the one that sits still lets its shot out.
+## The eight are the two mountings, the two ways of looking and the two sides
+## he may be on.
+const AIM_13 := [0xF4, 0xE5, 0xE5, 0xF4, 0xFD, 0xEC, 0xEC, 0xFD]
+## $96D4 -- and which way each mounting looks to begin with.
+const FACE_13 := [0x00, 0x40, 0x40, 0x00]
+
+
+## $96AA -- the one that sits still and shoots him.  The record's own byte
+## says how it is mounted: the lowest bit of it, kept in $05CE for good, is
+## whether it hangs off something and so never falls.
+func _mind_13(_n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_13(s)
+		1: _rouse_13(s)
+		2: _aim_13(s)
+		3: _shoot_13(s)
+
+
+## $96B5
+func _wake_13(s: PackedByteArray) -> void:
+	var rec: int = s[F_LIFE]
+	s[F_SELF] = rec
+	s[F_BITS] = FACE_13[((rec & 1) << 1) | (rec >> 7)]
+	s[F_LIFE] = 0x03                                   # $BE63
+	s[F_COUNT] = 0x10                                  # $BE7C
+	s[F_STATE] += 1                                    # $FCEE
+
+
+## $9773 -- one that hangs off something is not pulled down.
+func _fall_13(s: PackedByteArray) -> void:
+	if s[F_SELF] & 1 == 0:
+		ground_stand(s)                                # $9BD0
+
+
+## $96D8 -- wait out the count, then take up the run of pictures that
+## belongs to the mounting.
+func _rouse_13(s: PackedByteArray) -> void:
+	_fall_13(s)
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		return
+	start_anim(s, 0x06 if s[F_SELF] & 1 else 0x07)     # $C83A
+	s[F_STATE] += 1                                    # $FCEE
+
+
+## $96F1 -- turn the pictures over until the one that means it is open.
+func _aim_13(s: PackedByteArray) -> void:
+	_fall_13(s)
+	step_anim(s)                                       # $C837
+	if s[F_KIND] != 0x37 and s[F_KIND] != 0x16:
+		return
+	s[F_MARK] = 0x01                                   # $C99F
+	var r: int = random() & 0x1F                       # $C939
+	s[F_COUNT] = (r + 0x20 + (1 if rng_carry else 0)) & 0xFF
+	s[F_KEEP] = 0x03
+	s[F_STATE] += 1                                    # $FCEE
+
+
+## $9717 -- three shots, then a long wait.
+func _shoot_13(s: PackedByteArray) -> void:
+	_fall_13(s)
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		return
+	s[F_COUNT] = 0x30                                  # $BE7C
+	# $972B -- the cartridge means LDY here and writes LDA, and gets away
+	# with it: $F1C9 counts the inline bytes down to nought, so Y is nought
+	# already when the count of frames above was laid in.
+	var i: int = 0x04 if s[F_SELF] & 1 else 0x00
+	if s[F_BITS] & 0x40 == 0:                          # $C990
+		i += 2
+	var ang: int = 0x80
+	if not hero_side(s)[1]:                            # $C93C
+		i += 1
+		ang = 0x00
+	var side: int = 0x08 if i & 1 else 0xF8
+	if make_child_aimed(s, side, AIM_13[i], 0x16, 0x0C, ang) < 0:
+		return
+	s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF
+	if s[F_KEEP] != 0:
+		return
+	s[F_COUNT] = 0x90                                  # $BE7C
+	s[F_KEEP] = 0x03                                   # $BE83
+
+
+## $8DDB -- the four corners of a cell of sixteen, as the one that returns
+## asks them: side then down, taken two at a time from the one list.
+const CORNERS_42 := [[0x07, 0x07], [0xF8, 0x07], [0x07, 0xF8], [0xF8, 0xF8]]
+
+
+## $FDA9 -- remember where it stands as a place in the level rather than a
+## place on the screen, so that it can be put back there however far the view
+## has gone since.
+func record_home(s: PackedByteArray) -> void:
+	# $FDF0 -- across, the view counts only where the level scrolls sideways.
+	if lvl.vertical:
+		s[F_KEEP] = s[F_X]
+		s[F_KEEP2] = s[F_XHI]
+	else:
+		var v: int = ((s[F_XHI] << 8) | s[F_X]) + cam
+		s[F_KEEP] = v & 0xFF
+		s[F_KEEP2] = (v >> 8) & 0xFF
+	if not lvl.vertical:
+		s[F_PUSH] = s[F_Y]
+		s[F_ANG] = s[F_YHI]
+		return
+	# Down a level a page is two hundred and forty lines and the count is kept
+	# in two hundred and fifty sixes, so the sixteen between them are added on
+	# at every page the sum crosses.
+	var t: int = (cam & 0xFF) + s[F_Y]
+	var carry: int = t >> 8
+	var y: int = t & 0xFF
+	s[F_ANG] = ((cam >> 8) + s[F_YHI] + carry) & 0xFF
+	if carry:
+		y = (y + 0x10) & 0xFF
+	if y >= 0xF0:
+		y &= 0x0F
+		s[F_ANG] = (s[F_ANG] + 1) & 0xFF
+	s[F_PUSH] = y
+
+
+## $FE08 -- and the way back.
+func restore_home(s: PackedByteArray) -> void:
+	if lvl.vertical:
+		s[F_XHI] = s[F_KEEP2]
+		s[F_X] = s[F_KEEP]
+	else:
+		var t: int = s[F_KEEP] - (cam & 0xFF)
+		s[F_X] = t & 0xFF
+		s[F_XHI] = (s[F_KEEP2] - (cam >> 8) - (1 if t < 0 else 0)) & 0xFF
+	if not lvl.vertical:
+		s[F_Y] = s[F_PUSH]
+		s[F_YHI] = s[F_ANG]
+		return
+	var d: int = s[F_PUSH] - (cam & 0xFF)
+	var hi: int = (s[F_ANG] - (cam >> 8) - (1 if d < 0 else 0)) & 0xFF
+	# The sixteen a page over-counts, taken back off once for every page.
+	var pages: int = ((s[F_ANG] - (cam >> 8)) << 4) & 0xFF
+	var y: int = (d & 0xFF) - pages
+	s[F_Y] = y & 0xFF
+	s[F_YHI] = (hi - (1 if y < 0 else 0)) & 0xFF
+
+
+## $FC45 ($C963) -- write one place's record over another's.  All of it but
+## the record's own number and the last four fields.
+func copy_row(dst: int, src: PackedByteArray) -> void:
+	var d: PackedByteArray = slots[dst]
+	for f in range(0, 25):
+		if f == F_REC:
+			continue
+		d[f] = src[f]
+	slots[dst] = d
+
+
+## $FEAA ($C9C0) -- turn a record into the burst.
+func make_burst(n: int) -> void:
+	var b: PackedByteArray = slots[n]
+	b[F_STATE] = 0                                     # $FCF6
+	b[F_TYPE] = 0x01
+	b[F_KEEP] = 0x01
+	b[F_KEEP2] = 0x00
+	b[F_LIFE] = 0x00
+	b[F_MARK] = 0x80                                   # $FD86
+	slots[n] = b
+
+
+## $8C3A -- the one that returns.  The level's scan puts it out once; after
+## that it keeps its own place in the world, and every time it is killed it
+## waits a while and comes back to it.
+func _mind_42(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _home_42(s)
+		1: _wait_42(s)
+		2: _pick_42(n, s)
+		3: _blink_42(s)
+		4: _fly_42(n, s)
+
+
+## $8C49 -- learn the spot, and how long to wait before the first coming.
+func _home_42(s: PackedByteArray) -> void:
+	record_home(s)                                     # $C9AE
+	_wind_42(s)
+	s[F_STATE] += 1                                    # $FCEE
+
+
+## $8C4C and $8D85 -- between sixty-three and ninety-four frames.
+func _wind_42(s: PackedByteArray) -> void:
+	var r: int = random() & 0x1F                       # $C939
+	s[F_SELF] = (r + 0x3F + (1 if rng_carry else 0)) & 0xFF
+
+
+## $8C59
+func _wait_42(s: PackedByteArray) -> void:
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] == 0:
+		s[F_STATE] += 1                                # $FCEE
+
+
+## $8C5F -- back to the spot, and look for open air to appear in.  It only
+## asks every other frame.
+func _pick_42(n: int, s: PackedByteArray) -> void:
+	if not its_turn(n, clock):                         # $BE3E
+		return
+	restore_home(s)                                    # $C9BA
+	if s[F_XHI] != 0 or s[F_YHI] != 0:
+		# The spot has gone off the level altogether.
+		clear(n)                                       # $C810
+		return
+	if s[F_Y] >= 0xB0 or s[F_Y] < 0x10:
+		return
+	if not _clear_spot_42(s):                          # $8DAE
+		return
+	# $8CB0
+	s[F_MARK] = 0x80                                   # $C9AB
+	s[F_SELF] = 0x40                                   # $BE75
+	start_anim(s, 0x05)                                # $BEAD
+	s[F_BITS] = 0xC0 if random() & 1 else 0x80         # $C939
+	s[F_STATE] += 1                                    # $FCEE
+
+
+## $8D92 -- a column at random, but not within sixteen of his: that near, the
+## column is thrown half a screen over instead.
+func _random_x_42(s: PackedByteArray) -> void:
+	s[F_X] = random()                                  # $C939
+	var d: int = (s[F_X] - slots[0][F_X]) & 0xFF
+	if d >= 0x80:
+		d = (-d) & 0xFF                                # $C858
+	if d < 0x10:
+		s[F_X] = s[F_X] ^ 0x80
+
+
+## $8DAE -- is the cell of sixteen it would appear in open?  All four corners
+## must answer with the fourth kind of ground, and they are asked of the map
+## itself rather than of the screen.
+func _clear_spot_42(s: PackedByteArray) -> bool:
+	_random_x_42(s)
+	for c in CORNERS_42:
+		if ground(s, c[0], c[1], true) != 0x04:        # $87 := $0F
+			return false
+	return true
+
+
+## $8CCB -- flicker while it comes through, then take on life and set off.
+func _blink_42(s: PackedByteArray) -> void:
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] == 0:
+		s[F_BITS] = s[F_BITS] & 0x7F
+		s[F_LIFE] = 0x7F                               # $BE5A
+		s[F_MARK] = 0x01
+		set_speed_side_facing(s, 0xFE, 0x80)           # $BEC5 with 80 FE
+		s[F_STATE] += 1                                # $FCEE
+		return
+	if s[F_SELF] & 3:
+		return
+	var on: int = 0x80 if s[F_SELF] & 4 else 0x00
+	s[F_BITS] = (s[F_BITS] & 0x7F) | on
+
+
+## $8D03 -- fly at him.  Once in four frames it looks where it is going.
+func _fly_42(n: int, s: PackedByteArray) -> void:
+	if s[F_LIFE] != 0x7F:
+		_die_42(n, s)
+		return
+	if s[F_YHI] != 0:
+		clear(n)                                       # $C810
+		return
+	if ((n ^ clock) & 3) == 0:
+		if s[F_XHI] != 0:
+			s[F_BITS] = 0x40 if s[F_XHI] >= 0x80 else 0x00
+			set_speed_side_facing(s, 0xFE, 0x80)       # $BEC5 with 80 FE
+		var off: int = 0x0B if s[F_BITS] & 0x40 else 0xF4
+		# $C945 -- out of its own turn the answer is that nothing is there.
+		if ground_turn_clear(n, s, off, 0x00) >= 0x80:
+			turn_about(s)                              # $C91B
+	step_anim(s)                                       # $C8EE
+	step_both(s)
+
+
+## $8D45 -- killed.  It hands its own body to a free place to burst in and
+## goes back to waiting; with nowhere to hand it, it bursts itself and does
+## not come again.
+func _die_42(n: int, s: PackedByteArray) -> void:
+	var free: int = -1
+	for k in range(FIRST_PLACED, SLOTS):               # $CB0B
+		if slots[k][F_TYPE] == 0:
+			free = k
+			break
+	if free < 0:
+		make_burst(n)                                  # $C9C0
+		return
+	copy_row(free, s)                                  # $C963
+	make_burst(free)
+	# $8D5F -- and the one down that $FEAA had just put up.
+	var b: PackedByteArray = slots[free]
+	b[F_KEEP] = 0x00
+	slots[free] = b
+	# $8D7D
+	s[F_MARK] = 0x80                                   # $C9AB
+	s[F_KIND] = 0x00
+	_wind_42(s)
+	s[F_STATE] = 1                                     # $FCFA
+
+
+## $92D5 -- how heavy the one that swaps floor for ceiling is, by the low
+## seven bits of the record's own byte.
+const WEIGHT_23 := [0x28, 0x18, 0x11]
+
+
+## $F6E2 -- the angle from one point to another, as a whole turn in two
+## hundred and fifty six.  Which eighth of the turn it falls in comes from
+## three bits -- the sign of the difference across, the sign of the difference
+## down, and which of the two is the longer -- and how far round that eighth
+## from the share of the shorter in the longer.
+func _atan(x0: int, y0: int, x1: int, y1: int) -> int:
+	var bits := 0
+	# $F6E6 -- each subtraction rolls its borrow into the top of $04 and then
+	# the difference is made plain.
+	var dx: int = x0 - x1
+	bits = (bits >> 1) | (0x00 if dx < 0 else 0x80)
+	dx = dx if dx >= 0 else -dx
+	dx = dx & 0xFF
+	var dy: int = y0 - y1
+	bits = (bits >> 1) | (0x00 if dy < 0 else 0x80)
+	dy = dy if dy >= 0 else -dy
+	dy = dy & 0xFF
+	# $F704 -- and the third bit is whether the one down is the longer.
+	bits = (bits >> 1) | (0x80 if dy >= dx else 0x00)
+	if dx == 0:
+		return (bits << 1) & 0xFF                      # $F759
+	if dy == 0:
+		return (bits << 2) & 0xFF                      # $F75D
+	if dy == dx:
+		# $F762 -- four rolls bring the three bits down to the bottom.
+		var r: int = bits
+		for _k in range(4):
+			r = ((r << 1) | (r >> 7)) & 0xFF
+		return quarter[r & 0x03]
+	# $F716 -- the shorter over the longer, to eight bits.
+	var num: int = dx if bits & 0x80 else dy
+	var den: int = dy if bits & 0x80 else dx
+	var q := 0
+	var rem: int = num
+	var carry := 0
+	for _k in range(8):
+		q = ((q << 1) | carry) & 0x1FF
+		var t: int = (rem << 1) | (q >> 8)
+		q = q & 0xFF
+		carry = 0
+		if t >= 0x100 or (t & 0xFF) >= den:
+			rem = (t - den) & 0xFF
+			carry = 1
+		else:
+			rem = t & 0xFF
+	q = ((q << 1) | carry) & 0xFF
+	var i: int = (bits >> 4) & 0x0F
+	var up: bool = (octant[i] & 1) != 0
+	var base: int = octant[i + 1]
+	if up:
+		return (base + atan[q] + 1) & 0xFF             # $F751
+	return (base - atan[q] - 1) & 0xFF                 # $F755
+
+
+## $F8C9 ($C8E2) -- put a new thing out beside this one and send it at him.
+## The angle is taken from where the child lands to ten points above his feet.
+func make_child_at_hero(s: PackedByteArray, side: int, down: int, what: int,
+		mag: int) -> int:
+	var x: int = ((s[F_XHI] << 8) | s[F_X]) + _signed(side)
+	if (x >> 8) & 0xFF:
+		return -1
+	var y: int = ((s[F_YHI] << 8) | s[F_Y]) + _signed(down)
+	if (y >> 8) & 0xFF:
+		return -1
+	# $F951
+	var ang: int = _atan(x & 0xFF, y & 0xFF, slots[0][F_X],
+			(slots[0][F_Y] + 0xF6) & 0xFF)
+	for k in range(FIRST_LIVE, FIRST_PLACED):          # $CB1B
+		var c: PackedByteArray = slots[k]
+		if c[F_TYPE] != 0:
+			continue
+		c[F_TYPE] = what
+		c[F_X] = x & 0xFF
+		c[F_Y] = y & 0xFF
+		c[F_MARK] = 0x08
+		set_speed_at(c, mag, ang)
+		return k
+	return -1
+
+
+## $91A2 -- the one that swaps floor for ceiling.  The top bit of the record's
+## own byte says which of the two it lives on; the rest of it says how heavy
+## it is on the way over.
+func _mind_23(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_23(s)
+		1: _sit_23(s)
+		2: _rise_23(n, s)
+		3: _drop_23(n, s)
+		4: _land_23(s)
+
+
+## $92D8 -- which picture it sits in.
+func _picture_23(s: PackedByteArray) -> void:
+	s[F_KIND] = 0x2F if s[F_SELF] >= 0x80 else 0x2C
+
+
+## $92BD -- and which run of pictures it goes over in.
+func _anim_23(s: PackedByteArray) -> void:
+	start_anim(s, 0x14 if s[F_SELF] >= 0x80 else 0x13)
+
+
+## $91AF
+func _wake_23(s: PackedByteArray) -> void:
+	s[F_SELF] = s[F_LIFE]
+	s[F_LIFE] = 0x01                                   # $BE5A
+	s[F_MARK] = 0x01
+	s[F_COUNT] = 0x1E                                  # $BE7C
+	_picture_23(s)                                     # $92D8
+	s[F_STATE] += 1                                    # $FCEE
+
+
+## $91C3 -- sit still, drop one at him halfway through, and at the end of the
+## count push off for the other side.
+func _sit_23(s: PackedByteArray) -> void:
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		if s[F_COUNT] != 0x20:
+			return
+		var down: int = 0xFE if s[F_SELF] >= 0x80 else 0xF6
+		make_child_at_hero(s, 0x00, down, 0x14, 0x0C)  # $C8E2
+		return
+	# $91E6
+	_anim_23(s)                                        # $92BD
+	set_speed_side_at_hero(s, 0xFF, 0x40)              # $BEBF with 40 FF
+	if random() >= 0xC0:                               # $C939
+		turn_about(s)                                  # $C91B
+	s[F_VYFR] = 0
+	if s[F_SELF] < 0x80:
+		s[F_VY] = 0xFC
+		s[F_STATE] += 1                                # $FCEE
+	else:
+		s[F_VY] = 0x04
+		s[F_STATE] = 3                                 # $FD02
+
+
+## $9212 -- off the floor and up.  It does not begin until the pictures have
+## come round to the one that leaves the ground.
+func _rise_23(n: int, s: PackedByteArray) -> void:
+	if s[F_KIND] != 0x2D:
+		step_anim(s)                                   # $C837
+		return
+	add_speed_down(s, WEIGHT_23[s[F_SELF] & 0x7F])     # $92CB, $C90C
+	if s[F_VY] < 0x80:
+		if s[F_VY] >= 0x04:
+			set_speed_down(s, 0x04, 0x00)              # $BEB9 with 00 04
+		# $BEDD with 04 05 -- a floor four below, to either side.
+		if walled_either_turn(n, s, 0x05, 0x04, 0x00) >= 0x80:
+			snap_down_from(s, 0x00)                    # $C987
+			_settle_23(s)
+			return
+	else:
+		# $BEDD with E2 05 -- a ceiling thirty above.
+		if walled_either_turn(n, s, 0x05, 0xE2, 0x00) >= 0x80:
+			set_speed_down(s, 0x00, 0x00)              # $BEB9 with 00 00
+	step_down(s)                                       # $C8F4
+	walled_ahead_turn_about(n, s, 0xF6, 0xFF, 0xF1)    # $BF12 with F6 F1 FF
+	step_side(s)                                       # $C8F7
+
+
+## $9260 -- and the same the other way up.
+func _drop_23(n: int, s: PackedByteArray) -> void:
+	if s[F_KIND] != 0x30:
+		step_anim(s)                                   # $C837
+		return
+	sub_speed_down(s, WEIGHT_23[s[F_SELF] & 0x7F])     # $92CB, $C90F
+	if s[F_VY] >= 0x80:
+		if s[F_VY] < 0xFB:
+			set_speed_down(s, 0xFB, 0x00)              # $BEB9 with 00 FB
+		# $BEDD with EC 05 -- a ceiling twenty above.
+		if walled_either_turn(n, s, 0x05, 0xEC, 0x00) >= 0x80:
+			snap_down_from(s, 0xF0)                    # $C98A
+			_settle_23(s)
+			return
+	else:
+		# $BEDD with 10 05 -- a floor sixteen below.
+		if walled_either_turn(n, s, 0x05, 0x10, 0x00) >= 0x80:
+			set_speed_down(s, 0x00, 0x00)              # $BEB9 with 00 00
+	step_down(s)                                       # $C8F4
+	walled_ahead_turn_about(n, s, 0xF6, 0xF1, 0xFF)    # $BF12 with F6 FF F1
+	step_side(s)                                       # $C8F7
+
+
+## $9256 -- arrived.
+func _settle_23(s: PackedByteArray) -> void:
+	_anim_23(s)                                        # $92BD
+	s[F_COUNT] = 0x10                                  # $BE7C
+	s[F_STATE] = 4                                     # $FD06
+
+
+## $92A7 -- settle, then sit for between sixty-three and a hundred and
+## twenty-six frames before going over again.
+func _land_23(s: PackedByteArray) -> void:
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		return
+	var r: int = random() & 0x3F                       # $C939
+	s[F_COUNT] = (r + 0x3F + (1 if rng_carry else 0)) & 0xFF
+	_picture_23(s)                                     # $92D8
+	s[F_STATE] = 1                                     # $FCFA

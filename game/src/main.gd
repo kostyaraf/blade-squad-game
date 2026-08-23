@@ -360,6 +360,14 @@ func _run_spawns(path: String) -> void:
 					# is the engine's own work and is judged as ever.
 					if was_told[Pb2Objects.F_STUN] > s[Pb2Objects.F_STUN]:
 						s[Pb2Objects.F_STUN] = was_told[Pb2Objects.F_STUN]
+					# And the other half of the same blow: health that has gone
+					# down since the last hand-over.  Nothing in the engine takes
+					# health off a thing yet, so a smaller number can only have
+					# come from a hit, and it is told.  Health the engine sets
+					# itself -- a thing waking up with a full measure -- goes up,
+					# not down, and stays judged.
+					if was_told[Pb2Objects.F_LIFE] < s[Pb2Objects.F_LIFE]:
+						s[Pb2Objects.F_LIFE] = was_told[Pb2Objects.F_LIFE]
 					# This one drives itself, so it is judged, not told.  The
 					# record's number is the engine's own and is left out of
 					# both; so is the type, which take() above has settled.

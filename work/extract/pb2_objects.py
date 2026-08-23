@@ -48,6 +48,9 @@ SPIN_HI = 0x9EE9    # and high
 TRIG = 0xF301       # $F2E6: a quarter turn of cosine, 65 entries
 SNAP = 0xFD31       # $FD1D: how far to shift to sit on a tile's floor line
 AIM = 0xF64F        # $F637: the same quarter turn again, but scaled to $20
+ATAN = 0xF783       # $F6E2: how far round from the start of an eighth
+OCTANT = 0xF76F     # $F746: where each eighth starts, and which way it runs
+QUARTER = 0xF77F    # $F76B: the four corners, where the sides are equal
 
 # $814A / $8152 -- the eight class handlers, and what each of them checks.
 # The two checks are not "along the level" and "across" it: whichever way the
@@ -145,6 +148,13 @@ def export():
         # $F64F: the quarter turn $F5BA uses to point a speed at an angle.
         # Shorter than $F301 because the answer is sixteen bits, not eight.
         aim=list(b15[AIM - 0xE000:AIM - 0xE000 + 65]),
+        # $F783 and its two little brothers: the arctangent $F6E2 aims
+        # by.  The big one is read by the eight-bit share of the shorter
+        # side in the longer, the small ones by which eighth of the turn
+        # the two signs and the comparison between them fall in.
+        atan=list(b15[ATAN - 0xE000:ATAN - 0xE000 + 256]),
+        octant=list(b15[OCTANT - 0xE000:OCTANT - 0xE000 + 16]),
+        quarter=list(b15[QUARTER - 0xE000:QUARTER - 0xE000 + 4]),
     ))
     print('%d types, %d classes, %d runs of pictures, %d bytes'
           % (NTYPES, len(set(classes)), len(runs), size))
