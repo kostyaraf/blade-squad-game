@@ -121,7 +121,8 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x42: "_mind_42",
 		0x2E: "_mind_2c",
 		0x22: "_mind_22", 0x37: "_mind_37", 0x2F: "_mind_2f",
-		0x1E: "_mind_1e"}
+		0x1E: "_mind_1e", 0x38: "_mind_38", 0x24: "_mind_24",
+		0x3C: "_mind_3c"}
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
@@ -135,6 +136,10 @@ var playing := 3
 var boss_step := 0
 ## $4A -- the switches of the level; $B5B7 reads bit three of it.
 var switch := 0
+## $0164 -- what has hold of the hero.  It is the hero's own book-keeping
+## ($B90D in bank 9, and the moving floor at $A3C0 clears it); the things
+## only read it.
+var held := 0
 ## The harness hands the hero's row over from the cartridge, already counted
 ## down and already blinked.  When it does, the touch sweep must not count it
 ## down a second time.
@@ -143,6 +148,11 @@ var hero_told := false
 var seed := 0
 ## $9A -- which suit he has on; nought is none.
 var suit := 0
+## $29 -- the line the water or the lava has climbed to.  The area is entered
+## with the line its record names ($87 says what sort of area it is); four
+## little routines under $CEE0 move it after that, and they run at the head of
+## the level's frame, before anything else.
+var water := 0
 ## What the last stirring of the seed left in the carry.
 var rng_carry := false
 ## $2A -- while it is set the level stands still.
@@ -165,6 +175,7 @@ var fill := 0
 
 func _init(level: Pb2Level) -> void:
 	lvl = level
+	water = lvl.line
 	for i in range(SLOTS):
 		slots.append(empty_row())
 	var f := FileAccess.open("res://data/pb2/objects.json", FileAccess.READ)
@@ -339,6 +350,127 @@ func shift(dv: int) -> void:
 		var v := (((s[hi] << 8) | s[lo]) - dv) & 0xFFFF
 		s[lo] = v & 0xFF
 		s[hi] = v >> 8
+
+
+## $B0C0 in bank 11 -- the big one that grabs him (12 records).
+##
+## Every frame, before anything else, it tells the hero he is held ($BF20,
+## which reaches $B90D in bank 9) and stands on the ground.  The first is the
+## hero's own book-keeping -- $0160, $0161 and $0164 -- and writes nothing in
+## the table of things, so the engine leaves it to him.
+func _mind_38(n: int, s: PackedByteArray) -> void:
+	ground_stand_deep(s, 0xE8)                         # $9BA5
+	if s[F_STATE] == 0:
+		_wake_38(s)
+	elif s[F_STATE] == 1:
+		_walk_38(n, s)
+	else:
+		_rush_38(n, s)
+
+
+## $B0D5 -- it wakes walking away from him.
+func _wake_38(s: PackedByteArray) -> void:
+	s[F_LIFE] = 0x08                                   # $BE5A 08
+	s[F_MARK] = 0x01
+	start_anim(s, 0x1F)                                # $BEAD 1F
+	record_home_along(s)                               # $C9B1
+	set_speed_side_at_hero(s, 0x01, 0xC0)              # $BEBF C0 01
+	turn_about(s)                                      # $C91B
+	s[F_STATE] += 1                                    # $C966
+
+
+## $B0EB -- walking, and looking for the moment to rush.
+func _walk_38(n: int, s: PackedByteArray) -> void:
+	step_anim(s)                                       # $C8EE
+	step_both(s)
+	_grab_38(s)                                        # $B198
+	if s[F_SELF] != 0:
+		s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+		if s[F_SELF] == 0:
+			s[F_SELF] = 0x14                           # $BE75 14
+			s[F_STATE] += 1                            # $C966
+			return
+	# $B102 -- a wall ahead, and it waits a frame.
+	if walled_ahead_turn(n, s, 0x24, 0xEC, 0xFF, 0x00) >= 0x80:
+		s[F_SELF] = 0x01
+		return
+	# $B10A -- how far ahead the ground goes: two and a bit tiles when he is
+	# close by, two and a half when he is not.
+	var down: Array = hero_down(s)                     # $C93F
+	var out := 0x28
+	if not bool(down[2]) and int(down[0]) < 0x10:
+		out = 0x22
+	if s[F_BITS] & 0x40:                               # $C990
+		out = (0x100 - out) & 0xFF
+	var under: int = ground_turn_wall(n, s, out, 0x04)  # $C948 with Y = 4
+	if under < 0x80 and under != 0x01 and not in_water(s):
+		s[F_SELF] = 0x01                               # $9C44 -- nothing there
+		return
+	if s[F_SELF] != 0:
+		return
+	if strayed_far(s):                                 # $ACD0
+		s[F_SELF] = 0x01
+		return
+	var side: Array = hero_side(s)                     # $C93C
+	if bool(side[2]):
+		return
+	if int(side[0]) < 0x18:
+		return
+	if facing_hero(s):                                 # $C98D
+		return
+	s[F_SELF] = 0x20
+
+
+## $B15A -- the rush.  It gathers speed for as long as its own byte lasts and
+## wears the other picture for the last ten frames of it.
+func _rush_38(n: int, s: PackedByteArray) -> void:
+	step_side(s)                                       # $C8F7
+	_grab_38(s)                                        # $B198
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] != 0:
+		step_anim(s)                                   # $C837
+		if s[F_SELF] < 0x0A:
+			s[F_KIND] = 0xB6                           # $BE6E B6
+		if s[F_VX] & 0x80:
+			sub_speed_side(s, 0x10)                    # $C915
+		else:
+			add_speed_side(s, 0x10)                    # $C912
+		return
+	# $B180 -- it has run itself out.
+	if strayed_far(s):                                 # $ACD0
+		s[F_SELF] = 0x60                               # $BE75 60
+	turn_about(s)                                      # $C91B
+	set_speed_side_facing(s, 0x01, 0xC0)               # $BEC5 C0 01
+	start_anim(s, 0x1F)                                # $BEAD 1F
+	s[F_STATE] -= 1                                    # $C969
+
+
+## $B198 and $B1A8 -- it holds him, and throws him.
+##
+## Only one field of its own is touched: the count, which is how long it
+## waits before it may throw again.  The rest is the hero's own row, which
+## the harness hands over, and $0164, which he keeps for himself.
+func _grab_38(s: PackedByteArray) -> void:
+	if s[F_COUNT] != 0:
+		s[F_COUNT] -= 1
+		return
+	var hero: PackedByteArray = slots[0]
+	if (hero[F_MARK] & 0x60) != 0:
+		return                                         # $B1A1 -- already held
+	if not facing_hero(s):                             # $C98D
+		return
+	if hero[F_STUN] == 0:
+		return
+	if held < 0x03:                                    # $0164
+		return
+	if (hero[F_MARK] & 0x01) != 0:
+		s[F_COUNT] = 0x20
+	else:
+		hero[F_KEEP2] = 0xF8
+	hero[F_VY] = 0xFC
+	hero[F_VX] = 0x08 if not (s[F_VX] & 0x80) else 0xF8
+	hero[F_VXFR] = 0x00
+	hero[F_VYFR] = 0x00
 
 
 # --- Touching ---------------------------------------------------------
@@ -593,6 +725,260 @@ func _wound(n: int, power: int) -> void:
 	s[F_TYPE] = 0x01
 	s[F_MARK] = 0x80
 
+
+
+## $92E7 (bank 10) -- the one that stands off and spits.
+##
+## It sets itself going, turns its face away from him -- only the face; the
+## speed it was just given still points his way -- and then walks, letting one
+## of type $25 go every thirty frames while he is within a quarter screen.
+func _mind_24(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_LIFE] = 0x04                               # $BE5A
+		s[F_MARK] = 0x01
+		start_anim(s, 0x15)                            # $BEAD
+		set_speed_side_at_hero(s, 0xFE, 0x80)          # $BEBF with 80 FE
+		turn(s)                                        # $C918
+		s[F_STATE] += 1                                # $C966
+		return
+	if s[F_COUNT] != 0:
+		s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	else:
+		var side: Array = hero_side(s)                 # $C93C
+		if not side[2] and side[0] < 0x40:
+			# Behind it, whichever way it is going.
+			var off: int = 0x08 if s[F_VX] < 0x80 else 0xF8
+			if make_child(s, off, 0x04, 0x25) >= 0:    # $C8DF
+				s[F_COUNT] = 0x1E
+	step_anim(s)                                       # $C8EE -- $FA05
+	step_both(s)
+
+
+## $BDA3 (bank 11) -- the three shapes the boxed walk knows.  Six signed
+## bytes each: how far below and how far above to ask about the floor and the
+## ceiling, then the two heights at which to ask about a wall, then how far
+## out to ask, going right and going left.  The fourth entry of the table
+## points at the third.
+const BOXED := [[0x10, 0xF0, 0x08, 0xF8, 0x0C, 0xF4],
+		[0x04, 0xE0, 0xFC, 0xEC, 0x0C, 0xF4],
+		[0x04, 0xE0, 0xF8, 0xE8, 0x0C, 0xF4],
+		[0x04, 0xE0, 0xF8, 0xE8, 0x0C, 0xF4]]
+
+
+## $BCBB (bank 11) -- move both ways, and be stopped by whatever is in the
+## way.
+##
+## The four low bits of $0668 are the four sides it is pressed against: one
+## and two up and down, sixty-four and one hundred and twenty-eight right and
+## left.  While a side is set the thing has already been stopped there, so the
+## wall behind it is only asked about again every other frame ($BE3E); turning
+## round frees it at once.  Being stopped zeroes the speed on that axis and
+## sets the side.
+func move_boxed(n: int, s: PackedByteArray, shape: int) -> void:
+	var t: Array = BOXED[shape]
+	if (s[F_VY] | s[F_VYFR]) != 0:
+		var g: int = s[F_GROUND]
+		var go := true
+		if (g & 0x01) != 0:
+			# Held against the ceiling: falling frees it, rising waits.
+			if s[F_VY] < 0x80:
+				_free_up_down(s)
+			else:
+				go = its_turn(n, clock)
+		elif (g & 0x02) != 0:
+			if s[F_VY] >= 0x80:
+				_free_up_down(s)
+			else:
+				go = its_turn(n, clock)
+		if go:
+			var down: int = t[0] if s[F_VY] < 0x80 else t[1]
+			if walled_either_turn(n, s, 0x07, down, 0x00) < 0x80:
+				step_down(s)                       # $C8F4
+				_free_up_down(s)
+			else:
+				_free_up_down(s)
+				s[F_GROUND] = s[F_GROUND] | (0x02 if s[F_VY] < 0x80 else 0x01)
+				s[F_VY] = 0
+				s[F_VYFR] = 0
+	if (s[F_VX] | s[F_VXFR]) == 0:
+		return
+	var g2: int = s[F_GROUND]
+	var go2 := true
+	if (g2 & 0x80) != 0:
+		if s[F_VX] < 0x80:
+			_free_side(s)
+		else:
+			go2 = its_turn(n, clock)
+	elif (g2 & 0x40) != 0:
+		if s[F_VX] >= 0x80:
+			_free_side(s)
+		else:
+			go2 = its_turn(n, clock)
+	if not go2:
+		return
+	var side: int = t[4] if s[F_VX] < 0x80 else t[5]
+	var blocked: bool = ground_turn_clear(n, s, side, t[2]) >= 0x80 \
+			or ground_turn_clear(n, s, side, t[3]) >= 0x80
+	if not blocked:
+		step_side(s)                                   # $C8F7
+		_free_side(s)
+		return
+	_free_side(s)
+	s[F_GROUND] = s[F_GROUND] | (0x40 if s[F_VX] < 0x80 else 0x80)
+	s[F_VX] = 0
+	s[F_VXFR] = 0
+
+
+## $BD91 and $BD9A -- let go of the two sides up and down, and of the two
+## sides across.
+func _free_up_down(s: PackedByteArray) -> void:
+	s[F_GROUND] = s[F_GROUND] & 0xFC
+
+
+func _free_side(s: PackedByteArray) -> void:
+	s[F_GROUND] = s[F_GROUND] & 0x3F
+
+
+## $AD0F (bank 11) -- is one of his boomerangs on its way here?
+##
+## Only the three places $01 to $03 are looked at, and only a boomerang that
+## is running flat: it must have a speed across, none up or down, be within
+## thirty-two lines and ninety-six points, and be coming this way rather than
+## going.  A thing off the screen, or one already facing him, does not look.
+func boomerang_coming(s: PackedByteArray) -> bool:
+	if (s[F_XHI] | s[F_YHI]) != 0:                     # $C9C3 -- $FD8C
+		return false
+	if facing_hero(s):                                 # $C98D
+		return false
+	for y in range(1, 4):
+		var shot: PackedByteArray = slots[y]
+		if (shot[F_VX] | shot[F_VXFR]) == 0:
+			continue
+		if (shot[F_VY] | shot[F_VYFR]) != 0:
+			continue
+		var dy: int = abs(s[F_Y] - shot[F_Y])          # $C858 negates a borrow
+		if dy >= 0x20:
+			continue
+		var d: int = s[F_X] - shot[F_X]
+		var further: bool = d >= 0                     # the carry, kept
+		var dx: int = d if d >= 0 else (-d) & 0xFF
+		if dx >= 0x60:
+			continue
+		if shot[F_VX] >= 0x80:                         # it is running left
+			if not further:
+				return true
+		elif further:
+			return true
+	return false
+
+
+## $B500 (bank 11) -- the one that hops at him and spits, and that ducks a
+## boomerang by hopping the other way.
+func _mind_3c(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_3c(s)
+		1: _wait_3c(s)
+		2: _leap_3c(n, s)
+		3: _spit_3c(s)
+
+
+## $B50B -- it keeps the health it was laid out with, because that byte says
+## which of the two sorts it is, and takes eight of its own.
+func _wake_3c(s: PackedByteArray) -> void:
+	s[F_REC_BYTE] = s[F_LIFE]
+	s[F_LIFE] = 0x08                                   # $BE5A
+	s[F_MARK] = 0x01
+	start_anim(s, 0x26)                                # $BEAD
+	record_home_along(s)                               # $C9B1
+	s[F_SELF] = 0x28                                   # $BE75
+	s[F_STATE] += 1                                    # $C966
+
+
+## $B523 -- standing.  It counts down to a hop; a boomerang cuts the count
+## short and every other one of those hops goes backwards.
+func _wait_3c(s: PackedByteArray) -> void:
+	if boomerang_coming(s):                            # $AD0F
+		s[F_COUNT] = (s[F_COUNT] + 1) & 0xFF
+		if (s[F_COUNT] & 1) == 0:
+			set_speed_side_at_hero(s, 0xFE, 0x80)      # $BEBF with 80 FE
+		else:
+			set_speed_side_at_hero(s, 0xFF, 0x40)      # $BEBF with 40 FF
+			flip_speed_side(s)                         # $C91E
+	else:
+		s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+		if s[F_SELF] != 0:
+			face_hero(s)                               # $C8FD
+			return
+		# The second sort always spits; the first only now and then, and
+		# never while it is pressed against a wall.
+		var spit: bool = s[F_REC_BYTE] != 0
+		if not spit:
+			spit = random() >= 0xA0 and (s[F_GROUND] & 0xC0) == 0
+		if spit:
+			start_anim(s, 0x26)                        # $BEAD
+			s[F_STATE] = 3                             # $C975
+			return
+		set_speed_side_at_hero(s, 0xFE, 0x80)          # $BEBF with 80 FE
+	# $B563 -- how high the hop is: higher from low ground, higher again
+	# when he himself is up above.
+	if s[F_Y] < 0x50:
+		set_speed_down(s, 0xFC, 0x00)                  # $BEB9 with 00 FC
+	elif slots[0][F_Y] < 0x50:
+		set_speed_down(s, 0xF9, 0x00)                  # $BEB9 with 00 F9
+	else:
+		set_speed_down(s, 0xFA, 0x00)                  # $BEB9 with 00 FA
+	s[F_STATE] = 2                                     # $C972
+	if s[F_REC_BYTE] != 0:
+		set_speed_side(s, 0x00, 0x00)                  # $BEB3 with 00 00
+	# What it will walk off a wall with: half a point, the other way.
+	s[F_PUSH] = 0xFF if s[F_VX] < 0x80 else 0x00       # $BE91
+	s[F_ANG] = 0x80                                    # $BE98
+
+
+## $B5AA -- in the air.
+func _leap_3c(n: int, s: PackedByteArray) -> void:
+	move_boxed(n, s, 3)                                # $BCBB with Y = 3
+	if (s[F_GROUND] & 0x02) != 0:
+		# Down again: sit on the line and stand.
+		snap_down(s)                                   # $C981
+		start_anim(s, 0x26)                            # $BEAD
+		s[F_SELF] = 0x20                               # $BE75
+		s[F_STATE] = 1                                 # $C96F
+		return
+	add_speed_down(s, 0x4B)                            # $C90C
+	if s[F_VY] >= 0x80:
+		s[F_KIND] = 0x90                               # $BE6E
+	else:
+		s[F_KIND] = 0x91                               # $BE6E
+		if s[F_VY] >= 0x04:
+			set_speed_down(s, 0x04, 0x00)              # $BEB9 with 00 04
+	face_hero(s)                                       # $C8FD
+	if (s[F_GROUND] & 0xC0) != 0:
+		# Against a wall: away from it at what $B593 laid down.
+		s[F_VX] = s[F_PUSH]
+		s[F_VXFR] = s[F_ANG]
+		return
+	if strayed_far(s):                                 # $ACD0
+		flip_speed_side(s)                             # $C91E
+
+
+## $B605 -- spitting.  The run of pictures runs on, and the seventh frame of
+## the one before the last lets a $3D go.
+func _spit_3c(s: PackedByteArray) -> void:
+	face_hero(s)                                       # $C8FD
+	step_anim(s)                                       # $C837
+	if s[F_KIND] == 0x90:
+		s[F_STATE] = 1                                 # $C96F
+		s[F_KIND] = (s[F_KIND] - 1) & 0xFF
+		s[F_SELF] = 0x10 if s[F_REC_BYTE] == 0 else 0x38
+		return
+	if s[F_KIND] != 0x8F:
+		return
+	if s[F_HOLD] != 0x07:
+		return
+	var right: bool = (s[F_BITS] & 0x40) != 0          # $C990
+	make_child_aimed(s, 0x10 if right else 0xF0, 0xE2, 0x3D, 0x14,
+			0x00 if right else 0x80)                   # $C8E5
 
 ## $8000 -- every place gets its turn, in order, once a step.
 ##
@@ -892,10 +1278,12 @@ func its_turn(n: int, clock: int) -> bool:
 
 ## $F8A1 ($C8DF) -- put a new thing out beside this one, of the type in $24.
 ##
-## The offsets are signed bytes, and a thing may not be born off the screen:
-## if either of the two high bytes comes out other than zero the cartridge
-## pulls the caller's own return address off the stack and gives up, so the
-## mind that asked gets nothing more done that turn.  Here that is the -1.
+## The offsets are signed bytes, and a thing may not be born off the screen.
+## When one of the two high bytes comes out other than zero $F924 pulls its
+## own return address off the stack and returns straight to whoever called
+## $F8A1 with the carry up -- which is the same answer a nursery with no room
+## left gives.  Either way there is no child and the mind carries on, so both
+## are the -1 here.
 ##
 ## Only the eight places from six to thirteen can hold what a thing bears
 ## ($CB1B); the eight above them belong to the level's own list.
@@ -1230,11 +1618,21 @@ func snap_down_from(s: PackedByteArray, off: int) -> void:
 
 
 ## $9C44 -- is it under the water that has risen?  Only kinds five and nine of
-## an area have such water, and how high it stands lives in $29, which is not
-## kept yet: one area apiece uses those kinds.  Until it is, the answer is no,
-## which is the answer for every other area anyway.
-func in_water(_s: PackedByteArray) -> bool:
-	return false
+## an area have such water; everywhere else the answer is no.
+##
+## A thing counts as under it when it stands below the line, and also when it
+## stands no more than a point above it: the cartridge takes the difference,
+## turns it about when it came out short, and only then asks whether it is two
+## or more.
+func in_water(s: PackedByteArray) -> bool:
+	if lvl.kind != 5 and lvl.kind != 9:
+		return false
+	if s[F_YHI] != 0:
+		return false
+	var d: int = s[F_Y] - water
+	if d >= 0:
+		return true
+	return (-d) < 2
 
 
 ## $9BD0 -- fall or stand.  A thing already standing is left standing: it is
@@ -1989,14 +2387,7 @@ const CORNERS_42 := [[0x07, 0x07], [0xF8, 0x07], [0x07, 0xF8], [0xF8, 0xF8]]
 ## place on the screen, so that it can be put back there however far the view
 ## has gone since.
 func record_home(s: PackedByteArray) -> void:
-	# $FDF0 -- across, the view counts only where the level scrolls sideways.
-	if lvl.vertical:
-		s[F_KEEP] = s[F_X]
-		s[F_KEEP2] = s[F_XHI]
-	else:
-		var v: int = ((s[F_XHI] << 8) | s[F_X]) + cam
-		s[F_KEEP] = v & 0xFF
-		s[F_KEEP2] = (v >> 8) & 0xFF
+	record_home_along(s)
 	if not lvl.vertical:
 		s[F_PUSH] = s[F_Y]
 		s[F_ANG] = s[F_YHI]
@@ -2014,6 +2405,46 @@ func record_home(s: PackedByteArray) -> void:
 		y &= 0x0F
 		s[F_ANG] = (s[F_ANG] + 1) & 0xFF
 	s[F_PUSH] = y
+
+
+## $FDE5 ($C9B1) -- the first half of it on its own: only where it stands
+## along the level, which is all the ones that must not stray far need.
+func record_home_along(s: PackedByteArray) -> void:
+	# $FDF0 -- across, the view counts only where the level scrolls sideways.
+	if lvl.vertical:
+		s[F_KEEP] = s[F_X]
+		s[F_KEEP2] = s[F_XHI]
+	else:
+		var v: int = ((s[F_XHI] << 8) | s[F_X]) + cam
+		s[F_KEEP] = v & 0xFF
+		s[F_KEEP2] = (v >> 8) & 0xFF
+
+
+## $ACD0 in bank 11, shared by $38 and $3C -- has it walked too far from the
+## place it woke in?  Home less here, in sixteen bits; a screen and a half
+## either way is too far, and only if it is still going that way.
+func strayed_far(s: PackedByteArray) -> bool:
+	var here_hi := 0
+	var here_lo := 0
+	if lvl.vertical:
+		here_hi = s[F_XHI]
+		here_lo = s[F_X]
+	else:
+		var w: int = ((s[F_XHI] << 8) | s[F_X]) + cam
+		here_hi = (w >> 8) & 0xFF
+		here_lo = w & 0xFF
+	var d: int = (((s[F_KEEP2] << 8) | s[F_KEEP]) - ((here_hi << 8) | here_lo)) \
+			& 0xFFFF
+	var hi: int = d >> 8
+	var lo: int = d & 0xFF
+	var going_back: bool = (s[F_VX] & 0x80) != 0
+	if hi < 0x80:
+		if hi != 1 and lo < 0x80:
+			return false
+		return going_back
+	if hi != 0xFE and lo >= 0x80:
+		return false
+	return not going_back
 
 
 ## $FE08 -- and the way back.
@@ -2288,9 +2719,6 @@ func make_child_at_hero(s: PackedByteArray, side: int, down: int, what: int,
 ## line at all; anywhere else the cartridge answers $FF and "not under", which
 ## every caller reads as leave to carry on.  [gap, gone under]
 ##
-## The line the area was entered with is the line used here.  Whatever makes
-## it climb has not been found yet, so an area that fills while it is played
-## will read short until it is.
 func under_line(s: PackedByteArray) -> Array:
 	if lvl.kind != 5:                                  # $9D04
 		return [0xFF, false]
@@ -2298,7 +2726,7 @@ func under_line(s: PackedByteArray) -> Array:
 		return [0xFF, false]
 	if s[F_YHI] != 0:                                  # below the bottom
 		return [0x00, true]
-	var d: int = lvl.line - s[F_Y]                     # $9D0F
+	var d: int = water - s[F_Y]                        # $9D0F
 	if d < 0:
 		return [d & 0xFF, true]
 	return [d, false]

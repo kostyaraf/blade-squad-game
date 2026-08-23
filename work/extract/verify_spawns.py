@@ -106,6 +106,8 @@ def script_for(rows, stage, area, spot, script):
                        'whole': whole, 'shifts': r['shifts'],
                        'turns': r['turns'], 'seeds': r['seeds'],
                        'suits': r['suits'], 'ticks': r['ticks'],
+                       'helds': r['helds'],
+                       'waters': r['waters'],
                        'culled': sorted(r['culled']),
                        'got': r['got'], 'done': r['done']})
     return dict(

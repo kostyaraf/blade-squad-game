@@ -324,7 +324,12 @@ func _run_spawns(path: String) -> void:
 						his[k] = his_told[k]
 			# $1C -- which half of the table the sweep looks at this time.
 			things.frame = int(f["ticks"][i_tbl])
+			things.held = int(f["helds"][i_tbl])
 			things.suit = int(f["suits"][i_tbl])
+			# $29 -- the line the water or the lava has climbed to.  What
+			# moves it lives in the level's own frame, which the harness does
+			# not run, so it comes with the table.
+			things.water = int(f["waters"][i_tbl])
 			# His forty pictures of grace were counted down on the cartridge
 			# before the row was written down, so the sweep must not count
 			# them again.
