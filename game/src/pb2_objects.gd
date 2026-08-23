@@ -129,7 +129,10 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x39: "_mind_39",
 		0x09: "_mind_09", 0x0A: "_mind_0a",
 		0x3E: "_mind_3e", 0x3A: "_mind_3a", 0x3B: "_mind_3b",
-		0x40: "_mind_40"}
+		0x40: "_mind_40", 0x41: "_mind_41",
+		0x43: "_mind_43",
+		0x36: "_mind_36", 0x34: "_mind_34", 0x35: "_mind_35",
+		0x14: "_mind_14", 0x21: "_mind_21"}
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
@@ -1849,7 +1852,13 @@ func aim_clock(s: PackedByteArray, every: int, off: int) -> void:
 		if tx < 0 or tx > 0xFF:                        # $FF1B
 			tx = slots[0][F_X]
 		s[F_COUNT] = _atan(s[F_X], s[F_Y], tx, slots[0][F_Y])
-	# $FF37
+	aim_turn(s)
+
+
+## $FF37 ($C9C9) -- the second half of $FF00 on its own: bring the angle it
+## holds two points nearer the one it wants, and take the last small step
+## whole.
+func aim_turn(s: PackedByteArray) -> void:
 	var d: int = (s[F_COUNT] - s[F_SELF]) & 0xFF
 	if d == 0:
 		return
@@ -1860,6 +1869,65 @@ func aim_clock(s: PackedByteArray, every: int, off: int) -> void:
 		s[F_SELF] = (s[F_SELF] - 2) & 0xFF
 	else:
 		s[F_SELF] = (s[F_SELF] + 2) & 0xFF
+
+
+## $FF62 ($C9CC) -> $F690 -- the angle from this thing to him, weighing both
+## bytes of each place and not only the low one.  His own high bytes are taken
+## as nought, which is what $FF80 puts there.
+##
+## $F690 does not hand the difference over as a signed number: it halves the
+## whole of it and lays it in whichever of the two places makes the sign come
+## out right for $F6E2, leaving the other at nought.
+func aim_at_hero_wide(s: PackedByteArray) -> int:
+	var a: Array = _halve16(s[F_XHI], s[F_X], 0x00, slots[0][F_X])
+	var b: Array = _halve16(s[F_YHI], s[F_Y], 0x00, slots[0][F_Y])
+	return _atan(a[0], b[0], a[1], b[1])
+
+
+func _halve16(hi0: int, lo0: int, hi1: int, lo1: int) -> Array:
+	var d: int = (((hi0 << 8) | lo0) - ((hi1 << 8) | lo1)) & 0xFFFF
+	if d < 0x8000:                                     # $F69A
+		return [(d >> 1) & 0xFF, 0x00]
+	return [0x00, (((0x10000 - d) & 0xFFFF) >> 1) & 0xFF]
+
+
+## $FD5F ($C993) -- look the way it moves.
+func face_by_speed(s: PackedByteArray) -> void:
+	if s[F_VX] >= 0x80:
+		s[F_BITS] = s[F_BITS] & 0xBF                   # $FD6D
+	else:
+		s[F_BITS] = s[F_BITS] | 0x40                   # $FD64
+
+
+## $FC3C ($C942) -- a free place, the level's own eight ($CB0B) asked before
+## the eight a thing may bear ($CB1B).  Nothing is written into it here.
+func free_slot_wide() -> int:
+	for k in range(FIRST_PLACED, SLOTS):               # $CB0B
+		if slots[k][F_TYPE] == 0:
+			return k
+	for k in range(FIRST_LIVE, FIRST_PLACED):          # $CB1B
+		if slots[k][F_TYPE] == 0:
+			return k
+	return -1
+
+
+## $FB73 ($C8EB) -- step, unless the place it stands in is solid, and then go.
+func ground_or_die(n: int, s: PackedByteArray) -> void:
+	if ground_turn_clear(n, s, 0x00, 0x00) >= 0x80:
+		clear(n)                                       # $D6D4
+		return
+	step_both(s)                                       # $FA08
+
+
+## $FD41 ($C98D) -- is it looking his way, and how far off sideways is he?
+## The answer is the pair; the first is true when the two agree.
+func facing_hero(s: PackedByteArray) -> Array:
+	var right: bool = s[F_X] < slots[0][F_X]           # $CADB
+	var d: int = (s[F_X] - slots[0][F_X]) & 0xFF
+	if right:
+		d = (-d) & 0xFF
+	var looks_right: bool = (s[F_BITS] & 0x40) != 0
+	return [right == looks_right, d]
 
 
 ## $CADB ($C86D) and $CAF1 ($C870) -- how far he is, weighing only the low
@@ -5103,3 +5171,508 @@ func _shoot_40(s: PackedByteArray) -> void:
 	s[F_REC_BYTE] = 0x80                               # $BE9F 80
 	set_speed_side(s, 0x00, 0x00)                      # $BEB3 00 00
 	set_speed_down(s, 0x00, 0x00)                      # $BEB9 00 00
+
+
+## $BA07 and $BA0B -- where the burst is put out, by the quarter of the turn
+## the shot points into; $BA72 and $BA7A the two corners it feels for when it
+## bounces, and $BA82 the angle it takes from each; $BA9E which way round it
+## is drawn; $BAB1 and $BAB5 what sits right in front of its nose.
+const BORN_41_DOWN := [0x10, 0x10, 0xFE, 0xFE]
+const BORN_41_SIDE := [0x08, 0xF7, 0xF7, 0x08]
+const FEEL_41_DOWN := [0xF7, 0xF7, 0x08, 0x08, 0x08, 0x08, 0xF7, 0xF7]
+const FEEL_41_SIDE := [0x08, 0xF7, 0xF7, 0x08, 0xF7, 0x08, 0x08, 0xF7]
+const TURN_41 := [0xE0, 0xA0, 0x60, 0x20, 0x60, 0x20, 0xE0, 0xA0]
+const BITS_41 := [0x00, 0x40, 0x00, 0x40]
+const NOSE_41_DOWN := [0x08, 0x08, 0xF7, 0xF7]
+const NOSE_41_SIDE := [0x08, 0xF7, 0xF7, 0x08]
+
+
+## $B9A4 (bank 11) -- what the hovering gunner fires.  It goes flat out along
+## one of the four slants, bursts on the first wall, and comes off it again
+## along the slant the table names.  $C9D2 at its head marks its bit in $0117,
+## the drawing's own book, which is not kept here.
+func _mind_41(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:                                  # $C97E
+		0: _wake_41(n, s)
+		1: _fly_41(n, s)
+		2: _burst_41(n, s)
+		3: _bounce_41(n, s)
+
+
+## $B9B2 -- it comes to itself on its own frame, and not at all if it was born
+## inside a wall.
+func _wake_41(n: int, s: PackedByteArray) -> void:
+	if not its_turn(n, clock):                         # $BE3E
+		return
+	if _nose_41(n, s) >= 0x80:                         # $BAA2
+		clear(n)                                       # $C810
+		return
+	s[F_LIFE] = 0xFF                                   # $BE5A FF
+	s[F_MARK] = 0x01
+	s[F_KEEP] = 0xC8                                   # $BE83 C8
+	_look_41(s)                                        # $BA94
+	_glow_41(s)                                        # $BAB9
+	s[F_STATE] += 1                                    # $C966
+
+
+## $B9D6 -- flying.  Two hundred frames of life run down while it goes; the
+## wall its nose meets makes the burst.
+func _fly_41(n: int, s: PackedByteArray) -> void:
+	_glow_41(s)                                        # $BAB9
+	step_both(s)                                       # $C8F1
+	if _nose_41(n, s) < 0x80:                          # $BAA2
+		if s[F_KEEP] != 0:                             # $B9E1
+			s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF
+		return
+	var q: int = _quarter_41(s)                        # $BA8A
+	if make_child(s, BORN_41_SIDE[q], BORN_41_DOWN[q], 0x43) < 0:
+		clear(n)                                       # $B9FD
+		return
+	s[F_STATE] += 1                                    # $C966
+
+
+## $BA0F -- it carries on into the wall until the ground says so.  With life
+## still on it, it bounces; run out, it goes.
+func _burst_41(n: int, s: PackedByteArray) -> void:
+	step_both(s)                                       # $C8F1
+	if ground_turn_clear(n, s, 0x00, 0x00) < 0x80:     # $BECB 00 00
+		return
+	if s[F_KEEP] == 0:                                 # $BA1A
+		clear(n)                                       # $C810
+		return
+	s[F_COUNT] = 0x00                                  # $BE7C 00
+	s[F_KEEP2] = 0x03                                  # $BE8A 03
+	_glow_41(s)                                        # $BAB9
+	s[F_STATE] += 1                                    # $C966
+
+
+## $BA2D -- the bounce.  It feels one corner, and if that is blocked too it
+## tries the other four entries along; blocked both ways it simply turns back
+## the way it came.
+func _bounce_41(n: int, s: PackedByteArray) -> void:
+	if not its_turn(n, clock):                         # $BE3E
+		return
+	var i: int = (_quarter_41(s) + s[F_COUNT]) & 0xFF  # $BA35
+	if ground_turn_clear(n, s, FEEL_41_SIDE[i], FEEL_41_DOWN[i]) >= 0x80:
+		if s[F_COUNT] == 0x04:                         # $BA61
+			_turn_41(s, s[F_SELF] ^ 0x80)              # $BA6A
+			return
+		s[F_COUNT] = 0x04                              # $BE7C 04
+		return
+	_turn_41(s, TURN_41[i])                            # $BA4C
+
+
+## $BA4F -- take the new angle and set off along it again.
+func _turn_41(s: PackedByteArray, ang: int) -> void:
+	s[F_SELF] = ang
+	set_speed_at(s, 0x10, ang)                         # $C8AF
+	_look_41(s)                                        # $BA94
+	s[F_STATE] = 1                                     # $C96F
+
+
+## $BA8A -- which quarter of the turn it points into.  The cartridge rolls the
+## angle three times through the carry and keeps two bits, which comes to the
+## top two bits of the angle whatever the carry happened to be.
+func _quarter_41(s: PackedByteArray) -> int:
+	return (s[F_SELF] >> 6) & 0x03
+
+
+## $BA94 -- which way round it is drawn.
+func _look_41(s: PackedByteArray) -> void:
+	s[F_BITS] = BITS_41[_quarter_41(s)]
+
+
+## $BAA2 -- what is right in front of its nose.
+func _nose_41(n: int, s: PackedByteArray) -> int:
+	var q: int = _quarter_41(s)
+	return ground_turn_clear(n, s, NOSE_41_SIDE[q], NOSE_41_DOWN[q])
+
+
+## $BAB9 -- for its first three frames it is not drawn at all, so that it does
+## not flash inside the thing that fired it.
+func _glow_41(s: PackedByteArray) -> void:
+	if s[F_KEEP2] != 0:
+		s[F_KEEP2] = (s[F_KEEP2] - 1) & 0xFF
+		s[F_KIND] = 0x00                               # $BE6E 00
+		return
+	s[F_KIND] = 0x83                                   # $BE6E 83
+
+
+## $B989 (bank 11) -- the burst that shot leaves on the wall.  The waking
+## state falls straight on into the counting one.
+func _mind_43(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:                                # $B989
+		start_anim(s, 0x31)                            # $BEAD 31
+		s[F_SELF] = 0x0E                               # $BE75 0E
+		s[F_STATE] += 1                                # $C966
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF                 # $B999
+	if s[F_SELF] == 0:
+		clear(n)                                       # $C810
+	else:
+		step_anim(s)                                   # $C837
+
+
+## --- Цепь ($36 с детьми $34 и $35, банк 11) --------------------------------
+##
+## Голова ($36) сидит там, где её положил обход уровня, и родит пять звеньев.
+## Каждое звено помнит соседа ближе к голове (F_KEEP2) и соседа дальше
+## (F_ANG), а голова помнит хвост -- последнее звено -- в своём F_KEEP2 и
+## держит в F_PUSH и F_ANG набор битов: по одному на каждое занятое место,
+## младший бит F_PUSH -- место шесть.
+##
+## Ход звена ($AE17) раз в четыре хода: встать туда, где стоит сосед ближе к
+## голове, взять его же длину (F_REC_BYTE) и отойти от него на эту длину под
+## своим углом (F_SELF).  Длина растёт от головы: пока голова тянется, её
+## F_REC_BYTE ползёт вниз по цепи по звену за раз, и цепь вытягивается волной.
+
+const TYPE_36 := [0x34, 0x35, 0x35, 0x35, 0x35]
+const MASK_36 := [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80]
+const DEATH_36 := [0x01, 0x0B, 0x15, 0x1F, 0x29]
+const HOLD_35 := [0x00, 0x08, 0x09, 0x0A, 0x0B]
+const CLAMP_34 := [0x84, 0x84, 0xFC, 0x04, 0x7C, 0x04]
+
+
+## $AE8D -- голова.
+func _mind_36(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _born_36(n, s)
+		1: _reach_36(n, s)
+		2: _fade_worm(n, s)
+
+
+## $AE9A -- построить цепь.  Пока голова за краем или слишком низко, ничего.
+func _born_36(n: int, s: PackedByteArray) -> void:
+	if (s[F_XHI] | s[F_YHI]) != 0:                     # $C9C3
+		clear(n)                                       # $C810
+		return
+	if s[F_Y] >= 0xC0:                                 # $AEA2
+		return
+	if s[F_LIFE] != 0xFF:                              # $AEA9
+		s[F_GROUND] = s[F_LIFE]
+	s[F_LIFE] = 0xFF                                   # $BE5A
+	s[F_MARK] = 0x01
+	s[F_KIND] = 0x6D                                   # $BE6E
+	s[F_REC_BYTE] = 0x00                               # $BE9F
+	var ang: int = 0x40 if s[F_GROUND] != 0 else 0xC0  # $AEC6
+	var prev: int = n
+	var low := 0
+	var high := 0
+	for i in range(4, -1, -1):                         # $04 = 4 .. 0
+		var c: int = free_slot_wide()                  # $C942
+		if c < 0:                                      # $AF46
+			_hold_mask_36(s, low, high)
+			_sweep_36(s)
+			clear(n)
+			return
+		var b: PackedByteArray = slots[c]
+		b[F_SELF] = ang                                # $AEDC
+		b[F_COUNT] = ang
+		b[F_KEEP] = (b[F_KEEP] + 1) & 0xFF             # $AEE2
+		b[F_KEEP2] = prev                              # $AEE7
+		var p: PackedByteArray = slots[prev]
+		p[F_ANG] = c                                   # $AEEC
+		slots[prev] = p
+		prev = c
+		b[F_REC_BYTE] = 0x00                           # $BE9F
+		b[F_GROUND] = s[F_GROUND]                      # $AEF7
+		b[F_PUSH] = i                                  # $AEFF
+		b[F_TYPE] = TYPE_36[i]                         # $AF03
+		b[F_LIFE] = 0xFF                               # $BE5A
+		b[F_MARK] = 0x01
+		slots[c] = b
+		_link_step_place(c)                            # $AE2C
+		var bit: int = MASK_36[(c - 0x06) & 0x07]      # $AF10
+		if c >= 0x0E:
+			high |= bit
+		else:
+			low |= bit
+	s[F_KEEP2] = prev                                  # $AF30
+	_hold_mask_36(s, low, high)                        # $AF39
+	s[F_STATE] = 1                                     # $C966
+
+
+## $AF39 -- набор битов ложится в два поля головы.
+func _hold_mask_36(s: PackedByteArray, low: int, high: int) -> void:
+	s[F_PUSH] = low
+	s[F_ANG] = high
+
+
+## $AF5C -- голова тянется и убирается.  Хвост -- последнее звено -- она
+## помнит в F_KEEP2; по его жизни она и решает, не пора ли умирать.
+func _reach_36(n: int, s: PackedByteArray) -> void:
+	var tail: int = s[F_KEEP2]
+	var t: PackedByteArray = slots[tail]
+	if t[F_LIFE] < 0x76:                               # $AF62
+		_die_36(s)
+		return
+	var off: bool = (s[F_XHI] | s[F_YHI]) != 0         # $C9C3
+	var tail_gone: bool = ((t[F_YHI] | t[F_XHI]) != 0
+			or t[F_Y] >= 0xC0)
+	if off:                                            # $AF83
+		if tail_gone:
+			_sweep_36(s)                               # $AFAD
+			clear(n)
+			return
+		_pull_36(s)
+		return
+	if s[F_Y] < 0xC0:                                  # $AF6E
+		_push_36(s)                                    # $AF9D
+		return
+	if tail_gone:                                      # $AF72
+		_sweep_36(s)                                   # $AFB3
+		s[F_STATE] = (s[F_STATE] - 1) & 0xFF           # $C969
+		return
+	_pull_36(s)
+
+
+## $AF92 -- короче на один.
+func _pull_36(s: PackedByteArray) -> void:
+	if s[F_REC_BYTE] >= 0x01:
+		s[F_REC_BYTE] -= 1
+
+
+## $AF9D -- длиннее на два, но не дальше $70.
+func _push_36(s: PackedByteArray) -> void:
+	var a: int = s[F_REC_BYTE] + 0x02
+	if a >= 0x71:
+		a = 0x70
+	s[F_REC_BYTE] = a
+
+
+## $AFB9 -- умирать всей цепью: каждому звену свой срок по его месту в ней,
+## голове -- самый долгий.  Набор битов при этом вычитывается досуха.
+func _die_36(s: PackedByteArray) -> void:
+	for k in _mask_slots_36(s):
+		var b: PackedByteArray = slots[k]
+		b[F_REC_BYTE] = DEATH_36[b[F_PUSH]]            # $AFD2
+		b[F_STATE] = 2                                 # $C972
+		slots[k] = b
+	s[F_REC_BYTE] = 0x33                               # $BE9F
+	s[F_STATE] = 2                                     # $C972
+
+
+## $AFEF -- убрать всё, что в наборе.
+func _sweep_36(s: PackedByteArray) -> void:
+	for k in _mask_slots_36(s):
+		clear(k)                                       # $C810
+
+
+## Шестнадцать сдвигов вправо через перенос: F_ANG -- старшая половина набора,
+## F_PUSH -- младшая, и первым выходит место шесть.
+func _mask_slots_36(s: PackedByteArray) -> Array:
+	var out: Array = []
+	for i in range(0x10):
+		var carry: int = s[F_PUSH] & 0x01
+		s[F_PUSH] = (s[F_PUSH] >> 1) | ((s[F_ANG] & 0x01) << 7)
+		s[F_ANG] = s[F_ANG] >> 1
+		if carry != 0:
+			out.append(0x06 + i)
+	return out
+
+
+## $AE75 -- общий третий ход всех трёх: досчитать до нуля и лопнуть.  Хвосту
+## ($34) вдобавок гасят F_KEEP, что $FEAA только что поднял.
+func _fade_worm(n: int, s: PackedByteArray) -> void:
+	s[F_REC_BYTE] = (s[F_REC_BYTE] - 1) & 0xFF
+	if s[F_REC_BYTE] != 0:
+		return
+	var was: int = s[F_TYPE]
+	make_burst(n)                                      # $C9C0
+	if was == 0x34:
+		var b: PackedByteArray = slots[n]
+		b[F_KEEP] = 0x00                               # $BE83
+		slots[n] = b
+
+
+## $AD64 -- звено.
+func _mind_35(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_35(s)
+		1: _swing_35(n, s)
+		2: _fade_worm(n, s)
+
+
+func _wake_35(s: PackedByteArray) -> void:
+	s[F_KIND] = 0x6D                                   # $BE6E
+	s[F_STATE] = 1                                     # $C966
+
+
+## $AD74 -- взять угол у соседа дальше по цепи и потянуться за ним.
+func _swing_35(n: int, s: PackedByteArray) -> void:
+	_follow_35(s)                                      # $AE56
+	_link_step(n, s)                                   # $AE17
+
+
+## $AE56 -- ждать свой срок, и по нему списать угол соседа (F_ANG).  Срок тем
+## длиннее, чем ближе звено к голове.
+func _follow_35(s: PackedByteArray) -> void:
+	s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF
+	if s[F_KEEP] == 0:
+		s[F_KEEP] = HOLD_35[s[F_PUSH]]                 # $AE5E
+		s[F_COUNT] = slots[s[F_ANG]][F_SELF]           # $AE67
+	aim_turn(s)                                        # $C9C9
+
+
+## $AE17 -- ход звена, раз в четыре хода.
+func _link_step(n: int, s: PackedByteArray) -> void:
+	if ((n ^ clock) & 0x03) != 0:                      # $AE18
+		return
+	_link_step_place(n)                                # $AE2C
+	set_speed_at(s, s[F_REC_BYTE], s[F_SELF])          # $C8AF
+	step_both(s)                                       # $C8F1
+
+
+## $AE2C -- встать туда, где стоит сосед ближе к голове, и взять его длину.
+func _link_step_place(n: int) -> void:
+	var s: PackedByteArray = slots[n]
+	var p: PackedByteArray = slots[s[F_KEEP2]]
+	s[F_YHI] = p[F_YHI]
+	s[F_Y] = p[F_Y]
+	s[F_XHI] = p[F_XHI]
+	s[F_X] = p[F_X]
+	s[F_XFR] = 0x00                                    # $AE47
+	s[F_YFR] = 0x00
+	s[F_REC_BYTE] = p[F_REC_BYTE]                      # $AE4F
+	slots[n] = s
+
+
+## $AD7A -- хвост: тот, что стреляет и по чьей жизни умирает вся цепь.
+func _mind_34(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_34(s)
+		1: _aim_34(n, s)
+		2: _fade_worm(n, s)
+
+
+func _wake_34(s: PackedByteArray) -> void:
+	s[F_KIND] = 0x6C                                   # $BE6E
+	s[F_LIFE] = 0x7F                                   # $BE63
+	s[F_HOLD] = 0x90                                   # $AD8B
+	s[F_STATE] = 1                                     # $C966
+
+
+## $AD93 -- пока хвост на виду, угол берётся по младшим байтам ($C9C6); за
+## краем -- по обоим ($C9CC), и реже.
+func _aim_34(n: int, s: PackedByteArray) -> void:
+	if (s[F_XHI] | s[F_YHI]) == 0:                     # $C9C3
+		aim_clock(s, 0x11, 0x00)                       # $C9C6
+	else:
+		s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF             # $ADA2
+		if s[F_KEEP] == 0:
+			s[F_KEEP] = 0x11                           # $BE83
+			s[F_COUNT] = aim_at_hero_wide(s)           # $C9CC
+		aim_turn(s)                                    # $C9C9
+	# $ADB4 -- и загнать угол в тот сектор, что цепи позволен.
+	var i: int = 0x03 if s[F_GROUND] != 0 else 0x00
+	if ((s[F_COUNT] - CLAMP_34[i]) & 0xFF) >= 0x78:    # $ADC1
+		i += 1
+		if not hero_is_left(s):                        # $C8FA
+			i += 1
+		s[F_COUNT] = CLAMP_34[i]
+	_link_step(n, s)                                   # $AE17
+	face_by_speed(s)                                   # $C993
+	s[F_HOLD] = (s[F_HOLD] - 1) & 0xFF
+	if s[F_HOLD] == 0:                                 # $ADF0
+		s[F_HOLD] = 0xFF
+		var m: int = _muzzle_34(s)
+		make_child_at_hero(s, m, 0x00, 0x14, 0x0C)     # $C8E2
+		return
+	if s[F_HOLD] == 0x50:                              # $ADE3
+		_spit_34(s)
+
+
+## $AE0A -- откуда выходит выстрел: десять точек в ту сторону, куда смотрит.
+func _muzzle_34(s: PackedByteArray) -> int:
+	return 0x0A if (s[F_BITS] & 0x40) != 0 else 0xF6   # $C990
+
+
+## $9055 (банк 10) -- бросить хватку ($21), но только если хвост на виду,
+## смотрит на него и он не ближе $28 и не дальше $50 вбок.
+func _spit_34(s: PackedByteArray) -> void:
+	if (s[F_XHI] | s[F_YHI]) != 0:                     # $C9C3
+		return
+	var look: Array = facing_hero(s)                   # $C98D
+	if not look[0]:
+		return
+	if look[1] >= 0x50 or look[1] < 0x28:              # $9063
+		return
+	var c: int = make_child(s, _muzzle_34(s), 0x00, 0x21)
+	if c < 0:                                          # $9076
+		return
+	var b: PackedByteArray = slots[c]
+	set_speed_reach(b, 0x40, 0xFE)                     # $C9CF
+	slots[c] = b
+
+
+## $8BD8 -- то, что хвост цепи кидает в него: одна картинка и прямой полёт,
+## пока не упрётся.
+func _mind_14(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_MARK] = 0x02                               # $C9A2
+		s[F_KIND] = 0x2A                               # $BE6E
+		s[F_STATE] = 1                                 # $C966
+		return
+	ground_or_die(n, s)                                # $C8EB
+
+
+## $908E (банк 10) -- хватка: летит по дуге, ложится на землю и держит его,
+## пока не выйдет её срок.
+func _mind_21(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_21(s)
+		1: _fly_21(n, s)
+		2: _hold_21(n, s)
+
+
+func _wake_21(s: PackedByteArray) -> void:
+	s[F_LIFE] = 0xFF                                   # $BE5A
+	s[F_MARK] = 0x01
+	s[F_KIND] = 0x6E                                   # $BE6E
+	face_by_speed(s)                                   # $C993
+	s[F_STATE] = 1                                     # $C966
+
+
+## $90A5 -- падать не быстрее четырёх точек за ход; упёрлась низом -- лечь.
+func _fly_21(n: int, s: PackedByteArray) -> void:
+	add_speed_down(s, 0x10)                            # $C90C
+	if s[F_VY] < 0x80:
+		if s[F_VY] >= 0x04:                            # $90AF
+			set_speed_down(s, 0x04, 0x00)              # $BEB9
+		if ground_turn_clear(n, s, 0x00, 0x04) >= 0x80:
+			_land_21(s)                                # $90D6
+			return
+	else:
+		if ground_turn_clear(n, s, 0x00, 0xFC) >= 0x80:
+			set_speed_down(s, 0x00, 0x00)              # $BEB9
+	_slide_21(n, s)                                    # $90FC
+	step_down(s)                                       # $C8F4
+
+
+func _land_21(s: PackedByteArray) -> void:
+	snap_down(s)                                       # $C981
+	s[F_MARK] = 0x80                                   # $C9AB
+	s[F_KIND] = (s[F_KIND] + 1) & 0xFF                 # $90DC
+	s[F_STATE] = 2                                     # $C966
+
+
+## $90FC -- вбок, пока впереди нет стены; есть -- встать.
+func _slide_21(n: int, s: PackedByteArray) -> void:
+	if walled_ahead_turn(n, s, 0xF8, 0x01, 0xFF, 0x00) >= 0x80:
+		set_speed_side(s, 0x00, 0x00)                  # $C906
+		return
+	step_side(s)                                       # $C8F7
+
+
+## $90E2 -- лежит и держит.  Что пишется в героя ($05A2 без счёта -- его
+## собственное поле), в проверке умов приходит из картриджа готовым; здесь оно
+## записано как есть.
+func _hold_21(n: int, s: PackedByteArray) -> void:
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] == 0:
+		clear(n)                                       # $C810
+		return
+	ride(s, 0x08, 0xF8)                                # $BF20
+	if held != 0:                                      # $90F1
+		var h: PackedByteArray = slots[0]
+		h[F_HOLD] = 0x80                               # $90F8
+		slots[0] = h
