@@ -90,6 +90,22 @@ var aim := PackedByteArray()
 var atan := PackedByteArray()
 var octant := PackedByteArray()
 var quarter := PackedByteArray()
+## $B44F -- how far above $04C6 the middle of a thing lies, signed.
+var middle := PackedByteArray()
+## $B3EF -- how much health a touch of this type takes off the hero.
+var hurt := PackedByteArray()
+## $B768 -- half a width and half a height per type.  A big thing ($50 and up)
+## has three of them and picks by $5F, the step it is on.
+var box: Array = []
+## $B721 and $B725 -- how hard a shot hits and how big it is, by its own type.
+var shot_power := PackedByteArray()
+var shot_size := PackedByteArray()
+## $B717 -- the state a big thing goes into when it is killed.
+var big_death := PackedByteArray()
+## $B73C and $B764 -- two lists of types death reads.
+var leaves_one := PackedByteArray()
+var written_down := PackedByteArray()
+
 ## $8212 and $820A -- which sweep a type belongs to and how far past the edge
 ## that sweep lets a thing get.  Read from data/pb2/objects.json.
 var cull_class := PackedByteArray()
@@ -109,6 +125,20 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
+## $1C -- the console's own count of pictures.  The touch sweep looks at half
+## the places in one picture and the other half in the next, and it is this
+## count, not $0119, that says which half.
+var frame := 0
+## $27 -- three while a level is being played.
+var playing := 3
+## $5F -- which step a big thing is on; its box changes with it.
+var boss_step := 0
+## $4A -- the switches of the level; $B5B7 reads bit three of it.
+var switch := 0
+## The harness hands the hero's row over from the cartridge, already counted
+## down and already blinked.  When it does, the touch sweep must not count it
+## down a second time.
+var hero_told := false
 ## $0168:$0169 -- the seed the whole game shares.
 var seed := 0
 ## $9A -- which suit he has on; nought is none.
@@ -169,6 +199,18 @@ func _init(level: Pb2Level) -> void:
 		octant.append(int(v))
 	for v in t["quarter"]:
 		quarter.append(int(v))
+	middle = PackedByteArray(t["middle"])
+	hurt = PackedByteArray(t["hurt"])
+	shot_power = PackedByteArray(t["shot_power"])
+	shot_size = PackedByteArray(t["shot_size"])
+	big_death = PackedByteArray(t["big_death"])
+	leaves_one = PackedByteArray(t["leaves_one"])
+	written_down = PackedByteArray(t["written_down"])
+	for r in t["box"]:
+		var steps := []
+		for pair in r:
+			steps.append([int(pair[0]), int(pair[1])])
+		box.append(steps)
 	for r in t["anims"]:
 		var run := {"last": int(r["last"]), "hold": int(r["hold"]),
 				"first": int(r["first"])}
@@ -297,6 +339,259 @@ func shift(dv: int) -> void:
 		var v := (((s[hi] << 8) | s[lo]) - dv) & 0xFFFF
 		s[lo] = v & 0xFF
 		s[hi] = v >> 8
+
+
+# --- Touching ---------------------------------------------------------
+#
+# $B23D and what hangs off it, all in bank 7.  See work/re/pb2_contact.md.
+# It runs at $CF08, between the hero's own step and the turns of the things,
+# and it works from his side: he walks the places and settles who touched
+# whom, both ways -- his shoulder against a thing, and his shots against it.
+
+
+## Two bytes, and how far apart they are, in eight bits ($B2EF).
+static func _apart(a: int, b: int) -> int:
+	var d := (a - b) & 0xFF
+	if a >= b:
+		return d
+	return (0x100 - d) & 0xFF
+
+
+## $B768 -- half a width and half a height.  A big thing keeps three of them
+## and picks by the step it is on.
+func _box_of(s: PackedByteArray) -> Array:
+	var t: int = s[F_TYPE]
+	var b: Array = box[t]
+	if t < 0x50 or b.size() == 1:
+		return b[0]
+	return b[boss_step % b.size()]
+
+
+## $B44F -- the middle of a thing, up the screen from where it stands.
+func _middle_of(s: PackedByteArray) -> int:
+	return (s[F_Y] - middle[s[F_TYPE]]) & 0xFF
+
+
+## $B23D -- the sweep.
+##
+## Half the places in one picture and half in the next: a thing is asked about
+## only every other frame, and slipping past one at speed without being touched
+## is something the cartridge lets happen.
+func contact() -> void:
+	if playing != 3:
+		return
+	var hero: PackedByteArray = slots[0]
+	if hero[F_LIFE] == 0:
+		return
+	# $B248 -- the forty pictures after a blow are counted down here and
+	# nowhere else, and he flashes for as long as they last.  When the harness
+	# hands his row over it has already been counted down on the cartridge.
+	if not hero_told and hero[F_STUN] != 0:
+		hero[F_STUN] -= 1
+		hero[F_BITS] ^= 0x80
+	var n: int = 6 if (frame & 1) != 0 else 7
+	while n < SLOTS:
+		var s: PackedByteArray = slots[n]
+		if slots[0][F_LIFE] != 0 and s[F_TYPE] != 0 \
+				and (s[F_XHI] | s[F_YHI]) == 0:
+			_touch(n)
+			_shots(n)
+		n += 2
+
+
+## $B285 -- is this one asked about at all, and does the hero reach it?
+func _touch(n: int) -> void:
+	var s: PackedByteArray = slots[n]
+	var hero: PackedByteArray = slots[0]
+	if s[F_TYPE] == 0x0C:
+		return                                  # the door is never touched
+	if hero[F_LIFE] == 0:
+		return
+	if hero[F_STUN] != 0:
+		# While he flashes only two sorts still reach him.
+		if (s[F_MARK] & 0x50) == 0:
+			return
+	else:
+		hero[F_BITS] &= 0x7F                    # $B29E -- done flashing
+		if (s[F_MARK] & 0x88) != 0:
+			return
+	# His own box depends on what he is doing ($B2C1).
+	var up := 0x0F
+	var half_w := 6
+	var half_h := 13
+	if (hero[F_MARK] & 0x08) != 0:
+		up = 0x0C
+		half_w = 4
+		half_h = 9
+	elif (hero[F_MARK] & 0x10) != 0:
+		up = 0x08
+		half_w = 8
+		half_h = 8
+	var b := _box_of(s)
+	var mid := _middle_of(s)
+	var dx := _apart(hero[F_X], s[F_X])
+	var dy := _apart((hero[F_Y] - up) & 0xFF, mid)
+	if ((int(b[0]) + half_w) & 0xFF) < dx:
+		return
+	if ((int(b[1]) + half_h) & 0xFF) < dy:
+		return
+	if (s[F_MARK] & 0x40) != 0:
+		_pick_up(n)                             # $B4AF
+		return
+	if (s[F_MARK] & 0x10) != 0:
+		_trip(n)                                # $B5A5
+		return
+	_wound_hero(n)                              # $B39E
+	s = slots[n]
+	if s[F_MARK] == 0x80 or s[F_TYPE] == 0:
+		return                                  # $B33D -- it is already gone
+	# $B36A -- forty pictures of grace, and which way the blow threw him.
+	hero[F_STUN] = 0x28
+	if (s[F_MARK] & 0x02) != 0:
+		hero[F_PUSH] = 0xFF
+	elif hero[F_X] >= s[F_X]:
+		hero[F_PUSH] = 0x00
+	else:
+		hero[F_PUSH] = 0x01
+	if (s[F_MARK] & 0x02) != 0:
+		clear(n)                                # it ends on him
+
+
+## $B39E -- the suit strikes back, and what is left of the blow reaches him.
+func _wound_hero(n: int) -> void:
+	var s: PackedByteArray = slots[n]
+	var hero: PackedByteArray = slots[0]
+	if (hero[F_MARK] & 0x10) != 0 and suit != 0:
+		if (s[F_MARK] & 0x02) != 0:
+			clear(n)
+			return
+		_wound(n, 3)
+		if slots[n][F_LIFE] == 0:
+			return                              # it died; he is not touched
+	# $B3C0 -- health off him, by what the thing is.
+	if hero[F_LIFE] == 0:
+		return
+	var v: int = hero[F_LIFE] - hurt[s[F_TYPE]]
+	hero[F_LIFE] = v & 0xFF
+	if v <= 0:
+		hero[F_LIFE] = 0
+		hero[F_KEEP] = 0
+		slide = 0
+
+
+## $B4AF -- what he picks up.  The thing is gone either way; the second sort
+## is remembered for the whole game ($E580).
+##
+## What each one gives him -- $B4CD and the eight little routines after it --
+## is his own counters, not the table, and waits for the head-up display.
+func _pick_up(n: int) -> void:
+	var s: PackedByteArray = slots[n]
+	var what: int = s[F_TYPE]
+	if what == 0x02:
+		var f: int = s[F_LIFE]
+		var bit: int = pickup_bit[(f >> 4) & 0x0F]
+		if (f & 1) != 0:
+			got |= bit << 8
+		else:
+			got |= bit
+	if what == 0x01 or what == 0x02:
+		clear(n)
+
+
+## $B5A5 -- the ones that go off when he stands on them.
+func _trip(n: int) -> void:
+	var s: PackedByteArray = slots[n]
+	if s[F_TYPE] == 0x03:
+		if slots[0][F_MARK] != 0:
+			return
+		if (switch & 0x08) == 0:
+			return
+	s[F_STATE] = 0x02
+	s[F_MARK] = 0x80
+
+
+## $B5D5 -- his five shots against this one thing.
+func _shots(n: int) -> void:
+	var s: PackedByteArray = slots[n]
+	if s[F_STUN] != 0:
+		return
+	if (s[F_BITS] & 0x80) != 0:
+		return
+	for y in range(1, 6):
+		var shot: PackedByteArray = slots[y]
+		if (shot[F_YHI] | shot[F_XHI]) != 0:
+			continue
+		var what: int = shot[F_TYPE]
+		if what == 0:
+			continue
+		if what >= shot_size.size():
+			continue          # nothing the hero throws is bigger than three
+		_hit(n, y, shot_size[what])
+
+
+## $B606 -- can this shot hurt this thing, and does it reach it?
+func _hit(n: int, y: int, size: int) -> void:
+	var s: PackedByteArray = slots[n]
+	if s[F_TYPE] == 0:
+		return
+	if s[F_LIFE] == 0xFF:
+		return                                  # nothing can break it
+	if s[F_STUN] != 0:
+		return
+	if (s[F_MARK] & 0xDA) != 0:
+		return
+	if (s[F_BITS] & 0x80) != 0:
+		return
+	var b := _box_of(s)
+	var mid := _middle_of(s)
+	var shot: PackedByteArray = slots[y]
+	var dx := _apart(shot[F_X], s[F_X])
+	var dy := _apart(shot[F_Y], mid)
+	if ((int(b[0]) + size) & 0xFF) < dx:
+		return
+	if ((int(b[1]) + size) & 0xFF) < dy:
+		return
+	if (s[F_MARK] & 0x20) != 0:
+		s[F_STUN] = 0x08                        # armour: it only rings
+		return
+	# $B688 -- the door opens instead of dying.
+	if s[F_TYPE] == 0x0C:
+		s[F_STATE] = 0x02
+		s[F_MARK] = 0x80
+		return
+	_wound(n, shot_power[slots[y][F_TYPE]])
+
+
+## $B698 -- health off a thing, and what is left of it when there is none.
+func _wound(n: int, power: int) -> void:
+	var s: PackedByteArray = slots[n]
+	if s[F_LIFE] == 0xFF:
+		return
+	var v: int = s[F_LIFE] - power
+	s[F_LIFE] = v & 0xFF
+	if v > 0:
+		s[F_STUN] = 0x08 if s[F_TYPE] < 0x50 else 0x10
+		return
+	if s[F_TYPE] >= 0x50:
+		# $B6FC -- a big one has a death of its own to walk through.
+		s[F_STATE] = big_death[s[F_TYPE] - 0x50]
+		s[F_LIFE] = 0
+		s[F_MARK] = 0x80
+		return
+	var what: int = s[F_TYPE]
+	s[F_LIFE] = 0
+	s[F_STATE] = 0
+	s[F_KEEP2] = 0
+	# $B729 -- a few sorts leave a one behind for the burst to read.
+	s[F_KEEP] = 1 if leaves_one.has(what) else 0
+	# $B747 -- and the four that the area only gives out once are written
+	# down, so that this visit does not give them out again.
+	if written_down.has(what):
+		done.append(s[F_REC])
+	# It does not free its place: it turns into the burst, and the burst
+	# frees it when it has finished.
+	s[F_TYPE] = 0x01
+	s[F_MARK] = 0x80
 
 
 ## $8000 -- every place gets its turn, in order, once a step.

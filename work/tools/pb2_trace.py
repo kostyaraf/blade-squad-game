@@ -105,6 +105,9 @@ TURN = 0x0119
 # he has on.  Both are read by minds and neither is theirs to keep.
 SEED = 0x0168
 SUIT = 0x9A
+# $1C -- one up per picture.  The touch sweep at $B258 halves it to decide
+# which places it looks at this time round, so the engine has to be told it.
+TICK = 0x1C
 SLOTS = 22
 # The scan is not the only thing that fills the table: a handler may put out a
 # shot or a piece of itself, and that takes a place the scan can then not have.
@@ -278,6 +281,7 @@ def _trace(d, state, script, first, frames):
         turn = 0
         seed = 0
         suit = 0
+        tick = 0
         # $D34D runs once a frame and moves everything back by what the view
         # moved forward, and the table is wanted as it stood when it had
         # finished -- which is after the last of its eight stores, not after
@@ -329,6 +333,7 @@ def _trace(d, state, script, first, frames):
                 turn = mem[TURN]
                 seed = mem[SEED] | (mem[SEED + 1] << 8)
                 suit = mem[SUIT]
+                tick = mem[TICK]
         row = {'frame': fr - first, 'got': got, 'done': done}
         for name, addr in WATCH.items():
             row[name] = mem[addr]
@@ -371,6 +376,7 @@ def _trace(d, state, script, first, frames):
         row['turns'] = [] if whole is None else [turn]
         row['seeds'] = [] if whole is None else [seed]
         row['suits'] = [] if whole is None else [suit]
+        row['ticks'] = [] if whole is None else [tick]
         row['taken'] = [t for t in taken if t[0] not in born]
         row['seized'] = fr in seized
         out.append(row)

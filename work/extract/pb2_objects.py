@@ -52,6 +52,33 @@ ATAN = 0xF783       # $F6E2: how far round from the start of an eighth
 OCTANT = 0xF76F     # $F746: where each eighth starts, and which way it runs
 QUARTER = 0xF77F    # $F76B: the four corners, where the sides are equal
 
+# --- Касание героя и вещи.  Всё в банке 7; см. work/re/pb2_contact.md. ---
+# $B44F: насколько выше $04C6 лежит середина вещи по высоте, со знаком.
+MIDDLE = 0xB44F
+# $B3EF: сколько здоровья снимает с героя каждый тип.
+HURT = 0xB3EF
+# $B768: короб вещи.  Для типов меньше $50 -- слово в $B7DC, по нему пара
+# байт (полуширина, полувысота).  Для $50 и выше -- слово в $B7A4, и там уже
+# три пары: короб большой вещи меняется с её ходом ($5F).
+BOX_LOW = 0xB7DC
+BOX_HIGH = 0xB7A4
+BOX_SPLIT = 0x50
+NBOSS = 10                  # $50..$59
+BOSS_PHASES = 3
+# $B721 -- сила выстрела по его типу, $B725 -- половина его короба.
+SHOT_POWER = 0xB721
+SHOT_SIZE = 0xB725
+NSHOT = 4
+# $B717 -- в какое состояние переходит большая вещь, когда её убили.
+BIG_DEATH = 0xB717
+NBIG_DEATH = 10
+# $B73C -- типы, которые оставляют после себя единицу в $05FA.
+LEAVES_ONE = 0xB73C
+NLEAVES = 11
+# $B764 -- типы, номер записи которых дописывают к списку в $0172.
+WRITTEN_DOWN = 0xB764
+NWRITTEN = 4
+
 # $814A / $8152 -- the eight class handlers, and what each of them checks.
 # The two checks are not "along the level" and "across" it: whichever way the
 # level runs, one reads the pair of bytes that hold the place across the screen
@@ -111,6 +138,23 @@ def export():
     rom = pb2_spawns.Rom()
     b10 = rom.bank(10)
     b15 = rom.bank(15)
+    b7 = rom.bank(7)
+
+    def at7(a, n):
+        return list(b7[a - 0xA000:a - 0xA000 + n])
+
+    def word7(a):
+        return b7[a - 0xA000] | (b7[a - 0xA000 + 1] << 8)
+
+    # Короб каждого типа.  Меньше $50 -- одна пара; $50 и выше -- три,
+    # по ходу большой вещи.
+    boxes = []
+    for t in range(NTYPES):
+        if t < BOX_SPLIT:
+            boxes.append([at7(word7(BOX_LOW + 2 * t), 2)])
+        else:
+            p = word7(BOX_HIGH + 2 * (t - BOX_SPLIT))
+            boxes.append([at7(p + 2 * i, 2) for i in range(BOSS_PHASES)])
     pickup = list(b15[PICKUP_BITS - 0xE000:PICKUP_BITS - 0xE000 + NPICKUP])
     classes = list(b10[CLASSES - 0x8000:CLASSES - 0x8000 + NTYPES])
     margins = list(b10[MARGINS - 0x8000:MARGINS - 0x8000 + 8])
@@ -155,6 +199,20 @@ def export():
         atan=list(b15[ATAN - 0xE000:ATAN - 0xE000 + 256]),
         octant=list(b15[OCTANT - 0xE000:OCTANT - 0xE000 + 16]),
         quarter=list(b15[QUARTER - 0xE000:QUARTER - 0xE000 + 4]),
+        # $B44F: середина вещи по высоте -- $04C6 минус это, со знаком.
+        middle=at7(MIDDLE, NTYPES),
+        # $B3EF: сколько снимает с героя касание этого типа.
+        hurt=at7(HURT, NTYPES),
+        # $B768: полуширина и полувысота.  У больших вещей три пары.
+        box=boxes,
+        # $B721 и $B725: сила выстрела и половина его короба, по его типу.
+        shot_power=at7(SHOT_POWER, NSHOT),
+        shot_size=at7(SHOT_SIZE, NSHOT),
+        # $B717: состояние, в которое уходит убитая большая вещь.
+        big_death=at7(BIG_DEATH, NBIG_DEATH),
+        # $B73C и $B764: два списка типов, которые смерть читает.
+        leaves_one=at7(LEAVES_ONE, NLEAVES),
+        written_down=at7(WRITTEN_DOWN, NWRITTEN),
     ))
     print('%d types, %d classes, %d runs of pictures, %d bytes'
           % (NTYPES, len(set(classes)), len(runs), size))

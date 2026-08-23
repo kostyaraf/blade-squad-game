@@ -105,7 +105,7 @@ def script_for(rows, stage, area, spot, script):
         frames.append({'screen': here, 'died': told, 'taken': r['taken'],
                        'whole': whole, 'shifts': r['shifts'],
                        'turns': r['turns'], 'seeds': r['seeds'],
-                       'suits': r['suits'],
+                       'suits': r['suits'], 'ticks': r['ticks'],
                        'culled': sorted(r['culled']),
                        'got': r['got'], 'done': r['done']})
     return dict(

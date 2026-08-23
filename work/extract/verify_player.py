@@ -179,6 +179,7 @@ def logic_frames(rows):
             merged['turns'] = out[-1]['turns'] + r['turns']
             merged['seeds'] = out[-1]['seeds'] + r['seeds']
             merged['suits'] = out[-1]['suits'] + r['suits']
+            merged['ticks'] = out[-1]['ticks'] + r['ticks']
             merged['seized'] = out[-1]['seized'] or r['seized']
             merged['frames'] = out[-1]['frames'] + 1
             out[-1] = merged

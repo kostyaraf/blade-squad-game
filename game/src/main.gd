@@ -296,6 +296,40 @@ func _run_spawns(path: String) -> void:
 		var i_tbl := -1
 		for tbl in f["whole"]:
 			i_tbl += 1
+			# What changed since the last hand-over: the place's number and
+			# then its twenty-nine bytes.  Everything else still stands.
+			for chg in tbl:
+				var row: PackedByteArray = truth[int(chg[0])]
+				for k in range(Pb2Objects.FIELDS):
+					row[k] = int(chg[k + 1])
+			# The table is written down at $CF14, and three things run before
+			# it: the hero's own step at $CEFD, the touch sweep at $CF08 and
+			# the slide back at $CF14 itself.  So the row handed over is his
+			# as he stood when the sweep looked at him, and the engine has to
+			# put him there before it runs its own sweep.
+			# The first six places are his and his alone: himself and the
+			# five shots he throws.  All six are made and moved by the code
+			# that runs before the sweep, and none of them is touched by the
+			# sweep itself, so all six can be handed over here -- and must be,
+			# or a shot thrown this very step would be a step late in hurting
+			# what it hit.
+			for n_his in range(Pb2Objects.FIRST_LIVE):
+				var his: PackedByteArray = things.slots[n_his]
+				var his_told: PackedByteArray = truth[n_his]
+				if his[Pb2Objects.F_TYPE] != his_told[Pb2Objects.F_TYPE]:
+					things.take(n_his, his_told[Pb2Objects.F_TYPE])
+					his = things.slots[n_his]
+				for k in range(Pb2Objects.FIELDS):
+					if k != Pb2Objects.F_REC:
+						his[k] = his_told[k]
+			# $1C -- which half of the table the sweep looks at this time.
+			things.frame = int(f["ticks"][i_tbl])
+			things.suit = int(f["suits"][i_tbl])
+			# His forty pictures of grace were counted down on the cartridge
+			# before the row was written down, so the sweep must not count
+			# them again.
+			things.hero_told = true
+			things.contact()
 			things.shift(int(f["shifts"][i_tbl]))
 			# $0119 -- half the questions a thing asks about the ground it
 			# only asks on the frames where this and its own place in the
@@ -308,13 +342,6 @@ func _run_spawns(path: String) -> void:
 			# some of the minds cannot keep it in step: it is told until
 			# they are all here.
 			things.seed = int(f["seeds"][i_tbl])
-			things.suit = int(f["suits"][i_tbl])
-			# What changed since the last hand-over: the place's number and
-			# then its twenty-nine bytes.  Everything else still stands.
-			for chg in tbl:
-				var row: PackedByteArray = truth[int(chg[0])]
-				for k in range(Pb2Objects.FIELDS):
-					row[k] = int(chg[k + 1])
 			for n in range(Pb2Objects.SLOTS):
 				var was_told: PackedByteArray = truth[n]
 				var s: PackedByteArray = things.slots[n]
@@ -353,21 +380,6 @@ func _run_spawns(path: String) -> void:
 						and n >= Pb2Objects.FIRST_LIVE \
 						and Pb2Objects.MINDS.has(had):
 					mine += 1
-					# A blow the engine cannot see: nothing hits a thing in the
-					# engine yet, so a count of skipped turns that has gone up
-					# since the last hand-over came from the hero's shot or his
-					# shoulder and is told, not judged.  Counting it back down
-					# is the engine's own work and is judged as ever.
-					if was_told[Pb2Objects.F_STUN] > s[Pb2Objects.F_STUN]:
-						s[Pb2Objects.F_STUN] = was_told[Pb2Objects.F_STUN]
-					# And the other half of the same blow: health that has gone
-					# down since the last hand-over.  Nothing in the engine takes
-					# health off a thing yet, so a smaller number can only have
-					# come from a hit, and it is told.  Health the engine sets
-					# itself -- a thing waking up with a full measure -- goes up,
-					# not down, and stays judged.
-					if was_told[Pb2Objects.F_LIFE] < s[Pb2Objects.F_LIFE]:
-						s[Pb2Objects.F_LIFE] = was_told[Pb2Objects.F_LIFE]
 					# This one drives itself, so it is judged, not told.  The
 					# record's number is the engine's own and is left out of
 					# both; so is the type, which take() above has settled.
