@@ -22,6 +22,7 @@ var pads: Array[Pad] = []
 func _ready() -> void:
 	var shots := ""
 	var replay := ""
+	var spawns := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -33,8 +34,13 @@ func _ready() -> void:
 			scroll = Vector2i(int(p[0]), int(p[1]))
 		elif a.begins_with("--shots="): shots = a.substr(8)
 		elif a.begins_with("--replay="): replay = a.substr(9)
+		elif a.begins_with("--spawns="): spawns = a.substr(9)
 	if replay != "":
 		_run_replay(replay)
+		get_tree().quit()
+		return
+	if spawns != "":
+		_run_spawns(spawns)
 		get_tree().quit()
 		return
 	if shots != "":
@@ -194,3 +200,52 @@ func _clamp_camera() -> void:
 		h = level_sol.height_tiles * 8
 	scroll.x = clampi(scroll.x, 0, max(0, w - 256))
 	scroll.y = clampi(scroll.y, 0, max(0, h - view_h))
+
+
+## Play the same recorded script, but watch the level's own list instead of the
+## hero: which record turns into which slot, and where it lands.
+##
+## The engine has no minds for the things yet, so nothing it puts out ever dies
+## of its own accord -- the deaths come from the recording, one list per step.
+## Everything else is the engine's: the view, the walk of the list, the choice
+## of slot.
+func _run_spawns(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_load("pb2", int(cfg["stage"]), int(cfg["area"]))
+	var view := Pb2Camera.new(level_pb2)
+	view.place(int(cfg["cam"]) >> 8, int(cfg["cam"]) & 0xFF,
+			int(cfg["cam_pend"]), int(cfg["clock"]))
+	var things := Pb2Objects.new(level_pb2)
+	for n in range(cfg["slots"].size()):
+		var r: Dictionary = cfg["slots"][n]
+		var s: Pb2Objects.Slot = things.slots[n]
+		s.type = int(r["type"])
+		s.rec = int(r["rec"])
+		s.x = int(r["x"])
+		s.y = int(r["y"])
+	# $E3F3 runs before $D924, so the scroll it looks at is the one before.
+	var before := int(cfg["shift_before"])
+	var out := PackedStringArray()
+	for f in cfg["frames"]:
+		var was := {}
+		for n in range(Pb2Objects.FIRST_PLACED, Pb2Objects.LAST_PLACED + 1):
+			was[n] = things.slots[n].rec
+		things.scan(view.pos, before)
+		var born := PackedStringArray()
+		for n in range(Pb2Objects.FIRST_PLACED, Pb2Objects.LAST_PLACED + 1):
+			var s: Pb2Objects.Slot = things.slots[n]
+			if s.rec != was[n] and s.type != 0:
+				born.append("%d:%d:%d:%d:%d" % [n, s.type, s.rec, s.x, s.y])
+		view.drive()
+		before = view.shift
+		view.decide(int(f["screen"]))
+		# Where the view ended the step, and what came alive in it.  The view
+		# is put out too: it drives the scan, so a scan that agrees only
+		# because the view was wrong in both would prove nothing.
+		out.append("%d|%s" % [view.pos,
+				" ".join(born) if born.size() else "-"])
+		for n in f["died"]:
+			things.clear(int(n))
+		for t in f["taken"]:
+			things.take(int(t[0]), int(t[1]))
+	print("\n".join(out))

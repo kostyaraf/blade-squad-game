@@ -302,8 +302,20 @@ static int chr_scan_arm = 0;
 typedef struct { long frame; uint16_t addr; uint8_t val; } PokeEnt;
 static PokeEnt pokes[256]; static int n_pokes = 0;
 
-typedef struct { uint16_t addr; uint8_t val; } FreezeEnt;
+typedef struct { uint16_t addr; uint8_t val; long from; } FreezeEnt;
 static FreezeEnt freezes[256]; static int n_freezes = 0;
+
+/* a byte of the cartridge itself, written over before the run begins.  Unlike
+   -poke this cannot be undone by the game and costs nothing per frame: it is
+   for turning a routine off for a whole run (a study aid, not a fix). */
+typedef struct { long off; uint8_t val; } RomPokeEnt;
+static RomPokeEnt rompokes[256]; static int n_rompokes = 0;
+
+/* -sample PC=ADDR: what an address held at the moment a piece of code was
+ * reached.  A watch says what was written; this says what was read, which is
+ * the only way to see what a routine actually decided on. */
+typedef struct { uint16_t pc, addr; } SampleEnt;
+static SampleEnt samples[64]; static int n_samples = 0;
 
 /* input script */
 typedef struct { long frame; uint8_t p1, p2; } InputEnt;
@@ -1315,6 +1327,12 @@ static void cpu_step(void)
     }
     uint8_t I0 = P & FI;
 
+    if (trace_fp && n_samples) {
+        for (int k = 0; k < n_samples; k++)
+            if (samples[k].pc == PC)
+                fprintf(trace_fp, "SAMPLE %ld,%04X,%04X,%02X\n", cur_frame,
+                        PC, samples[k].addr, dbg_read(samples[k].addr));
+    }
     if (cov_bits || trace_fp) {
         uint8_t op0 = dbg_read(PC);
         cov_mark(PC, mode_len[optab[op0].mode]);
@@ -1888,6 +1906,11 @@ static int load_state(const char *path)
  * cycle and without disturbing the open-bus latch. */
 static void poke_write(uint16_t a, uint8_t v)
 {
+    /* A poke is a write like any other as far as anyone reading the watch log
+     * is concerned: leave it out and whoever carries the values forward is
+     * left holding what the game last wrote, not what is actually there. */
+    if (trace_fp && opt_watch_lo >= 0 && a >= opt_watch_lo && a <= opt_watch_hi)
+        fprintf(trace_fp, "WATCH %ld,POKE,-1,%04X,%02X\n", cur_frame, a, v);
     if (a < 0x2000) { ram[a & 0x7FF] = v; return; }
     if (a >= 0x6000 && a < 0x8000) { prgram[a & 0x1FFF] = v; return; }
     uint8_t saved = bus_last;
@@ -2223,7 +2246,9 @@ static void usage(void)
         "  -loadstate FILE   resume from a savestate; -frames is still the\n"
         "                    ABSOLUTE last frame number to run\n"
         "  -poke A=V@N       write byte V to CPU address A once at frame N (hex A/V)\n"
-        "  -freeze A=V       rewrite byte V to CPU address A every frame (hex A/V)\n"
+        "  -freeze A=V[@N]   rewrite byte V to CPU address A every frame from N on\n"
+        "  -rompoke O=V      write byte V at PRG file offset O before the run (hex O/V)\n"
+        "  -sample P=A       log what address A held whenever PC reached P (hex)\n"
         "  -verbose LO-HI    one line per frame in that range: frame, PC, PRG banks\n");
 }
 
@@ -2305,9 +2330,31 @@ int main(int argc, char **argv)
             char *eq = strchr(s, '=');
             if (!eq) { fprintf(stderr, "-freeze needs ADDR=VAL\n"); return 1; }
             if (n_freezes >= 256) { fprintf(stderr, "too many -freeze\n"); return 1; }
+            char *at = strrchr(s, '@');
             freezes[n_freezes].addr = (uint16_t)strtol(s, NULL, 16);
             freezes[n_freezes].val  = (uint8_t)strtol(eq + 1, NULL, 16);
+            freezes[n_freezes].from = at ? strtol(at + 1, NULL, 10) : 0;
             n_freezes++;
+        }
+        else if (!strcmp(o, "-sample")) {
+            NEED(o);
+            char *s = argv[++i];
+            char *eq = strchr(s, '=');
+            if (!eq) { fprintf(stderr, "-sample needs PC=ADDR\n"); return 1; }
+            if (n_samples >= 64) { fprintf(stderr, "too many -sample\n"); return 1; }
+            samples[n_samples].pc   = (uint16_t)strtol(s, NULL, 16);
+            samples[n_samples].addr = (uint16_t)strtol(eq + 1, NULL, 16);
+            n_samples++;
+        }
+        else if (!strcmp(o, "-rompoke")) {
+            NEED(o);
+            char *s = argv[++i];
+            char *eq = strchr(s, '=');
+            if (!eq) { fprintf(stderr, "-rompoke needs OFFSET=VAL\n"); return 1; }
+            if (n_rompokes >= 256) { fprintf(stderr, "too many -rompoke\n"); return 1; }
+            rompokes[n_rompokes].off = strtol(s, NULL, 16);
+            rompokes[n_rompokes].val = (uint8_t)strtol(eq + 1, NULL, 16);
+            n_rompokes++;
         }
         else if (!strcmp(o, "-verbose")) {
             NEED(o);
@@ -2320,6 +2367,14 @@ int main(int argc, char **argv)
     }
 
     if (load_rom(rompath) != 0) return 1;
+    for (int k = 0; k < n_rompokes; k++) {
+        if (rompokes[k].off < 0 || rompokes[k].off >= prg_size) {
+            fprintf(stderr, "-rompoke offset %lX outside PRG (%d bytes)\n",
+                    rompokes[k].off, prg_size);
+            return 1;
+        }
+        prg[rompokes[k].off] = rompokes[k].val;
+    }
     if (opt_cov) cov_bits = calloc(1, (size_t)((prg_size + 7) / 8));
     if (opt_prgread) rd_bits = calloc(1, (size_t)((prg_size + 7) / 8));
     if (n_vramreqs) chr_scan_arm = 1;
@@ -2355,7 +2410,8 @@ int main(int argc, char **argv)
         for (int k = 0; k < n_pokes; k++)
             if (pokes[k].frame == cur_frame) poke_write(pokes[k].addr, pokes[k].val);
         for (int k = 0; k < n_freezes; k++)
-            poke_write(freezes[k].addr, freezes[k].val);
+            if (cur_frame >= freezes[k].from)
+                poke_write(freezes[k].addr, freezes[k].val);
         for (int k = 0; k < n_vramreqs; k++)
             if (vramreqs[k].frame == cur_frame) write_vramdump(vramreqs[k].path, cur_frame);
         for (int k = 0; k < n_savereqs; k++)

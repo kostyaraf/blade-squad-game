@@ -148,7 +148,14 @@ def logic_frames(rows):
             merged['push'] = [r['push'][i] if r['push'][i] is not None
                               else out[-1]['push'][i] for i in (0, 1)]
             merged['shift'] = out[-1]['shift']
+            # The step of the game ran in one frame of the group, and only that
+            # frame saw the view decided.  Whichever frame it was, keep it.
+            for k in ('see_x', 'see_y'):
+                merged[k] = (out[-1][k] if out[-1][k] is not None else r[k])
             merged['shift_after'] = out[-1]['shift_after'] + r['shift']
+            merged['born'] = out[-1]['born'] + r['born']
+            merged['died'] = out[-1]['died'] + r['died']
+            merged['taken'] = out[-1]['taken'] + r['taken']
             merged['seized'] = out[-1]['seized'] or r['seized']
             merged['frames'] = out[-1]['frames'] + 1
             out[-1] = merged

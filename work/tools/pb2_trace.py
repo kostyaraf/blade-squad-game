@@ -66,6 +66,24 @@ PUSH = ((0x063C, '8E46'), (0x0652, '8E49'))
 # says it, being the old value less the shift.
 SHIFT = ((0x04C6, 'D363'), (0x0508, 'D392'))
 SPAWN_PC = 'A2A9'        # where a new shot takes its slot in the object table
+# $E4CD..$E4FC -- the six stores that turn a record of the level's list into a
+# live object, and $D6D4's loop, which wipes a slot that has died or been left
+# behind.  The log names the instruction AFTER the store, so these are one
+# along from the addresses in work/re/pb2_spawns.md.
+BORN = {'E4D0': 'type', 'E4F0': 'x', 'E4F5': 'y', 'E4FF': 'rec'}
+BORN_FIELD = {'type': 0x0400, 'x': 0x0508, 'y': 0x04C6, 'rec': 0x0484}
+DIED_PC = 'D6D9'
+SLOTS = 22
+# The scan is not the only thing that fills the table: a handler may put out a
+# shot or a piece of itself, and that takes a place the scan can then not have.
+# The engine has no handlers yet, so those places have to be told to it -- any
+# write of a type into one of the eight that did not come from $E4CD.
+PLACED = range(0x0E, 0x16)
+# $D3CA and $D3D2 -- where $D3B8 reads the hero's place on the screen to decide
+# where the view should go.  A watch would only say what was written; what is
+# wanted is what was read, and only at that one instruction: a step of the game
+# can fall in either frame of a pair, so guessing from the frames is guessing.
+SEEN = {'D3CA': ('see_x', 0x0508), 'D3D2': ('see_y', 0x04C6)}
 # His own speed and his own step for the frame.  Only his own code -- banks 8
 # and 9 -- has any business writing these, so when another bank does, he is not
 # being played any more: something in the level has taken hold of him and is
@@ -77,6 +95,49 @@ LO = min(WATCH.values())
 HI = max(WATCH.values())
 
 
+def state_for(first, stage, area, spot):
+    """The savestate a run of this area starts from.  Making one costs a run of
+    the whole boot, so they are kept and shared."""
+    os.makedirs(P.SCRATCH, exist_ok=True)
+    path = os.path.join(P.SCRATCH, 'pb2_%d_%s_%s_%s.st'
+                        % (first, stage, area, spot))
+    P.make_state(path, frame=first, stage=stage, area=area, spot=spot)
+    return path
+
+
+def objects(stage, area, spot=None, first=None, script=(), upto=None):
+    """The table of live things as a run of this area would find it.
+
+    A watch log only says what changed, so the six bytes the spawner writes are
+    only half the story: whatever the area put out while it was opening is
+    already there before the recording starts.  This reads it out of memory.
+
+    `upto` is the frame to read it at, counted like the script's own frames
+    from the start of the run.  The comparison does not begin at the first
+    frame -- the opening of an area is thrown away -- so the table has to be
+    read where the comparison begins, with the same buttons pressed on the way.
+    """
+    first = P.IN_LEVEL if first is None else first
+    state = state_for(first, stage, area, spot)
+    d = P.scratch('objects')
+    try:
+        ram = os.path.join(d, 'r.ram')
+        inp = os.path.join(d, 'i.inp')
+        with open(inp, 'w') as f:
+            f.write('%d -\n' % first)
+            for fr, keys in sorted(script):
+                f.write('%d %s\n' % (first + fr, keys or '-'))
+        last = first + (0 if upto is None else upto)
+        subprocess.run(P.emu('-loadstate', state, '-input', inp,
+                        '-frames', str(last + 1), '-ramdump', ram),
+                       check=True, capture_output=True)
+        m = open(ram, 'rb').read()
+        return [{k: m[a + n] for k, a in BORN_FIELD.items()}
+                for n in range(SLOTS)]
+    finally:
+        P.sweep(d)
+
+
 def trace(script, frames, state=None, first=None, stage=None, area=None,
           spot=None):
     """Play `script` and return a list of dicts, one per frame.
@@ -86,14 +147,12 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
     with the log and the starting values are carried forward.
     """
     first = P.IN_LEVEL if first is None else first
+    # The traces themselves are worth nothing once read, so they go in a
+    # scratch of their own and are swept up below.
     if state is None:
-        # The savestate is worth keeping -- making one costs a run of the whole
-        # boot -- but the traces are not, so they go in a scratch of their own
-        # and are swept up below.
-        os.makedirs(P.SCRATCH, exist_ok=True)
-        state = os.path.join(P.SCRATCH, 'pb2_%d_%s_%s_%s.st'
-                             % (first, stage, area, spot))
-    P.make_state(state, frame=first, stage=stage, area=area, spot=spot)
+        state = state_for(first, stage, area, spot)
+    else:
+        P.make_state(state, frame=first, stage=stage, area=area, spot=spot)
     d = P.scratch('trace')
     try:
         return _trace(d, state, script, first, frames)
@@ -110,19 +169,28 @@ def _trace(d, state, script, first, frames):
             f.write('%d %s\n' % (first + fr, keys or '-'))
 
     # the state of memory the run starts from
-    subprocess.run([P.EMU, P.ROM, '-loadstate', state, '-frames', str(first + 1),
-                    '-ramdump', ram], check=True, capture_output=True)
+    subprocess.run(P.emu('-loadstate', state, '-frames', str(first + 1),
+                    '-ramdump', ram), check=True, capture_output=True)
     mem = bytearray(open(ram, 'rb').read())
 
     last = first + frames
-    subprocess.run([P.EMU, P.ROM, '-loadstate', state, '-input', inp,
+    sample = []
+    for pc, (_name, addr) in SEEN.items():
+        sample += ['-sample', '%s=%04X' % (pc, addr)]
+    subprocess.run(P.emu('-loadstate', state, '-input', inp,
                     '-frames', str(last + 1),
                     '-watch', '%04X-%04X' % (LO, HI), '-trace', log,
-                    '-tracefrom', '999999', '-traceto', '999999'],
+                    '-tracefrom', '999999', '-traceto', '999999', *sample),
                    check=True, capture_output=True)
     changes = {}
     seized = set()
+    seen = {}
     for ln in open(log):
+        if ln.startswith('SAMPLE'):
+            fr, pc, _addr, val = ln[7:].strip().split(',')
+            name = SEEN[pc][0]
+            seen.setdefault(int(fr), {}).setdefault(name, int(val, 16))
+            continue
         if not ln.startswith('WATCH'):
             continue
         fr, pc, bank, addr, val = ln[6:].strip().split(',')
@@ -132,10 +200,10 @@ def _trace(d, state, script, first, frames):
 
     # Also follow the low addresses, which the watch window above may not cover.
     lo_log = os.path.join(d, 'lo.log')
-    subprocess.run([P.EMU, P.ROM, '-loadstate', state, '-input', inp,
+    subprocess.run(P.emu('-loadstate', state, '-input', inp,
                     '-frames', str(last + 1), '-watch', '0040-00A0',
                     '-trace', lo_log, '-tracefrom', '999999',
-                    '-traceto', '999999'], check=True, capture_output=True)
+                    '-traceto', '999999'), check=True, capture_output=True)
     for ln in open(lo_log):
         if not ln.startswith('WATCH'):
             continue
@@ -152,7 +220,19 @@ def _trace(d, state, script, first, frames):
         hold = None
         push = [None, None]
         shift = 0
+        born = {}
+        died = []
+        taken = []
         for addr, val, pc in changes.get(fr, ()):
+            if pc in BORN:
+                what = BORN[pc]
+                slot = addr - BORN_FIELD[what]
+                born.setdefault(slot, {'slot': slot})[what] = val
+            elif pc == DIED_PC and val == 0 \
+                    and 0 <= addr - 0x0400 < SLOTS:
+                died.append(addr - 0x0400)
+            elif val and addr - 0x0400 in PLACED:
+                taken.append((addr - 0x0400, val))
             for a, apc in SHIFT:
                 if addr == a and pc == apc:
                     shift = _s8((mem[a] - val) & 0xFF)
@@ -190,6 +270,13 @@ def _trace(d, state, script, first, frames):
         row['push'] = [None if push[k] is None else _s8(push[k])
                        for k in range(len(PUSH))]
         row['shift'] = shift
+        # A slot is always wiped before it is filled, so a birth cancels the
+        # death the same frame reports in the same slot.
+        for name, _a in SEEN.values():
+            row[name] = seen.get(fr, {}).get(name)
+        row['born'] = [born[k] for k in sorted(born)]
+        row['died'] = [n for n in died if n not in born]
+        row['taken'] = [t for t in taken if t[0] not in born]
         row['seized'] = fr in seized
         out.append(row)
     return out

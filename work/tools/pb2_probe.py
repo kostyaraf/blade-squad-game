@@ -40,6 +40,41 @@ def sweep(path):
     shutil.rmtree(path, ignore_errors=True)
 
 
+# Bytes of the cartridge to write over before a run.  Nothing that changes how
+# the game plays belongs here: this is for study runs, never for the yardstick.
+ROMPOKE = []
+
+# Addresses rewritten at the start of every frame from a given frame on, same
+# idea and same warning: a study aid.  Pinning the hero's place on the screen at
+# one end or the other makes the view chase him and walk the whole of an area,
+# and a second pinning further in walks it back again.  (addr, val, from).
+FREEZE = []
+
+# Two ways he dies, both stopped, so that the view can be walked from one end
+# of an area to the other -- which is what seeing the whole of a level's list of
+# things needs.
+#
+#   $B3F5 in bank 9 is LDA #$00 / STA $049A / RTS, the fall down a pit.  An RTS
+#   in its place and the fall costs nothing.
+#
+#   $B3D2 in bank 7 is the SBC $00 of the damage routine at $B3C0, which takes
+#   the hit off his health.  Made SBC #$00 it takes nothing off, leaves the
+#   carry set, and the two branches below it walk past the death.  Everything
+#   else about being hit -- the flash, the knock back -- still happens.
+IMMORTAL = ((9 * 8192 + (0xB3F5 - 0xA000), 0x60),
+            (7 * 8192 + (0xB3D2 - 0xA000), 0xE9))
+
+
+def emu(*args):
+    """The emulator command line, with any cartridge patches in front."""
+    cmd = [EMU, ROM]
+    for off, val in ROMPOKE:
+        cmd += ['-rompoke', '%X=%02X' % (off, val)]
+    for addr, val, since in FREEZE:
+        cmd += ['-freeze', '%04X=%02X@%d' % (addr, val, since)]
+    return cmd + list(args)
+
+
 BOOT = """1 -
 300 START
 308 -
@@ -64,6 +99,8 @@ def make_state(path, frame=IN_LEVEL, boot=BOOT, stage=None, area=None,
         return path
     inp = path + '.inp'
     open(inp, 'w').write(boot)
+    # The boot is played on the plain cartridge: a study patch belongs to the
+    # run that uses it, not to the state every run starts from.
     cmd = [EMU, ROM, '-input', inp, '-frames', str(frame + 1),
            '-savestate', '%s@%d' % (path, frame)]
     if stage is not None:
@@ -97,9 +134,9 @@ def run(state, script, last, watch=(0x0000, 0x07FF), pokes=()):
     with open(inp, 'w') as f:
         for fr, keys in sorted(script):
             f.write('%d %s\n' % (fr, keys or '-'))
-    cmd = [EMU, ROM, '-loadstate', state, '-input', inp, '-frames', str(last),
-           '-watch', '%04X-%04X' % watch, '-trace', log,
-           '-tracefrom', '999999', '-traceto', '999999']
+    cmd = emu('-loadstate', state, '-input', inp, '-frames', str(last),
+              '-watch', '%04X-%04X' % watch, '-trace', log,
+              '-tracefrom', '999999', '-traceto', '999999')
     for a, v, fr in pokes:
         cmd += ['-poke', '%04X=%02X@%d' % (a, v, fr)]
     try:
