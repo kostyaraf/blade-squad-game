@@ -145,6 +145,7 @@ def logic_frames(rows):
             merged['push'] = [r['push'][i] if r['push'][i] is not None
                               else out[-1]['push'][i] for i in (0, 1)]
             merged['shift'] = out[-1]['shift'] + r['shift']
+            merged['seized'] = out[-1]['seized'] or r['seized']
             out[-1] = merged
         else:
             out.append(r)
@@ -178,13 +179,14 @@ def ordinary(rows):
 
     Only ordinary play in the area he started in: once the game moves on -- a
     new area, one of its scripted camera pans, which freeze the hero outright,
-    or a hit, which throws him about in a way that belongs to the next stage of
-    the work -- its numbers mean something else.
+    a hit, which throws him about, or something in the level taking hold of him
+    and carrying him off -- its numbers belong to the next stage of the work.
     """
     start = rows[0]
     for i, r in enumerate(rows):
         if (r['area'] != start['area'] or r['stage'] != start['stage']
-                or r['mode'] != start['mode'] or r['alive'] != start['alive']):
+                or r['mode'] != start['mode'] or r['alive'] != start['alive']
+                or r['seized']):
             return rows[:i]
     return rows
 

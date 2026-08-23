@@ -62,6 +62,12 @@ PUSH = ((0x063C, '8E46'), (0x0652, '8E49'))
 # says it, being the old value less the shift.
 SHIFT = ((0x04C6, 'D363'), (0x0508, 'D392'))
 SPAWN_PC = 'A2A9'        # where a new shot takes its slot in the object table
+# His own speed and his own step for the frame.  Only his own code -- banks 8
+# and 9 -- has any business writing these, so when another bank does, he is not
+# being played any more: something in the level has taken hold of him and is
+# carrying him about, which belongs to the enemies and not to him.
+SEIZE = (0x0534, 0x054A, 0x05FA, 0x0610)
+OWN_BANKS = ('8', '9')
 
 LO = min(WATCH.values())
 HI = max(WATCH.values())
@@ -99,10 +105,13 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
                     '-tracefrom', '999999', '-traceto', '999999'],
                    check=True, capture_output=True)
     changes = {}
+    seized = set()
     for ln in open(log):
         if not ln.startswith('WATCH'):
             continue
-        fr, pc, _bank, addr, val = ln[6:].strip().split(',')
+        fr, pc, bank, addr, val = ln[6:].strip().split(',')
+        if int(addr, 16) in SEIZE and bank not in OWN_BANKS:
+            seized.add(int(fr))
         changes.setdefault(int(fr), []).append((int(addr, 16), int(val, 16), pc))
 
     # Also follow the low addresses, which the watch window above may not cover.
@@ -165,6 +174,7 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
         row['push'] = [None if push[k] is None else _s8(push[k])
                        for k in range(len(PUSH))]
         row['shift'] = shift
+        row['seized'] = fr in seized
         out.append(row)
     return out
 

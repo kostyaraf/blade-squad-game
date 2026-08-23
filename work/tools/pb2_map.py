@@ -51,11 +51,8 @@ class Area:
     @staticmethod
     def map_row(cam, sy):
         """Which map line a screen line shows: see Pb2Level.map_row."""
-        n = (cam & 0xFF) + sy
-        if n >= 0x100:
+        if (cam & 0xFF) + sy >= 0xF0:
             return cam + sy + 16
-        if n >= 0xF0:
-            return cam + sy + 15
         return cam + sy
 
     def screen_y(self, map_y, cam, top=16, bottom=176):

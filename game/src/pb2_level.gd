@@ -103,13 +103,12 @@ func _build(a: Dictionary) -> void:
 ## The console keeps the level in a ring of sixteen rows of cells and finds the
 ## row by adding the camera to the line, in eight bits ($F52C).  The sixteen
 ## lines that separate a screen of two hundred and forty from a page of two
-## hundred and fifty six are skipped over as the sum passes them.
+## hundred and fifty six are skipped over as soon as the sum reaches them --
+## both ways round the cartridge takes that jump it adds fifteen and a carry,
+## so it is sixteen either way.
 static func map_row(cam: int, sy: int) -> int:
-	var n: int = (cam & 0xFF) + sy
-	if n >= 0x100:
+	if (cam & 0xFF) + sy >= 0xF0:
 		return cam + sy + 16
-	if n >= 0xF0:
-		return cam + sy + 15
 	return cam + sy
 
 
