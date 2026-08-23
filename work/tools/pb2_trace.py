@@ -30,12 +30,21 @@ WATCH = {
     'vyh': P.field(14), 'vyl': P.field(15),
     'vxh': P.field(16), 'vxl': P.field(17),
     'sub': P.field(18), 'scale': P.field(19),
+    # How many shots of his own are still in the air, and how many he is
+    # allowed: $A3D9 refuses a new throw while the boomerang is out.
+    'acc0': 0x0111, 'acc1': 0x0112, 'acc2': 0x0113,
+    'mode': 0x27,            # $27: 3 is ordinary play, 6 is a scripted pan
+    'lim': 0x99, 'p1': 0x0401, 'p2': 0x0402, 'p3': 0x0403,
 }
+SHOT_SLOTS = (0x0401, 0x0402, 0x0403)
+SPAWN_PC = 'A2A9'        # where a new shot takes its slot in the object table
+
 LO = min(WATCH.values())
 HI = max(WATCH.values())
 
 
-def trace(script, frames, state=None, first=None):
+def trace(script, frames, state=None, first=None, stage=None, area=None,
+          spot=None):
     """Play `script` and return a list of dicts, one per frame.
 
     Two runs are needed: the first stops at the starting frame and dumps all of
@@ -43,8 +52,9 @@ def trace(script, frames, state=None, first=None):
     with the log and the starting values are carried forward.
     """
     first = P.IN_LEVEL if first is None else first
-    state = state or os.path.join(tempfile.gettempdir(), 'pb2_%d.st' % first)
-    P.make_state(state, frame=first)
+    state = state or os.path.join(tempfile.gettempdir(), 'pb2_%d_%s_%s_%s.st'
+                                  % (first, stage, area, spot))
+    P.make_state(state, frame=first, stage=stage, area=area, spot=spot)
     d = tempfile.mkdtemp(prefix='pb2trace')
     ram = os.path.join(d, 'start.ram')
     inp = os.path.join(d, 'i.inp')
@@ -68,8 +78,8 @@ def trace(script, frames, state=None, first=None):
     for ln in open(log):
         if not ln.startswith('WATCH'):
             continue
-        fr, _pc, _bank, addr, val = ln[6:].strip().split(',')
-        changes.setdefault(int(fr), []).append((int(addr, 16), int(val, 16)))
+        fr, pc, _bank, addr, val = ln[6:].strip().split(',')
+        changes.setdefault(int(fr), []).append((int(addr, 16), int(val, 16), pc))
 
     # Also follow the low addresses, which the watch window above may not cover.
     lo_log = os.path.join(d, 'lo.log')
@@ -80,12 +90,18 @@ def trace(script, frames, state=None, first=None):
     for ln in open(lo_log):
         if not ln.startswith('WATCH'):
             continue
-        fr, _pc, _bank, addr, val = ln[6:].strip().split(',')
-        changes.setdefault(int(fr), []).append((int(addr, 16), int(val, 16)))
+        fr, pc, _bank, addr, val = ln[6:].strip().split(',')
+        changes.setdefault(int(fr), []).append((int(addr, 16), int(val, 16), pc))
 
     out = []
     for fr in range(first, last + 1):
-        for addr, val in changes.get(fr, ()):
+        # How many of his shots were in the air when he pressed the button:
+        # the frame's own throw ($A2A9) has not been counted yet, but the
+        # sweep that retires dead objects has already run.
+        shots = None
+        for addr, val, pc in changes.get(fr, ()):
+            if pc == SPAWN_PC and shots is None:
+                shots = sum(1 for a in SHOT_SLOTS if mem[a])
             mem[addr] = val
         row = {'frame': fr - first}
         for name, addr in WATCH.items():
@@ -95,6 +111,11 @@ def trace(script, frames, state=None, first=None):
         row['vx'] = _s16((row['vxh'] << 8) | row['vxl'])
         row['vy'] = _s16((row['vyh'] << 8) | row['vyl'])
         row['cam'] = (row['cam_h'] << 8) | row['cam_l']
+        row['fall'] = (row['acc2'] << 16) | (row['acc1'] << 8) | row['acc0']
+        if row['acc2'] & 0x80:
+            row['fall'] -= 1 << 24
+        row['shots'] = (sum(1 for k in ('p1', 'p2', 'p3') if row[k])
+                        if shots is None else shots)
         out.append(row)
     return out
 

@@ -92,6 +92,15 @@ func _build(a: Dictionary) -> void:
 		tiles[i] = buf[i * 4]
 
 
+## Where a line of a scrolling screen sits in the map.
+##
+## A screen of the console is two hundred and forty lines tall but the map is
+## kept in blocks of two hundred and fifty six, so every screen the view slides
+## past leaves sixteen lines of nothing behind it ($F52C adds them back).
+static func map_row(v: int) -> int:
+	return v + 16 * (v / 240) if v >= 0 else v
+
+
 ## What the ground does at this world pixel: solid, ladder, water, spikes...
 func terrain_at(px: int, py: int) -> int:
 	var tx := px >> 3

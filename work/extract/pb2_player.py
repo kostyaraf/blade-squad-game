@@ -48,7 +48,22 @@ def export():
         body['%04X' % lo] = [s8(x) for x in a9(lo, hi - lo)]
     poses = ['%04X' % p for p in ptr]
 
+    # --- the animations -------------------------------------------------
+    # $B072/$B08A: 24 little scripts.  Byte 0 is how many frames a pose is
+    # held; then the poses, until $FF (start over), $FE (stop here) or $FD
+    # (stop, and the byte after it is the pose to end on).
+    aptr = [a9(0xB08A + i)[0] * 256 + a9(0xB072 + i)[0] for i in range(24)]
+    astop = sorted(set(aptr)) + [0xB117]
+    anims = {}
+    for lo in sorted(set(aptr)):
+        hi = min(e for e in astop if e > lo)
+        anims['%04X' % lo] = list(a9(lo, hi - lo))
+
     out = dict(
+        anim_index=['%04X' % p for p in aptr],
+        anims=anims,
+        # $A4EE: which animation each weapon swings
+        weapon_anim=list(a9(0xA4EE, 16)),
         # where each pose's body description lives
         body_index=poses,
         body=body,

@@ -33,6 +33,9 @@ var lvl: Pb2Level
 var cfg: Dictionary
 var body: Dictionary
 var body_index: Array
+var anims: Dictionary
+var anim_index: Array
+var weapon_anim: Array
 
 # where he is, in 1/256 of a pixel, measured from the screen's top left corner
 # exactly as the cartridge measures it: x across, y at the level of his feet
@@ -46,10 +49,16 @@ var state := 0
 var sub := SUB_GROUND
 var pose := POSE_STAND
 var face_left := false
-var idle := 0                   # $0111 when standing, the fall counter in the air
-var fall := 0                   # $0112:$0113, how far this fall has gone
-var anim_t := 0
-var anim_f := 0
+## $0111:$0112:$0113.  One counter with three jobs, as on the cartridge: how
+## far the current fall has gone, how much of a slide is left, and -- in its
+## bottom byte alone -- how long he has been standing still.
+var fall := 0
+var anim_id := 1                # which little script is running
+var anim_i := 0                 # where it is in it
+var anim_t := 0                 # frames left on this pose
+var weapon := 0
+var shots := 0                  # his own shots still in the air
+var limit := 0                  # $99: one more than that many is too many
 var cam := 0                    # where the level is, in pixels
 ## Which body the sideways check uses; $A095 swaps it while he is off the
 ## ground, and the crouch and the slide name their own.
@@ -63,6 +72,9 @@ func _init(level: Pb2Level) -> void:
 	cfg = Nes._load_json("%s/pb2/player.json" % Nes.DATA)
 	body = cfg["body"]
 	body_index = cfg["body_index"]
+	anims = cfg["anims"]
+	anim_index = cfg["anim_index"]
+	weapon_anim = cfg["weapon_anim"]
 
 
 func place(sx: int, sy: int, camera: int) -> void:
@@ -73,10 +85,12 @@ func place(sx: int, sy: int, camera: int) -> void:
 
 # ---------------------------------------------------------------- the frame
 
-func step(buttons: int, pressed: int, camera: int) -> void:
+func step(buttons: int, pressed: int, camera: int,
+		shots_out: int = 0, shot_limit: int = 0) -> void:
 	pad = buttons
 	hit = pressed
-	cam = camera
+	shots = shots_out
+	limit = shot_limit
 	dx = 0
 	dy = 0
 	match sub:
@@ -86,24 +100,39 @@ func step(buttons: int, pressed: int, camera: int) -> void:
 		SUB_SLIDE: _slide()
 		SUB_LANDED: _landed()
 		_: _ground()
+	# $D389: the objects are kept in the camera's frame of reference, so when
+	# the view slides everything in it slides the other way.  He runs against
+	# the edge of the screen and stops moving across it -- the world moves.
+	if lvl.vertical:
+		y -= (camera - cam) << 8
+	else:
+		x -= (camera - cam) << 8
+	cam = camera
 
 
 ## $8EC1 -- standing, walking, and everything that starts from the ground.
 func _ground() -> void:
 	_apply_vertical(8)
+	_a1c2()
+	if state & 0x80:
+		state = 0x80
+		body_x = 1
+		_friction()
+		_ground_exits()
+		return
 	if pad & (LEFT | RIGHT):
-		idle = 0
+		fall &= ~0xFF
 		if _a08d():
-			pose = POSE_STAND
+			_set_pose(POSE_STAND)
 		else:
 			if not (state & 0x02):
 				state = 0x02
-				anim_t = 0
-				anim_f = 0
-			_animate()
+				_anim_start(1)
+			_anim_step(1)
 	else:
-		idle = (idle - 1) & 0xFF
-		pose = POSE_IDLE if idle >= 0x70 and idle < 0x80 else POSE_STAND
+		fall = (fall & ~0xFF) | ((fall - 1) & 0xFF)
+		var t: int = fall & 0xFF
+		_set_pose(POSE_IDLE if t >= 0x70 and t < 0x80 else POSE_STAND)
 		state = 0
 		_friction()
 	_ground_exits()
@@ -116,6 +145,8 @@ func _ground_exits() -> void:
 		return
 	if pad & UP:
 		return                             # ladders come with E2's next step
+	if state & 0x80:
+		return                             # $8F5A -- no jumping while swinging
 	if _jump_wanted():
 		_jump()
 	elif pad & DOWN:
@@ -124,7 +155,13 @@ func _ground_exits() -> void:
 
 ## $91B5 -- in the air.
 func _air() -> void:
-	_a08d()
+	_a1c2()
+	if state & 0x80:
+		dx += vx
+		body_x = 1
+		_move_x(body_x)
+	else:
+		_a08d()
 	# $91D0: pressed into a wall he is pushed a pixel out of it
 	if _class_byte((x >> 8) + 5, (y >> 8) - 8) & 0x80:
 		x -= 0x100
@@ -135,15 +172,15 @@ func _air() -> void:
 		if _ceiling_hit(3):
 			vy = 0
 			y &= ~0xFF                     # $92BD: the fraction is dropped
-			pose = POSE_RISE
+			_set_pose(POSE_RISE)
 		else:
-			pose = POSE_RISE
+			_set_pose(POSE_RISE)
 			_move_y()
 		return
 	if _floor_hit(8):
 		_land()
 	else:
-		pose = POSE_RISE if dy < 2 * 256 else POSE_FALL
+		_set_pose(POSE_RISE if dy < 2 * 256 else POSE_FALL)
 		_move_y()
 
 
@@ -154,6 +191,11 @@ func _crouch() -> void:
 	_friction()
 	if not _floor_solid(10):
 		_step_off()
+		return
+	_a1c2()
+	if state & 0x80:
+		if pad & (LEFT | RIGHT):
+			face_left = (pad & LEFT) != 0
 		return
 	if not (pad & DOWN):
 		_stand()
@@ -212,8 +254,8 @@ func _landed() -> void:
 	if not _floor_solid(10):
 		_step_off()
 		return
-	idle -= 1
-	if idle <= 0:
+	fall = (fall & ~0xFF) | ((fall - 1) & 0xFF)
+	if (fall & 0xFF) == 0:
 		_crouch_start()
 
 
@@ -293,7 +335,7 @@ func _jump_wanted() -> bool:
 ## $9FE2
 func _jump() -> void:
 	vy = int(cfg["jump_speed"])
-	pose = POSE_RISE
+	_set_pose(POSE_RISE)
 	fall = 0
 	state = 0x01
 	sub = SUB_AIR
@@ -302,7 +344,7 @@ func _jump() -> void:
 ## $9FDB -- walking off a ledge is a very small jump.
 func _step_off() -> void:
 	vy = int(cfg["step_off_speed"])
-	pose = POSE_RISE
+	_set_pose(POSE_RISE)
 	fall = 0
 	state = 0x01
 	sub = SUB_AIR
@@ -318,8 +360,8 @@ func _land() -> void:
 	y = (px + int(cfg["snap_down"][px & 0x0F])) << 8
 	vy = 0
 	if fall >= int(cfg["hard_landing"]) << 8:
-		pose = POSE_CROUCH
-		idle = 12
+		_set_pose(POSE_CROUCH)
+		fall = (fall & ~0xFF) | 12
 		state = 0x08
 		sub = SUB_LANDED
 	else:
@@ -328,15 +370,15 @@ func _land() -> void:
 
 ## $8EB0
 func _stand() -> void:
-	pose = POSE_STAND
-	idle = 0
+	_set_pose(POSE_STAND)
+	fall &= ~0xFF
 	state = 0
 	sub = SUB_GROUND
 
 
 ## $8F80
 func _crouch_start() -> void:
-	pose = POSE_CROUCH
+	_set_pose(POSE_CROUCH)
 	state = 0x08
 	sub = SUB_CROUCH
 
@@ -348,19 +390,100 @@ func _slide_wanted() -> bool:
 
 ## $8FEC
 func _slide_start() -> void:
-	pose = POSE_SLIDE
+	_set_pose(POSE_SLIDE)
 	state = 0x10
 	sub = SUB_SLIDE
 	fall = int(cfg["slide_distance"][0])
 	vx = int(cfg["slide_start"][1 if face_left else 0])
 
 
-func _animate() -> void:
-	anim_t += 1
-	if anim_t >= 10:
-		anim_t = 0
-		anim_f = (anim_f + 1) % 4
-	pose = WALK_POSES[anim_f]
+## $A1C2 -- keep an attack going, or start one when B is pressed.
+func _a1c2() -> void:
+	if state & 0x80:
+		if _anim_step(int(weapon_anim[weapon])):
+			state &= 0x7F
+		return
+	if not (hit & B):
+		return
+	if shots > limit:                       # $A3D9
+		return
+	var w := _a403()
+	if w < 0:
+		return
+	weapon = w
+	state |= 0x80
+	_anim_start(int(weapon_anim[weapon]))
+
+
+## $A403 -- which throw this is: what he is doing decides, and where he aims.
+func _a403() -> int:
+	var s := state
+	for bit in range(7):
+		if not (s & (1 << bit)):
+			continue
+		match bit:
+			0: return _aim_air()
+			1: return _aim_ground()
+			2: return 2
+			3: return 1
+			4: return -1                    # $A4EB -- this suit cannot throw
+			5: return _aim_ground()         # suit weapons wait for E3
+			6: return _aim_ground()
+	return _aim_ground()
+
+
+func _aim_ground() -> int:                  # $A421
+	if not (pad & UP):
+		return 0
+	return 5 if pad & (LEFT | RIGHT) else 3
+
+
+func _aim_air() -> int:                     # $A448
+	if not (pad & (UP | DOWN)):
+		return 0
+	if pad & UP:
+		return 5 if pad & (LEFT | RIGHT) else 3
+	return 6 if pad & (LEFT | RIGHT) else 4
+
+
+## $9E44 -- a pose only sticks if he is not in the middle of a swing.
+func _set_pose(p: int) -> void:
+	if not (state & 0x80):
+		pose = p
+
+
+## $B017 -- start a little animation script from its first pose.
+func _anim_start(id: int) -> void:
+	anim_id = id
+	anim_i = 0
+	_advance()
+
+
+## $B01F -- one tick of it; true when the script says it is over.
+func _anim_step(id: int) -> bool:
+	anim_id = id
+	anim_t -= 1
+	if anim_t > 0:
+		return false
+	return _advance()
+
+
+func _advance() -> bool:
+	var script: Array = anims[anim_index[anim_id]]
+	var i: int = anim_i + 1
+	var v: int = int(script[i]) if i < script.size() else 0xFE
+	if v >= 0xFD:
+		if v == 0xFD:
+			pose = int(script[i + 1])
+			return true
+		if v == 0xFE:
+			return true
+		i = 1
+		v = int(script[1])
+	pose = v
+	anim_i = i
+	anim_t = int(script[0])
+	return false
 
 
 # ------------------------------------------------------------- the ground
@@ -451,11 +574,16 @@ func _class_byte(sx: int, sy: int) -> int:
 	if sx < 0 or sx > 0xFF:
 		return 0x80
 	var top: int = int(cfg["view_top"])
-	if not lvl.vertical:
-		sy = clampi(sy, top, int(cfg["view_bottom"]) - 1)
-	var mx: int = cam + sx
-	var my: int = sy - top
-	return lvl.class_byte(mx, my)
+	var bottom: int = int(cfg["view_bottom"])
+	if lvl.vertical:
+		# $F52C: the view slides down the map, so the camera is added to the
+		# row, and nothing is clamped -- past the bottom line of the screen
+		# there is simply no map to read.
+		if sy < 0 or sy >= bottom:
+			return 0x80
+		return lvl.class_byte(sx, Pb2Level.map_row(sy + cam))
+	sy = clampi(sy, top, bottom - 1)
+	return lvl.class_byte(cam + sx, sy - top)
 
 
 func _solid(off_x: int, off_y: int) -> bool:
