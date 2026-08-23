@@ -155,10 +155,15 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
             row['fall'] -= 1 << 24
         row['shots'] = (sum(1 for k in ('p1', 'p2', 'p3') if row[k])
                         if shots is None else shots)
-        row['solids'] = solids or []
-        row['hold'] = mem[HOLD] if hold is None else hold
-        row['push'] = [_s8(mem[a] if push[k] is None else push[k])
-                       for k, (a, _pc) in enumerate(PUSH)]
+        # These four are wiped at the end of the hero's update, so a frame in
+        # which the update did not run has nothing to say about them -- and a
+        # step of the game's own can be spread over two frames.  Nothing seen
+        # is written down as nothing seen, and putting the step back together
+        # is left to whoever asked ($8E4C..$8E55).
+        row['solids'] = solids
+        row['hold'] = hold
+        row['push'] = [None if push[k] is None else _s8(push[k])
+                       for k in range(len(PUSH))]
         row['shift'] = shift
         out.append(row)
     return out

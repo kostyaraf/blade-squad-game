@@ -231,7 +231,11 @@ func _crouch() -> void:
 	body_x = 2
 	_friction()
 	if not _floor_solid(10):
-		_step_off()
+		# $8FE1: crouching he stands a pixel lower, so he is set down that
+		# pixel as he leaves the ledge -- and he leaves it at rest, not
+		# stepping off it.
+		y += 0x100
+		_step_off(0)
 		return
 	_a1c2()
 	if state & 0x80:
@@ -393,8 +397,8 @@ func _jump() -> void:
 
 
 ## $9FDB -- walking off a ledge is a very small jump.
-func _step_off() -> void:
-	vy = int(cfg["step_off_speed"])
+func _step_off(speed: int = 0x7FFFFFFF) -> void:
+	vy = int(cfg["step_off_speed"]) if speed == 0x7FFFFFFF else speed
 	_set_pose(POSE_RISE)
 	fall = 0
 	state = 0x01
@@ -664,9 +668,20 @@ func _floor_class(pose_index: int, row: int) -> int:
 	var desc: Array = _desc(pose_index)
 	# $AE55 and $AE62: the map first, for both feet, and only then the things
 	# standing in the level.
-	if _class_byte((x >> 8) + desc[1], (y >> 8) + row) & 0x80 \
-			or _class_byte((x >> 8) + desc[2], (y >> 8) + row) & 0x80:
+	var left: int = _class_byte((x >> 8) + desc[1], (y >> 8) + row)
+	if left & 0x80:
 		return 0x01
+	var right: int = _class_byte((x >> 8) + desc[2], (y >> 8) + row)
+	if right & 0x80:
+		return 0x01
+	# $AE69: a ladder holds him up at its top rung and nowhere else -- his feet
+	# have to be in the near half of its cell, and there has to be nothing in
+	# the cell above it.
+	if left == 0x01 or right == 0x01:
+		var rung: int = desc[1] if left == 0x01 else desc[2]
+		if _grid_y((y >> 8) + row) < 8 \
+				and _class_byte((x >> 8) + rung, (y >> 8) + row - 0x10) == 0:
+			return 0x01
 	for i in [1, 2]:
 		var n: int = _object_at((x >> 8) + desc[i], (y >> 8) + row)
 		if n >= 0:

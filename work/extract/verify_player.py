@@ -138,9 +138,12 @@ def logic_frames(rows):
     for r in rows:
         if out and r['tick'] == out[-1]['tick']:
             merged = dict(r)
-            for k in ('pad', 'hit', 'cam', 'shots', 'lim', 'solids', 'hold',
-                      'push'):
+            for k in ('pad', 'hit', 'cam', 'shots', 'lim'):
                 merged[k] = out[-1][k]
+            for k in ('solids', 'hold'):
+                merged[k] = r[k] if r[k] is not None else out[-1][k]
+            merged['push'] = [r['push'][i] if r['push'][i] is not None
+                              else out[-1]['push'][i] for i in (0, 1)]
             merged['shift'] = out[-1]['shift'] + r['shift']
             out[-1] = merged
         else:
@@ -160,8 +163,10 @@ def replay(rows):
         pose=start['pose'], face_left=bool(start['face'] & 0x40),
         fall=start['fall'], tick=start['tick'],
         frames=[dict(pad=r['pad'], hit=r['hit'], cam=r['cam'],
-                     shots=r['shots'], lim=r['lim'], solids=r['solids'],
-                     hold=r['hold'], push=r['push'], shift=r['shift'])
+                     shots=r['shots'], lim=r['lim'],
+                     solids=r['solids'] or [], hold=r['hold'] or 0,
+                     push=[r['push'][0] or 0, r['push'][1] or 0],
+                     shift=r['shift'])
                 for r in rows[1:]],
     )
 
