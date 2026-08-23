@@ -218,20 +218,31 @@ func _run_spawns(path: String) -> void:
 	var things := Pb2Objects.new(level_pb2)
 	for n in range(cfg["slots"].size()):
 		var r: Dictionary = cfg["slots"][n]
-		var s: Pb2Objects.Slot = things.slots[n]
-		s.type = int(r["type"])
-		s.rec = int(r["rec"])
-		s.x = int(r["x"])
-		s.xhi = int(r["xhi"])
-		s.y = int(r["y"])
-		s.yhi = int(r["yhi"])
+		var s: PackedByteArray = things.slots[n]
+		s[Pb2Objects.F_TYPE] = int(r["type"])
+		s[Pb2Objects.F_REC] = int(r["rec"])
+		s[Pb2Objects.F_X] = int(r["x"])
+		s[Pb2Objects.F_XHI] = int(r["xhi"])
+		s[Pb2Objects.F_Y] = int(r["y"])
+		s[Pb2Objects.F_YHI] = int(r["yhi"])
+	# The running copy of the cartridge's own table, which the steps below
+	# keep up to date and against which the engine is judged.
+	var truth: Array = []
+	for n in range(Pb2Objects.SLOTS):
+		truth.append(Pb2Objects.empty_row())
 	# $E3F3 runs before $D924, so the scroll it looks at is the one before.
 	var before := int(cfg["shift_before"])
+	# The things that were already out when the recording began were handed
+	# above only their type and their place: the rest of what they are is
+	# whatever the cartridge had made of them over turns the engine never saw.
+	# So the first hand-over tells everything, minds and all, and only from
+	# the second is the engine held to its own work.
+	var first_told := false
 	var out := PackedStringArray()
 	for f in cfg["frames"]:
 		var was := {}
 		for n in range(Pb2Objects.FIRST_PLACED, Pb2Objects.LAST_PLACED + 1):
-			was[n] = things.slots[n].rec
+			was[n] = things.slots[n][Pb2Objects.F_REC]
 		# The engine has no minds, so nothing it puts out is ever picked
 		# up and nothing ever reports itself done: both are told.
 		things.got = int(f["got"])
@@ -244,13 +255,13 @@ func _run_spawns(path: String) -> void:
 		things.scan(view.pos, before)
 		var born := PackedStringArray()
 		for n in range(Pb2Objects.FIRST_PLACED, Pb2Objects.LAST_PLACED + 1):
-			var s: Pb2Objects.Slot = things.slots[n]
-			if s.rec != was[n] and s.type != 0:
-				born.append("%d:%d:%d:%d:%d" % [n, s.type, s.rec, s.x, s.y])
+			var s: PackedByteArray = things.slots[n]
+			if s[Pb2Objects.F_REC] != was[n] and s[Pb2Objects.F_TYPE] != 0:
+				born.append("%d:%d:%d:%d:%d" % [n, s[Pb2Objects.F_TYPE],
+						s[Pb2Objects.F_REC], s[Pb2Objects.F_X],
+						s[Pb2Objects.F_Y]])
 		view.drive()
 		before = view.shift
-		# $CF14 -- the view has moved, so everything standing on it moves back.
-		things.shift(view.shift)
 		view.decide(int(f["screen"]))
 		# $CF1C, before any of them gets a turn.
 		# The cartridge sweeps once a frame and a step of the game can take
@@ -263,41 +274,92 @@ func _run_spawns(path: String) -> void:
 		# and put out with the rest.
 		var same := 0
 		var seen := 0
+		# How many times a place was left to a mind of the engine's own.  A
+		# run in which this is nought has proved nothing about the minds.
+		var mine := 0
 		var gone := []
-		for tbl in f["place"]:
-			var place: Array = tbl
-			for n in range(place.size()):
-				# [type, $04F2, $0508, $04B0, $04C6].
-				var p: Array = place[n]
-				var s: Pb2Objects.Slot = things.slots[n]
-				var had: int = s.type
-				if int(p[0]) == 0:
+		# Every field of every place whose type the engine drives itself and
+		# got wrong: place, field, what it said, what the cartridge said.
+		var wrong := PackedStringArray()
+		# $CF14 -- the view has moved, so everything standing on it moves back.
+		#
+		# A step of the game can run over more than one frame of the console,
+		# and the view slides a pixel at a time in each of them, so the slide
+		# of a step is not one number but a handful, and it is told.  The
+		# engine's own view is not asked for it: where the view stands at the
+		# head of a step is the engine's answer and is judged as such above,
+		# but which frame inside the step laid down which pixel of the slide
+		# it has no way to say -- the cartridge counts steps of its own that
+		# do not line up with the console's frames at all.
+		var i_tbl := -1
+		for tbl in f["whole"]:
+			i_tbl += 1
+			things.shift(int(f["shifts"][i_tbl]))
+			# What changed since the last hand-over: the place's number and
+			# then its twenty-nine bytes.  Everything else still stands.
+			for chg in tbl:
+				var row: PackedByteArray = truth[int(chg[0])]
+				for k in range(Pb2Objects.FIELDS):
+					row[k] = int(chg[k + 1])
+			for n in range(Pb2Objects.SLOTS):
+				var was_told: PackedByteArray = truth[n]
+				var s: PackedByteArray = things.slots[n]
+				var had: int = s[Pb2Objects.F_TYPE]
+				if was_told[Pb2Objects.F_TYPE] == 0:
 					continue
-				if had != int(p[0]):
+				if had != was_told[Pb2Objects.F_TYPE]:
 					# Either something the engine never put out -- a shot, or
 					# a piece of a thing that broke -- or a thing that has
 					# turned into something else.  Both are told, place and
 					# all, so that the sweep is asked what the cartridge asked:
 					# what a thing is decides how far past the edge it is let.
-					things.take(n, int(p[0]))
+					things.take(n, was_told[Pb2Objects.F_TYPE])
 				if had != 0:
 					seen += 1
-					if s.xhi == int(p[1]) and s.x == int(p[2]) \
-							and s.yhi == int(p[3]) and s.y == int(p[4]):
+					if s[Pb2Objects.F_XHI] == was_told[Pb2Objects.F_XHI] \
+							and s[Pb2Objects.F_X] == was_told[Pb2Objects.F_X] \
+							and s[Pb2Objects.F_YHI] == was_told[Pb2Objects.F_YHI] \
+							and s[Pb2Objects.F_Y] == was_told[Pb2Objects.F_Y]:
 						same += 1
-				s.xhi = int(p[1])
-				s.x = int(p[2])
-				s.yhi = int(p[3])
-				s.y = int(p[4])
-			gone.append_array(things.cull())
+				# Judged only where the engine could have got it right by
+				# itself: a place the turn walks over at all (the first six
+				# are the hero and his shots, which no mind drives), holding
+				# a thing the engine put out itself and has held since.  A
+				# place the engine never filled, or filled with something
+				# else, it has never had a turn at, and telling it is the
+				# only honest thing to do.
+				if first_told \
+						and had == was_told[Pb2Objects.F_TYPE] \
+						and n >= Pb2Objects.FIRST_LIVE \
+						and Pb2Objects.MINDS.has(had):
+					mine += 1
+					# This one drives itself, so it is judged, not told.  The
+					# record's number is the engine's own and is left out of
+					# both; so is the type, which take() above has settled.
+					for k in range(Pb2Objects.FIELDS):
+						if k == Pb2Objects.F_REC or k == Pb2Objects.F_TYPE:
+							continue
+						if s[k] != was_told[k]:
+							wrong.append("%d:%d:%d:%d" % [n, k, s[k],
+									was_told[k]])
+					continue
+				# The rest have no mind of their own yet, so all of it is
+				# told -- every field but the record's number, which is the
+				# engine's own answer and must not be handed to it.
+				for k in range(Pb2Objects.FIELDS):
+					if k != Pb2Objects.F_REC:
+						s[k] = was_told[k]
+			first_told = true
+			gone.append_array(things.turns())
 		# Where the view ended the step, what came alive in it, and what the
 		# sweep threw away.  The view is put out too: it drives the scan, so a
 		# scan that agrees only because the view was wrong in both would prove
 		# nothing.
-		out.append("%d|%s|%s|%d/%d" % [view.pos,
+		out.append("%d|%s|%s|%d/%d/%d|%s" % [view.pos,
 				" ".join(born) if born.size() else "-",
 				" ".join(PackedStringArray(gone)) if gone.size() else "-",
-				same, seen])
+				same, seen, mine,
+				" ".join(wrong) if wrong.size() else "-"])
 		for n in f["died"]:
 			things.clear(int(n))
 		for t in f["taken"]:

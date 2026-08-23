@@ -82,6 +82,10 @@ SHIFT_PC = frozenset(('D363', 'D36B', 'D37B', 'D383',
                       'D392', 'D39A', 'D3AA', 'D3B2'))
 # The four bytes of a place, in the order they are written down.
 PLACE_FIELD = (0x0400, 0x04F2, 0x0508, 0x04B0, 0x04C6)
+# The whole of a thing: twenty-nine fields of twenty-two bytes each, from
+# $0400 to $0668, field f of place n at $0400 + 22*f + n.  Five bytes are
+# enough to ask the sweep its question; a mind has to be judged on all of them.
+FIELDS = 29
 SPAWN_PC = 'A2A9'        # where a new shot takes its slot in the object table
 # $E4CD..$E4FC -- the six stores that turn a record of the level's list into a
 # live object, and $D6D4's loop, which wipes a slot that has died or been left
@@ -260,6 +264,7 @@ def _trace(d, state, script, first, frames):
         died = []
         taken = []
         place = None
+        whole = None
         # $D34D runs once a frame and moves everything back by what the view
         # moved forward, and the table is wanted as it stood when it had
         # finished -- which is after the last of its eight stores, not after
@@ -301,6 +306,8 @@ def _trace(d, state, script, first, frames):
             if i == last_shift:
                 place = [[mem[a + n] for a in PLACE_FIELD]
                          for n in range(SLOTS)]
+                whole = [[mem[0x0400 + 22 * f + n] for f in range(FIELDS)]
+                         for n in range(SLOTS)]
         row = {'frame': fr - first, 'got': got, 'done': done}
         for name, addr in WATCH.items():
             row[name] = mem[addr]
@@ -339,6 +346,7 @@ def _trace(d, state, script, first, frames):
         # sweep ran -- the cartridge sweeps every frame, and a step of the
         # game can take two of them.  Empty when the level did not run.
         row['place'] = [] if place is None else [place]
+        row['whole'] = [] if whole is None else [whole]
         row['taken'] = [t for t in taken if t[0] not in born]
         row['seized'] = fr in seized
         out.append(row)

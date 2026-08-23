@@ -42,22 +42,29 @@ PIN_DOWN = (0x04C6, 0xC0, 0x20)    # $04C6 -- and down it
 
 def run_engine(cfg, path):
     open(path, 'w').write(json.dumps(cfg))
-    r = subprocess.run([V.GODOT, '--path', V.GAME, '--headless', '--',
-                        '--spawns=' + path], capture_output=True, text=True)
+    try:
+        r = subprocess.run([V.GODOT, '--path', V.GAME, '--headless', '--',
+                            '--spawns=' + path], capture_output=True,
+                           text=True, timeout=V.ENGINE_WAIT)
+    except subprocess.TimeoutExpired:
+        sys.stderr.write('the engine never stopped -- a script that will not '
+                         'parse leaves it running\n')
+        return []
     out = []
     for line in r.stdout.split('\n'):
         line = line.strip()
         if '|' not in line:
             continue
         parts = line.split('|')
-        if len(parts) != 4 or not parts[0].isdigit():
+        if len(parts) != 5 or not parts[0].isdigit():
             continue
-        cam, rest, gone, agree = parts
+        cam, rest, gone, agree, wrong = parts
         born = [] if rest == '-' else [tuple(int(x) for x in p.split(':'))
                                        for p in rest.split()]
         culled = [] if gone == '-' else [int(x) for x in gone.split()]
         out.append(((int(cam), sorted(born), sorted(culled)),
-                    tuple(int(x) for x in agree.split('/'))))
+                    tuple(int(x) for x in agree.split('/')),
+                    [] if wrong == '-' else sorted(wrong.split())))
     if not out:
         sys.stderr.write(r.stdout[-3000:] + r.stderr[-3000:])
     return out
@@ -70,7 +77,22 @@ def script_for(rows, stage, area, spot, script):
     start = rows[0]
     vertical = V.Area(stage, area).vertical
     frames = []
+    # The whole table is twenty-two places of twenty-nine bytes, and handing
+    # all of it over on every step of a two thousand step run is six megabytes
+    # of nothing much: on a given step a handful of places change and the rest
+    # stand still.  So only the places that differ from the last hand-over are
+    # sent, each as its number followed by its twenty-nine bytes.  The engine
+    # keeps the same running copy, so what it holds is always the whole truth.
+    prev = [[0] * pb2_trace.FIELDS for _ in range(pb2_trace.SLOTS)]
     for r in rows[1:]:
+        whole = []
+        for tbl in r['whole']:
+            d = []
+            for n, row in enumerate(tbl):
+                if row != prev[n]:
+                    d.append([n] + row)
+                    prev[n] = row
+            whole.append(d)
         here = r['see_y'] if vertical else r['see_x']
         # Only the deaths the engine cannot yet reach on its own are told to
         # it; the sweep's own it must find, and what it finds is compared.
@@ -81,7 +103,8 @@ def script_for(rows, stage, area, spot, script):
         # a wrong place would only ask it a question the cartridge never asked.
         # How often it had the place right anyway is counted and reported.
         frames.append({'screen': here, 'died': told, 'taken': r['taken'],
-                       'place': r['place'], 'culled': sorted(r['culled']),
+                       'whole': whole, 'shifts': r['shifts'],
+                       'culled': sorted(r['culled']),
                        'got': r['got'], 'done': r['done']})
     return dict(
         stage=stage, area=area,
@@ -153,15 +176,21 @@ def _check(script, stage, area, tmp, spot, frames):
     w = want(rows)
     got = run_engine(script_for(rows, stage, area, spot, script),
                      os.path.join(tmp, 's.json'))
-    agree = [0, 0]
+    agree = [0, 0, 0]
     for i, expect in enumerate(w):
         have = got[i][0] if i < len(got) else None
         if have != expect:
             return None, None, (i + 1, expect, have)
+        # A type the engine drives itself has to answer field for field.  The
+        # line says place, field, what the engine said, what the cartridge did.
+        if got[i][2]:
+            return None, None, (i + 1, 'the same', got[i][2])
         agree[0] += got[i][1][0]
         agree[1] += got[i][1][1]
+        agree[2] += got[i][1][2]
     return len(w), (sum(len(x[1]) for x in w),
-                    sum(len(x[2]) for x in w), agree[0], agree[1]), None
+                    sum(len(x[2]) for x in w),
+                    agree[0], agree[1], agree[2]), None
 
 
 def main():
@@ -178,7 +207,7 @@ def main():
                        for p in a.split('=')[1].split(',')]
     tmp = pb2_trace.P.scratch('spawnverify')
     ran = bad = steps = births = culls = 0
-    same = seen = 0
+    same = seen = mine = 0
     for stage, area in targets:
         spot = V.spot_for(stage, area)
         if spot is None or not V.settled(stage, area, spot):
@@ -202,8 +231,10 @@ def main():
                 culls += b[1]
                 same += b[2]
                 seen += b[3]
-                print('%s ok   %d steps %d born %d swept'
-                      % (label, n, b[0], b[1]))
+                mine += b[4]
+                print('%s ok   %d steps %d born %d swept%s'
+                      % (label, n, b[0], b[1],
+                         '' if not b[4] else ' %d judged' % b[4]))
             else:
                 bad += 1
                 print('%s DIFF at step %d' % (label, diff[0]))
@@ -217,6 +248,8 @@ def main():
         print('the engine had the place right by itself for %d of %d '
               '(%.1f%%) -- the rest move themselves and have no minds yet'
               % (same, seen, 100.0 * same / seen))
+    print('%d turns were the engine\'s own and every field of them agreed'
+          % mine)
     return 1 if bad else 0
 
 

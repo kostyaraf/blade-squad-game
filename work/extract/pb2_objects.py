@@ -20,6 +20,11 @@ NTYPES = 90                 # $8212 is exactly 90 bytes long
 # bytes are read even though only the first eight are bits.
 PICKUP_BITS = 0xE5B1
 NPICKUP = 16
+# $8401 in bank 10: which picture a collectable wears.  $83F2 masks the record's
+# third byte with $0F and indexes this; the run ends at $8409, which is the RTS
+# the mind jumps to, so there are eight.
+PICKUP_PIC = 0x8401
+NPICKUP_PIC = 8
 CLASSES = 0x8212
 MARGINS = 0x820A            # four pairs: how far past the left / right edge
 
@@ -64,6 +69,8 @@ def export():
         # first eight are bits; the rest is whatever follows in the bank, and
         # is carried across because $E534 can reach it.
         pickup_bit=pickup,
+        pickup_pic=list(b10[PICKUP_PIC - 0x8000:
+                            PICKUP_PIC - 0x8000 + NPICKUP_PIC]),
     ))
     print('%d types, %d classes, %d bytes'
           % (NTYPES, len(set(classes)), size))

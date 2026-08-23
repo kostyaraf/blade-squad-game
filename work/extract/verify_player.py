@@ -62,10 +62,22 @@ def s24(h, p, f):
     return v - (1 << 24) if h & 0x80 else v
 
 
+# A script the engine cannot parse does not make it stop: it loads nothing,
+# finds no scene, and sits in an empty main loop for ever.  So every run is
+# given an end, and a run that reaches it is reported as what it is.
+ENGINE_WAIT = 900
+
+
 def run_engine(cfg, path):
     open(path, 'w').write(json.dumps(cfg))
-    r = subprocess.run([GODOT, '--path', GAME, '--headless', '--',
-                        '--replay=' + path], capture_output=True, text=True)
+    try:
+        r = subprocess.run([GODOT, '--path', GAME, '--headless', '--',
+                            '--replay=' + path], capture_output=True,
+                           text=True, timeout=ENGINE_WAIT)
+    except subprocess.TimeoutExpired:
+        sys.stderr.write('the engine never stopped -- a script that will not '
+                         'parse leaves it running\n')
+        return []
     rows = []
     for line in r.stdout.split('\n'):
         f = line.strip().split()
@@ -138,7 +150,11 @@ def logic_frames(rows):
     """
     out = []
     for r in rows:
-        r = dict(r, shift_after=0, frames=1)
+        # The slide of each frame in which the sweep ran, in the order the
+        # frames ran: the group's own slide is not one number but a handful,
+        # and a thing on the ground moves back by each of them in turn.
+        r = dict(r, shift_after=0, frames=1,
+                 shifts=[r['shift']] * len(r['whole']))
         if out and r['tick'] == out[-1]['tick']:
             merged = dict(r)
             for k in ('pad', 'hit', 'cam', 'shots', 'lim', 'got', 'done'):
@@ -158,6 +174,8 @@ def logic_frames(rows):
             merged['taken'] = out[-1]['taken'] + r['taken']
             merged['culled'] = out[-1]['culled'] + r['culled']
             merged['place'] = out[-1]['place'] + r['place']
+            merged['whole'] = out[-1]['whole'] + r['whole']
+            merged['shifts'] = out[-1]['shifts'] + r['shifts']
             merged['seized'] = out[-1]['seized'] or r['seized']
             merged['frames'] = out[-1]['frames'] + 1
             out[-1] = merged
