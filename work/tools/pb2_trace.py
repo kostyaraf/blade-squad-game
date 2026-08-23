@@ -37,6 +37,8 @@ WATCH = {
     'pend': 0x60,            # $60: how far the view still has to slide
     'allow': 0x0116,         # $0116: how far it may slide in one frame
     'mode': 0x27,            # $27: 3 is ordinary play, 6 is a scripted pan
+    'clock': 0x1C,           # $1C: one up per picture; the areas that carry
+                             # the view along by themselves count by it
     'alive': 0x049A,         # zero the moment something kills him
     'lim': 0x99, 'p1': 0x0401, 'p2': 0x0402, 'p3': 0x0403,
     'hold': 0x0668,          # see HOLD below; here only to widen the window
@@ -84,10 +86,22 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
     with the log and the starting values are carried forward.
     """
     first = P.IN_LEVEL if first is None else first
-    state = state or os.path.join(tempfile.gettempdir(), 'pb2_%d_%s_%s_%s.st'
-                                  % (first, stage, area, spot))
+    if state is None:
+        # The savestate is worth keeping -- making one costs a run of the whole
+        # boot -- but the traces are not, so they go in a scratch of their own
+        # and are swept up below.
+        os.makedirs(P.SCRATCH, exist_ok=True)
+        state = os.path.join(P.SCRATCH, 'pb2_%d_%s_%s_%s.st'
+                             % (first, stage, area, spot))
     P.make_state(state, frame=first, stage=stage, area=area, spot=spot)
-    d = tempfile.mkdtemp(prefix='pb2trace')
+    d = P.scratch('trace')
+    try:
+        return _trace(d, state, script, first, frames)
+    finally:
+        P.sweep(d)
+
+
+def _trace(d, state, script, first, frames):
     ram = os.path.join(d, 'start.ram')
     inp = os.path.join(d, 'i.inp')
     log = os.path.join(d, 't.log')

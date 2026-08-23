@@ -86,27 +86,22 @@ func _run_replay(path: String) -> void:
 	# The view is the engine's own now: it is put where the recording found it
 	# and after that decides for itself.
 	var view := Pb2Camera.new(level_pb2)
-	view.place(int(cfg["cam"]) >> 8, int(cfg["cam"]) & 0xFF, int(cfg["cam_pend"]))
+	view.place(int(cfg["cam"]) >> 8, int(cfg["cam"]) & 0xFF,
+			int(cfg["cam_pend"]), int(cfg["clock"]))
 	var out := PackedStringArray()
 	for f in cfg["frames"]:
 		p.solids = f["solids"]
 		p.held = int(f["hold"])
 		p.push_x = int(f["push"][0])
 		p.push_y = int(f["push"][1])
-		# One step of the game can take more than one frame of the console, and
-		# in the frames it takes the view still slides and still decides.  Only
-		# the first of them is a step of his.
-		for k in range(int(f["ticks"])):
-			view.drive()
-			if k == 0:
-				p.shift = view.shift
-				p.step(int(f["pad"]), int(f["hit"]), view.pos,
-						int(f["shots"]), int(f["lim"]))
-			elif level_pb2.vertical:
-				p.y -= view.shift << 8
-			else:
-				p.x -= view.shift << 8
-			view.decide(((p.y if level_pb2.vertical else p.x) >> 8) & 0xFF)
+		# One step of the game slides the view once, moves him once and decides
+		# once.  A step that spills over the end of a picture is seen twice by
+		# the recording, but it is still the one step, not two.
+		view.drive()
+		p.shift = view.shift
+		p.step(int(f["pad"]), int(f["hit"]), view.pos,
+				int(f["shots"]), int(f["lim"]))
+		view.decide(((p.y if level_pb2.vertical else p.x) >> 8) & 0xFF)
 		out.append("%d %d %d %d %d %d %d %d" % [p.x, p.y, p.vx, p.vy,
 				p.state, p.sub, p.pose, 1 if p.face_left else 0])
 	print("\n".join(out))

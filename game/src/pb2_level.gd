@@ -34,6 +34,11 @@ var cam_start_page: int
 var cam_start_low: int
 var cam_limit_page: int
 var cam_limit_low: int
+
+## $2E and $5E: the areas that carry the view along by themselves.  See
+## work/re/pb2_camera.md.
+var auto: int
+var auto_wait: int
 var _data: Dictionary
 
 
@@ -55,6 +60,8 @@ func _init(stage_index: int, area_index: int) -> void:
 	cam_start_low = int(a["cam_sub"])
 	cam_limit_page = int(a["cam_last"])
 	cam_limit_low = int(a["cam_last_sub"])
+	auto = int(a["auto"])
+	auto_wait = int(a["auto_wait"])
 	_build(a)
 
 

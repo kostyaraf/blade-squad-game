@@ -6,6 +6,7 @@ numbers.  This runs the real game with a script of button presses and reports,
 frame by frame, what any address held -- which is where the numbers come from.
 """
 import os
+import shutil
 import subprocess
 import tempfile
 
@@ -21,6 +22,22 @@ NFIELD = 24
 
 def field(f, slot=0):
     return OBJ + STRIDE * f + slot
+
+
+# Everything the emulator is asked to write down goes under one roof, so that a
+# run that dies half way leaves one place to sweep and not a hundred.  A trace
+# of a few hundred frames is megabytes, and a sweep makes thousands of them, so
+# each is thrown away the moment it has been read.
+SCRATCH = os.path.join(tempfile.gettempdir(), 'pb2work')
+
+
+def scratch(prefix):
+    os.makedirs(SCRATCH, exist_ok=True)
+    return tempfile.mkdtemp(prefix=prefix, dir=SCRATCH)
+
+
+def sweep(path):
+    shutil.rmtree(path, ignore_errors=True)
 
 
 BOOT = """1 -
@@ -74,7 +91,7 @@ def run(state, script, last, watch=(0x0000, 0x07FF), pokes=()):
     The value reported for a frame is the last one written during it; an
     address that was not written keeps what it had.
     """
-    d = tempfile.mkdtemp(prefix='pb2probe')
+    d = scratch('probe')
     inp = os.path.join(d, 'i.inp')
     log = os.path.join(d, 't.log')
     with open(inp, 'w') as f:
@@ -85,15 +102,17 @@ def run(state, script, last, watch=(0x0000, 0x07FF), pokes=()):
            '-tracefrom', '999999', '-traceto', '999999']
     for a, v, fr in pokes:
         cmd += ['-poke', '%04X=%02X@%d' % (a, v, fr)]
-    subprocess.run(cmd, check=True, capture_output=True)
-
-    out = {}
-    for line in open(log):
-        if not line.startswith('WATCH'):
-            continue
-        fr, _pc, _bank, addr, val = line[6:].strip().split(',')
-        out.setdefault(int(fr), {})[int(addr, 16)] = int(val, 16)
-    return out
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+        out = {}
+        for line in open(log):
+            if not line.startswith('WATCH'):
+                continue
+            fr, _pc, _bank, addr, val = line[6:].strip().split(',')
+            out.setdefault(int(fr), {})[int(addr, 16)] = int(val, 16)
+        return out
+    finally:
+        sweep(d)
 
 
 def table(writes, addrs, first, last):

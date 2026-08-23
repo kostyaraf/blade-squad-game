@@ -21,10 +21,10 @@ SIGN = {0x00: '.', 0x01: '=', 0x80: '#', 0x02: '!'}
 
 def cache(stage, area, spot=None, script=(), frames=2):
     """The cache, and the camera, as the game has them after `frames`."""
-    state = os.path.join(tempfile.gettempdir(),
-                         'cache_%d_%d_%s.st' % (stage, area, spot))
+    os.makedirs(P.SCRATCH, exist_ok=True)
+    state = os.path.join(P.SCRATCH, 'cache_%d_%d_%s.st' % (stage, area, spot))
     P.make_state(state, stage=stage, area=area, spot=spot)
-    d = tempfile.mkdtemp(prefix='pb2cache')
+    d = P.scratch('cache')
     ram = os.path.join(d, 'r.ram')
     cmd = [P.EMU, P.ROM, '-loadstate', state,
            '-frames', str(P.IN_LEVEL + frames), '-ramdump', ram]

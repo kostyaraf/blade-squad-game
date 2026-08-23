@@ -22,16 +22,19 @@ DATA = os.path.join(ROOT, 'game', 'data', 'pb2', 'levels')
 
 
 def read(stage, area):
-    state = os.path.join(tempfile.gettempdir(),
-                         'kind_%d_%d.st' % (stage, area))
+    os.makedirs(P.SCRATCH, exist_ok=True)
+    state = os.path.join(P.SCRATCH, 'kind_%d_%d.st' % (stage, area))
     P.make_state(state, stage=stage, area=area)
-    d = tempfile.mkdtemp(prefix='pb2kind')
-    ram = os.path.join(d, 'r.ram')
-    subprocess.run([P.EMU, P.ROM, '-loadstate', state,
-                    '-frames', str(P.IN_LEVEL + 2), '-ramdump', ram],
-                   check=True, capture_output=True)
-    m = open(ram, 'rb').read()
-    return m[0x87], m[0x29]
+    d = P.scratch('kind')
+    try:
+        ram = os.path.join(d, 'r.ram')
+        subprocess.run([P.EMU, P.ROM, '-loadstate', state,
+                        '-frames', str(P.IN_LEVEL + 2), '-ramdump', ram],
+                       check=True, capture_output=True)
+        m = open(ram, 'rb').read()
+        return m[0x87], m[0x29]
+    finally:
+        P.sweep(d)
 
 
 def main():

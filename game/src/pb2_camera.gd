@@ -17,6 +17,9 @@ var shift := 0               ## $94 -- how far it slid this frame
 var pending := 0             ## $60 -- how far it still has to slide, with a sign
 var limit_page := 0          ## $59
 var limit_low := 0           ## $5A
+var auto := 0                ## $2E -- the area carries the view along itself
+var wait := 0                ## $5E -- and holds it still this long first
+var clock := 0               ## $1C -- one up every step; the count it goes by
 
 # $D404 and $D406: the band on the screen he is kept in.  Sideways first,
 # downwards second.  ($D408 holds the same near edge one less, because the
@@ -36,17 +39,49 @@ func _init(level: Pb2Level) -> void:
 	pos = (level.cam_start_page << 8) | level.cam_start_low
 	limit_page = level.cam_limit_page
 	limit_low = level.cam_limit_low
+	auto = level.auto
+	wait = level.auto_wait
 
 
 ## Where the recording found it, for the acceptance check.
-func place(page: int, low: int, still_to_go: int) -> void:
+func place(page: int, low: int, still_to_go: int, count: int) -> void:
 	pos = (page << 8) | low
 	pending = still_to_go
+	clock = count
 
 
-## $D924 -- slide by what was decided last frame, a pixel at a time.
+## $D924 -- slide by what was decided last step, a pixel at a time.
+##
+## Most areas let the hero lead: $60 is whatever $D3B8 asked for.  A few carry
+## the view along by themselves and pay him no attention at all -- $2E says how
+## often and which way, and $60 is written over with a single pixel on the
+## steps the count comes round.
 func drive() -> void:
 	shift = 0
+	clock = (clock + 1) & 0xFF
+	if auto == 0:
+		_slide()
+		return
+	# $D93A: the area may hold it still for a while after it opens.
+	if wait > 0:
+		wait -= 1
+		return
+	# $D941: three, four and five every fourth step, seven and two every
+	# eighth, anything else every sixteenth.
+	var mask := 0x0F
+	if auto == 3 or auto == 4 or auto == 5:
+		mask = 0x03
+	elif auto == 7 or auto == 2:
+		mask = 0x07
+	if (clock & mask) != 0:
+		return
+	# $D96D: odd goes back, even goes on.
+	pending = -1 if (auto & 1) != 0 else 1
+	_slide()
+
+
+## $D976 -- the sliding itself.
+func _slide() -> void:
 	while pending != 0:
 		if pending < 0:
 			if not _back():

@@ -167,7 +167,11 @@ def replay(rows):
         y=s24(start['yh'], start['yp'], start['yf']),
         vx=start['vx'], vy=start['vy'],
         anim_t=start['anim_t'], anim_i=start['anim_f'],
-        cam=start['cam'], cam_pend=start['pend'], state=start['state'],
+        # $60 is one byte with a sign in it: back is a number near 256.
+        cam=start['cam'],
+        cam_pend=start['pend'] - 256 if start['pend'] > 127 else start['pend'],
+        clock=start['clock'],
+        state=start['state'],
         sub=start['sub'],
         pose=start['pose'], face_left=bool(start['face'] & 0x40),
         fall=start['fall'], tick=start['tick'],
@@ -215,9 +219,20 @@ def check(name, script, stage, area, tmp, spot=None):
     if spot is not None:
         rows = rows[SETTLE:]
     got = run_engine(replay(rows), os.path.join(tmp, 'r.json'))
-    want = [(s24(r['xh'], r['xp'], r['xf']), s24(r['yh'], r['yp'], r['yf']),
-             r['vx'], r['vy'], r['state'], r['sub'], r['pose'])
-            for r in rows[1:]]
+    # A step that spills over the end of a picture is caught by the recording
+    # in its last frame, and by then the NEXT step's slide of the view has
+    # already been taken off him.  That borrowed slide is put back, so that
+    # what is compared is the hero as his own step left him.
+    vertical = Area(stage, area).vertical
+    want = []
+    for r in rows[1:]:
+        x = s24(r['xh'], r['xp'], r['xf'])
+        y = s24(r['yh'], r['yp'], r['yf'])
+        if vertical:
+            y += r['shift_after'] << 8
+        else:
+            x += r['shift_after'] << 8
+        want.append((x, y, r['vx'], r['vy'], r['state'], r['sub'], r['pose']))
     for i, w in enumerate(want):
         g = tuple(got[i][:7]) if i < len(got) else None
         if g != w:
@@ -253,7 +268,7 @@ def main():
         elif a.startswith('--areas='):
             targets = [tuple(int(x) for x in p.split(':'))
                        for p in a.split('=')[1].split(',')]
-    tmp = tempfile.mkdtemp(prefix='pb2verify')
+    tmp = pb2_trace.P.scratch('verify')
     ran = bad = covered = 0
     for stage, area in targets:
         scripts = list(SCRIPTS) if targets == [(0, 0)] else []
@@ -280,6 +295,7 @@ def main():
                 print('%s DIFF at frame %d' % (label, diff[0]))
                 show(diff[1], diff[2])
             sys.stdout.flush()
+    pb2_trace.P.sweep(tmp)
     print('%d of %d scripts differ, %d frames matched' % (bad, ran, covered))
     return 1 if bad else 0
 

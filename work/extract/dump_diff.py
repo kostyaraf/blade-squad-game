@@ -28,7 +28,11 @@ def main():
     rows = V.logic_frames(V.ordinary(pb2_trace.trace(
         scripts[name], V.FRAMES, stage=stage, area=area, spot=spot)))
     cfg = V.replay(rows)
-    got = V.run_engine(cfg, os.path.join(tempfile.mkdtemp(), 'r.json'))
+    d = pb2_trace.P.scratch('diff')
+    try:
+        got = V.run_engine(cfg, os.path.join(d, 'r.json'))
+    finally:
+        pb2_trace.P.sweep(d)
     for i in range(max(0, at - span), min(len(rows) - 1, at + span)):
         r = rows[i + 1]
         g = got[i] if i < len(got) else [0] * 8
