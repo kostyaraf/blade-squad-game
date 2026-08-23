@@ -124,7 +124,8 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x1E: "_mind_1e", 0x38: "_mind_38", 0x24: "_mind_24",
 		0x3C: "_mind_3c", 0x1B: "_mind_1b", 0x1A: "_mind_1a", 0x15: "_mind_15",
 		0x27: "_mind_27", 0x28: "_mind_28",
-		0x07: "_mind_07", 0x08: "_mind_08", 0x2B: "_mind_2b"}
+		0x07: "_mind_07", 0x08: "_mind_08", 0x2B: "_mind_2b",
+		0x29: "_mind_29", 0x20: "_mind_20"}
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
@@ -1812,6 +1813,108 @@ func make_child_aimed(s: PackedByteArray, side: int, down: int, what: int,
 		set_speed_at(c, mag, ang)
 		return n
 	return -1
+
+
+## $FD98 ($C9BD) -- eight along the way the level runs, if bit six of what is
+## handed in is set.  Only the wall gun uses it, to sit the near half of a
+## pair eight points off the far half.
+func shift_eight(s: PackedByteArray, what: int) -> void:
+	if (what & 0x40) == 0:
+		return
+	if lvl.vertical:                                   # $97
+		nudge_down(s, 0x00, 0x08)                      # $FA53
+	else:
+		nudge_side(s, 0x00, 0x08)                      # $FA73
+
+
+## $FF00 ($C9C6) -- count down $05FA and, when it runs out, load it again with
+## `every` and write down the angle from here to him.  `off` moves the point
+## aimed at along the screen; if it would carry off the byte the cartridge
+## drops it and aims at him plainly.
+##
+## Тем же ходом ствол поворачивается: на два к записанному углу, а с
+## расстояния в четыре и ближе -- прямо на него ($FF37).  Угол пишется редко,
+## поворот идёт каждый кадр.
+func aim_clock(s: PackedByteArray, every: int, off: int) -> void:
+	s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF
+	if s[F_KEEP] == 0:
+		s[F_KEEP] = every
+		var tx: int = slots[0][F_X] + _signed(off)     # $FF11
+		if tx < 0 or tx > 0xFF:                        # $FF1B
+			tx = slots[0][F_X]
+		s[F_COUNT] = _atan(s[F_X], s[F_Y], tx, slots[0][F_Y])
+	# $FF37
+	var d: int = (s[F_COUNT] - s[F_SELF]) & 0xFF
+	if d == 0:
+		return
+	if ((d + 0x04) & 0xFF) < 0x09:                     # $FF44
+		s[F_SELF] = s[F_COUNT]
+		return
+	if d >= 0x80:                                      # $FF49
+		s[F_SELF] = (s[F_SELF] - 2) & 0xFF
+	else:
+		s[F_SELF] = (s[F_SELF] + 2) & 0xFF
+
+
+## $CADB ($C86D) and $CAF1 ($C870) -- how far he is, weighing only the low
+## bytes of the two places.  A hero a whole screen off therefore reads as
+## being close, which is what the cartridge does and so what is kept.
+func apart_side(s: PackedByteArray) -> int:
+	var d: int = (s[F_X] - slots[0][F_X]) & 0xFF
+	return d if s[F_X] >= slots[0][F_X] else (-d) & 0xFF
+
+
+func apart_down(s: PackedByteArray) -> int:
+	var d: int = (s[F_Y] - slots[0][F_Y]) & 0xFF
+	return d if s[F_Y] >= slots[0][F_Y] else (-d) & 0xFF
+
+
+## $FC1F ($C960) -- повернуть назад там, где земля впереди кончилась.  Щуп
+## вбок берётся по лицу, а спрашивается он только в свой ход: не в свой ход
+## $FB92 отвечает "стена", и поворота не будет.
+func ground_turn_edge(n: int, s: PackedByteArray, side: int,
+		down: int) -> void:
+	var a: int = side
+	if (s[F_BITS] & 0x40) != 0:                        # $FC24
+		a = (-a) & 0xFF
+	if ground_turn_wall(n, s, a, down) < 0x80:         # $FB92
+		turn_about(s)                                  # $F97D
+
+
+## $F1EF -- шестнадцать на шестнадцать, со знаком: $01:$00 разделить на
+## $03:$02, ответ в $05:$04.  Знак берётся только со старшего байта делимого,
+## а остаток живёт в шестнадцати битах -- верхний бит при сдвиге теряется,
+## как на плате.
+static func divide16(num: int, den: int) -> int:
+	var neg: bool = (num & 0x8000) != 0
+	var n: int = (-num) & 0xFFFF if neg else num & 0xFFFF
+	var rem := 0
+	var q := 0
+	for _k in range(16):                               # $F20F
+		var bit: int = (n >> 15) & 1
+		n = (n << 1) & 0xFFFF
+		rem = ((rem << 1) | bit) & 0xFFFF
+		var t: int = rem - den
+		var c: bool = t >= 0
+		if c:
+			rem = t
+		q = ((q << 1) | (1 if c else 0)) & 0xFFFF
+	return (-q) & 0xFFFF if neg else q
+
+
+## $FE62 ($C9CF) -- скорость, которой он дойдёт до героя за `frames` кадров,
+## плюс подъём `lift` вниз (со знаком), чтобы вышла дуга.  Расстояние берётся
+## в младших байтах и кладётся в старший байт делимого, так что ответ сам
+## ложится в целое и дробное скорости.
+func set_speed_reach(s: PackedByteArray, frames: int, lift: int) -> void:
+	var dx: int = (slots[0][F_X] - s[F_X]) & 0xFF
+	var q: int = divide16((dx << 8) & 0xFFFF, frames)
+	s[F_VXFR] = q & 0xFF
+	s[F_VX] = (q >> 8) & 0xFF
+	var dy: int = (slots[0][F_Y] - s[F_Y]) & 0xFF
+	q = divide16((dy << 8) & 0xFFFF, frames)
+	s[F_VYFR] = q & 0xFF
+	s[F_VY] = ((q >> 8) + lift) & 0xFF                 # $FEA3
 
 
 # --- The minds ---------------------------------------------------------
@@ -3664,3 +3767,215 @@ func _land_23(s: PackedByteArray) -> void:
 	s[F_COUNT] = (r + 0x3F + (1 if rng_carry else 0)) & 0xFF
 	_picture_23(s)                                     # $92D8
 	s[F_STATE] = 1                                     # $FCFA
+
+
+## $A7AD (банк 11) -- пушка в стене.  Она никуда не смотрит: угол ей дан
+## записью и больше не меняется.  Раз в шестнадцать кадров она считает, под
+## каким углом стоит герой ($C9C6), и если он попал в её створ шириной в
+## восемь на сторону -- даёт очередь из трёх.
+##
+## Шесть чисел записи лежат парами: первые три -- угол, вторые три -- ширина
+## створа.  Запись даёт только два бита ($A7B5 AND #$03), а таблицы по три
+## длиной, так что четвёртая запись читает начало соседней -- как на плате.
+const WAKE_29 := [0x40, 0x80, 0x00, 0xC0, 0x00, 0x80]
+## $A88A -- сколько прибавить к углу, прежде чем спросить, не за спиной ли он.
+const OFF_29 := [0x00, 0xC0, 0x40]
+## $A88D и $A890 -- где рождается выстрел, вниз и вбок.
+const DOWN_29 := [0x04, 0x00, 0x00]
+const SIDE_29 := [0x00, 0xFE, 0x02]
+
+
+func _mind_29(_n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		# $A7B2 -- два бита записи говорят, куда она смотрит.
+		s[F_PUSH] = s[F_LIFE] & 0x03
+		shift_eight(s, s[F_LIFE])                      # $C9BD
+		s[F_LIFE] = 0x01                               # $BE5A
+		s[F_MARK] = 0x01
+		var i: int = s[F_PUSH]
+		s[F_KIND] = (0x25 + i) & 0xFF
+		s[F_SELF] = WAKE_29[i]
+		s[F_COUNT] = WAKE_29[i + 3]
+		s[F_KEEP] = (s[F_KEEP] + 1) & 0xFF
+		s[F_KEEP2] = (s[F_KEEP2] + 1) & 0xFF
+		s[F_STATE] += 1                                # $C966
+		return
+	# $A7E9 -- сошла с экрана: очередь сбросить и ждать.
+	if (s[F_XHI] | s[F_YHI]) != 0:                     # $C9C3
+		_hold_29(s)
+		return
+	aim_clock(s, 0x10, 0x00)                           # $C9C6
+	if s[F_REC_BYTE] == 0:
+		s[F_KEEP2] = (s[F_KEEP2] - 1) & 0xFF           # $A803
+		if s[F_KEEP2] != 0:
+			return
+		# $A808 -- он в створе?  Ровно тот же угол, или на восемь в любую
+		# сторону от него.
+		if s[F_SELF] != s[F_COUNT]:
+			var d: int = ((s[F_COUNT] - s[F_SELF]) + 0x08) & 0xFF
+			if d >= 0x11:                              # $A81A
+				s[F_KEEP2] = 0x10                      # $BE8A
+				return
+		s[F_ANG] = 0x03                                # $BE98
+		s[F_REC_BYTE] = (s[F_REC_BYTE] + 1) & 0xFF
+		s[F_KEEP2] = (s[F_KEEP2] + 1) & 0xFF
+	# $A82A -- очередь идёт.
+	s[F_KEEP2] = (s[F_KEEP2] - 1) & 0xFF
+	if s[F_KEEP2] != 0:
+		return
+	s[F_KEEP2] = 0x10                                  # $BE8A
+	if not _shoot_29(s):
+		return
+	s[F_ANG] = (s[F_ANG] - 1) & 0xFF                   # $A87C
+	if s[F_ANG] != 0:
+		return
+	s[F_REC_BYTE] = 0x00                               # $BE9F
+	s[F_KEEP2] = 0x90                                  # $BE8A
+
+
+## $A7EE -- сошла с экрана.
+func _hold_29(s: PackedByteArray) -> void:
+	s[F_REC_BYTE] = 0x00                               # $BE9F
+	s[F_KEEP2] = 0x10                                  # $BE8A
+
+
+## $A833 -- один выстрел.  Три запрета: угол с прибавкой должен быть меньше
+## $81, и он должен стоять ближе ста двадцати восьми точек и вбок, и вниз.
+## Три запрета кончаются отсчётом очереди, а нерождённый выстрел -- нет:
+## $A862 уходит сразу на выход, минуя $A87C.  Отсюда и ответ.
+func _shoot_29(s: PackedByteArray) -> bool:
+	var i: int = s[F_PUSH]
+	if ((s[F_SELF] + OFF_29[i]) & 0xFF) >= 0x81:       # $A83D
+		return true
+	if apart_side(s) >= 0x80:                          # $C86D
+		return true
+	if apart_down(s) >= 0x80:                          # $C870
+		return true
+	var k: int = make_child(s, SIDE_29[i], DOWN_29[i], 0x2A)   # $C8DF
+	if k < 0:
+		return false
+	var c: PackedByteArray = slots[k]
+	c[F_SELF] = 0x05                                   # $BE75
+	# $A86A -- угол выстрела ложится на ближайшую шестнадцатую доли круга.
+	set_speed_at(c, 0x0C, (s[F_SELF] + 0x08) & 0xF0)   # $C8AF
+	return true
+
+
+## $8F96 (банк 10) -- тот, что бросает.  Шесть состояний: заводится, ходит
+## по краю и бросает, стоит после броска, гибнет, лежит, встаёт снова.
+func _mind_20(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:                                  # $C97E
+		0: _wake_20(s)
+		1: _walk_20(n, s)
+		2: _throw_20(s)
+		3: _die_20(s)
+		4: _lie_20(s)
+		5: _rise_20(s)
+
+
+## $8FA5
+func _wake_20(s: PackedByteArray) -> void:
+	s[F_LIFE] = 0x7F                                   # $BE5A
+	s[F_MARK] = 0x01
+	start_anim(s, 0x10)                                # $BEAD
+	set_speed_side_at_hero(s, 0xFF, 0x80)              # $BEBF 80 FF
+	s[F_SELF] = 0x40                                   # $BE75
+	s[F_STATE] += 1                                    # $C966
+
+
+## $8FB9 -- ходит по краю; счёт вышел -- бросает.
+func _walk_20(n: int, s: PackedByteArray) -> void:
+	if s[F_LIFE] < 0x7E:                               # $8FBC
+		_hurt_20(s)
+		return
+	walled_ahead_turn_about(n, s, 0xF6, 0xFF, 0xEC)    # $BF12 F6 EC FF
+	# $BE4E отдаёт первый байт в Y, второй в A: щуп вбок -- $F8, вниз -- $04.
+	ground_turn_edge(n, s, 0xF8, 0x04)                 # $BEE9 04 F8
+	step_anim(s)                                       # $C8EE
+	step_both(s)
+	if s[F_SELF] != 0:
+		s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+		return
+	# $8FE1 -- бросок вылетает из точки на сорок выше его собственной.
+	if not _lob_20(s, 0x00, 0xD8):                     # $9055
+		return
+	start_anim(s, 0x12)                                # $BEAD
+	s[F_SELF] = 0x16                                   # $BE75
+	s[F_STATE] += 1                                    # $C966
+
+
+## $8FD7 -- рана.
+func _hurt_20(s: PackedByteArray) -> void:
+	s[F_MARK] = 0x80                                   # $C9AB
+	start_anim(s, 0x11)                                # $BEAD
+	s[F_STATE] = 3                                     # $C975
+
+
+## $8FF5 -- стоит после броска.
+func _throw_20(s: PackedByteArray) -> void:
+	if s[F_LIFE] < 0x7E:
+		_hurt_20(s)
+		return
+	if s[F_SELF] != 0:
+		s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+		if s[F_SELF] != 0:
+			step_anim(s)                               # $C837
+			return
+		s[F_COUNT] = 0x40                              # $BE7C
+		start_anim(s, 0x10)                            # $BEAD
+	# $9011
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		return
+	s[F_SELF] = 0xFF                                   # $BE75
+	s[F_STATE] -= 1                                    # $C969
+
+
+## $901E -- гибнет; картинка $A3 кончает падение.
+func _die_20(s: PackedByteArray) -> void:
+	step_anim(s)                                       # $C837
+	if s[F_KIND] != 0xA3:
+		return
+	s[F_COUNT] = 0xC0                                  # $BE7C
+	s[F_STATE] += 1                                    # $C966
+
+
+## $9030 -- лежит.
+func _lie_20(s: PackedByteArray) -> void:
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		return
+	s[F_STATE] += 1                                    # $C966
+
+
+## $9036 -- встаёт; картинка $A4 кончает подъём.
+func _rise_20(s: PackedByteArray) -> void:
+	step_anim(s)                                       # $C837
+	if s[F_KIND] != 0xA4:
+		return
+	start_anim(s, 0x10)                                # $BEAD
+	s[F_LIFE] = 0x7F                                   # $BE5A
+	s[F_MARK] = 0x01
+	s[F_SELF] = 0x40                                   # $BE75
+	set_speed_side_at_hero(s, 0xFF, 0x80)              # $BEBF 80 FF
+	s[F_STATE] = 1                                     # $C96F
+
+
+## $9055 -- бросок.  Не за экраном, лицом к нему, и он между $28 и $4F
+## точками вбок.  Ответ -- вышло ли: не вышло, и ход обрывается.
+func _lob_20(s: PackedByteArray, side: int, down: int) -> bool:
+	if (s[F_XHI] | s[F_YHI]) != 0:                     # $C9C3
+		return false
+	if looking_away(s):                                # $C98D
+		return false
+	var d: int = apart_side(s)                         # тот же $CADB
+	if d >= 0x50:                                      # $9063
+		return false
+	if d < 0x28:                                       # $9067
+		return false
+	var k: int = make_child(s, side, down, 0x21)       # $C8DF
+	if k < 0:
+		return false
+	set_speed_reach(slots[k], 0x40, 0xFE)              # $C9CF
+	return true
+
