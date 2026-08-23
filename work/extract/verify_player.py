@@ -132,10 +132,13 @@ def logic_frames(rows):
     may show the view already moved and the hero not yet, and a step with more
     work in it than fits gets no frame of its own at all.  What is wanted is one
     line per step: the buttons and the view as the step began, how far the view
-    slid in all of it, and the hero as the step left him.
+    slid before he was moved and how far after, and the hero as the step left
+    him.  The step runs in the first frame of its group, so the slide of that
+    frame comes before he moves and the rest of the group's slides after.
     """
     out = []
     for r in rows:
+        r = dict(r, shift_after=0)
         if out and r['tick'] == out[-1]['tick']:
             merged = dict(r)
             for k in ('pad', 'hit', 'cam', 'shots', 'lim'):
@@ -144,7 +147,8 @@ def logic_frames(rows):
                 merged[k] = r[k] if r[k] is not None else out[-1][k]
             merged['push'] = [r['push'][i] if r['push'][i] is not None
                               else out[-1]['push'][i] for i in (0, 1)]
-            merged['shift'] = out[-1]['shift'] + r['shift']
+            merged['shift'] = out[-1]['shift']
+            merged['shift_after'] = out[-1]['shift_after'] + r['shift']
             merged['seized'] = out[-1]['seized'] or r['seized']
             out[-1] = merged
         else:
@@ -169,7 +173,7 @@ def replay(rows):
                      shots=r['shots'], lim=r['lim'],
                      solids=r['solids'] or [], hold=r['hold'] or 0,
                      push=[r['push'][0] or 0, r['push'][1] or 0],
-                     shift=r['shift'])
+                     shift=r['shift'], shift_after=r['shift_after'])
                 for r in rows[1:]],
     )
 

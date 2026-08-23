@@ -92,6 +92,13 @@ func _run_replay(path: String) -> void:
 		p.shift = int(f["shift"])
 		p.step(int(f["pad"]), int(f["hit"]), int(f["cam"]),
 				int(f["shots"]), int(f["lim"]))
+		# The view can slide again after he has been moved, in frames the
+		# cartridge had no time to think in.  That slide only shifts him.
+		var after: int = int(f["shift_after"]) << 8
+		if level_pb2.vertical:
+			p.y -= after
+		else:
+			p.x -= after
 		out.append("%d %d %d %d %d %d %d %d" % [p.x, p.y, p.vx, p.vy,
 				p.state, p.sub, p.pose, 1 if p.face_left else 0])
 	print("\n".join(out))
