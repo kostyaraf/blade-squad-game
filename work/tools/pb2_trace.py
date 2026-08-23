@@ -39,6 +39,13 @@ WATCH = {
     'lim': 0x99, 'p1': 0x0401, 'p2': 0x0402, 'p3': 0x0403,
 }
 SHOT_SLOTS = (0x0401, 0x0402, 0x0403)
+# $AC5C: the objects that are solid to him keep a box each -- left, right,
+# top, bottom, in the screen's own numbers -- and $011F says how many.
+SOLID_N = 0x011F
+SOLID = (0x011F, 0x012F, 0x013F, 0x014F)
+# $8E55: the count is wiped at the end of the hero's update, so the boxes have
+# to be read out just before that -- a dump taken between frames shows none.
+SOLID_PC = '8E55'
 SPAWN_PC = 'A2A9'        # where a new shot takes its slot in the object table
 
 LO = min(WATCH.values())
@@ -101,9 +108,13 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
         # the frame's own throw ($A2A9) has not been counted yet, but the
         # sweep that retires dead objects has already run.
         shots = None
+        solids = None
         for addr, val, pc in changes.get(fr, ()):
             if pc == SPAWN_PC and shots is None:
                 shots = sum(1 for a in SHOT_SLOTS if mem[a])
+            if addr == SOLID_N and pc == SOLID_PC and solids is None:
+                solids = [[mem[a + i] for a in SOLID]
+                          for i in range(1, mem[SOLID_N] + 1)]
             mem[addr] = val
         row = {'frame': fr - first}
         for name, addr in WATCH.items():
@@ -118,6 +129,7 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
             row['fall'] -= 1 << 24
         row['shots'] = (sum(1 for k in ('p1', 'p2', 'p3') if row[k])
                         if shots is None else shots)
+        row['solids'] = solids or []
         out.append(row)
     return out
 

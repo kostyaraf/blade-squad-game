@@ -73,9 +73,21 @@ var scale := 0
 var suit := 0
 var dead := false
 var sunk := false               # $0668 bit 6
+## What the last check of the ground answered: $01 is the map, which he is set
+## down onto squarely, and $81 is mud, which holds him wherever he is.
+var floor_kind := 0
+## Which of the things standing in the level he came down on ($0115).
+var floor_obj := 0
+## Set while a single frame is being watched, so that the checks it makes can
+## be laid beside the cartridge's own.
+var dbg := false
 ## $0110 -- the frames, counted.  In water and mud the animations only move
 ## on every other one of them.
 var ticks := 0
+## $011F..$015F -- the boxes of whatever objects are solid to him this frame,
+## each one left, right, top and bottom in the screen's own numbers.  Э3 fills
+## these from the objects themselves; until then the race feeds them in.
+var solids: Array = []
 
 
 func _init(level: Pb2Level) -> void:
@@ -105,6 +117,9 @@ func step(buttons: int, pressed: int, camera: int,
 	dx = 0
 	dy = 0
 	scale = 0
+	# $8E49 clears it at the end of every update, so what the mud says about
+	# him is said afresh each frame.
+	sunk = false
 	ticks = (ticks + 1) & 0xFF          # $8E1A
 	_terrain()
 	match sub:
@@ -330,10 +345,16 @@ static func _toward(value: int, limit: int, step_size: int) -> int:
 ## $91EF -- weight, and the extra weight of letting the button go.
 func _gravity() -> void:
 	vy += int(cfg["gravity"])
-	if vy < 0 and not (pad & A):
-		vy += int(cfg["gravity_released"])
-	if vy > int(cfg["fall_max"]):
-		vy = int(cfg["fall_max"])
+	if vy < 0:
+		if not (pad & A):
+			vy += int(cfg["gravity_released"])
+	else:
+		# $921B: water holds him back on the way down as well as along
+		var cap: int = int(cfg["fall_max"])
+		if (scale & 0x40) and suit != 2:
+			cap = int(cfg["fall_max_slow"])
+		if vy >= cap:
+			vy = cap
 	dy += vy
 	fall += vy
 
@@ -371,7 +392,14 @@ func _step_off() -> void:
 ## the floor and not a fraction of a pixel above it.
 func _land() -> void:
 	var px: int = y >> 8
-	y = (px + int(cfg["snap_down"][px & 0x0F])) << 8
+	# $9425: the map puts him down on a line of its own ($9ED2); a thing he
+	# has landed on puts him just above itself ($9F72); mud leaves him exactly
+	# where it swallowed him to.  In every case the fraction is thrown away.
+	if floor_kind == 0x01:
+		px += int(cfg["snap_down"][px & 0x0F])
+	elif floor_kind == 0x80 and floor_obj < solids.size():
+		px = int(solids[floor_obj][2]) - 1
+	y = px << 8
 	vy = 0
 	if fall >= int(cfg["hard_landing"]) << 8:
 		_set_pose(POSE_CROUCH)
@@ -414,8 +442,14 @@ func _slide_start() -> void:
 ## $A1C2 -- keep an attack going, or start one when B is pressed.
 func _a1c2() -> void:
 	if state & 0x80:
-		if _anim_step(int(weapon_anim[weapon])):
+		# $A1CE: mud does not slow the swing down, and water only slows it for
+		# the suits that water slows -- the opposite way round from his feet.
+		var quick: bool = (scale & 0x80) != 0 \
+				or ((scale & 0x40) != 0 and suit == 2)
+		if _anim_step(int(weapon_anim[weapon]), not quick):
 			state &= 0x7F
+			anim_t = 1                      # $A1F1
+			anim_i = 1
 		return
 	if not (hit & B):
 		return
@@ -474,10 +508,10 @@ func _anim_start(id: int) -> void:
 
 
 ## $B01F -- one tick of it; true when the script says it is over.
-func _anim_step(id: int) -> bool:
+func _anim_step(id: int, gated: bool = true) -> bool:
 	anim_id = id
 	# $B01F: what slows him down slows the picture of him with it
-	if scale != 0 and not ((scale & 0x40) and suit == 2):
+	if gated and scale != 0 and not ((scale & 0x40) and suit == 2):
 		if (ticks & 1) == 0:
 			return false
 	anim_t -= 1
@@ -508,13 +542,15 @@ func _advance() -> bool:
 
 ## $ACBA -- can he move sideways this frame?  Nothing moves if he cannot.
 func _move_x(pose_index: int) -> bool:
-	dx = _scaled(dx)
 	if dx == 0:
 		return false
+	# $ACBA reaches as far as the frame asked for, not as far as the water
+	# will let him go: what slows him down is taken off only at $B16D, where
+	# the step is actually made.
 	if _wall((dx + (x & 0xFF)) >> 8, pose_index):
 		vx = 0
 		return true
-	x += dx
+	x += _scaled(dx)
 	return false
 
 
@@ -536,6 +572,11 @@ func _wall(step_px: int, pose_index: int) -> bool:
 	for i in range(1, desc.size()):
 		if i > 1 and desc[i] == 0:
 			break
+		if dbg:
+			printerr("wall pose=%d desc=%s edge=%d sx=%d sy=%d -> %02X"
+					% [pose_index, str(desc), edge, (x >> 8) + edge,
+					(y >> 8) + desc[i], _class_byte((x >> 8) + edge,
+					(y >> 8) + desc[i])])
 		if _solid(edge, desc[i]):
 			return true
 	return false
@@ -564,16 +605,36 @@ func _desc(i: int) -> Array:
 	return body[body_index[i]]
 
 
-## $AE2A -- is there floor under the step he is about to take?
+## $AE2A -- what is under him at this row: nothing, the map, something
+## standing in the level, or mud that holds him wherever it swallowed him to.
+func _floor_class(pose_index: int, row: int) -> int:
+	# $AE38: mud holds him up whatever the map underneath says.
+	if sunk:
+		return 0x81
+	var desc: Array = _desc(pose_index)
+	# $AE55 and $AE62: the map first, for both feet, and only then the things
+	# standing in the level.
+	if _class_byte((x >> 8) + desc[1], (y >> 8) + row) & 0x80 \
+			or _class_byte((x >> 8) + desc[2], (y >> 8) + row) & 0x80:
+		return 0x01
+	for i in [1, 2]:
+		var n: int = _object_at((x >> 8) + desc[i], (y >> 8) + row)
+		if n >= 0:
+			floor_obj = n
+			return 0x80
+	return 0x00
+
+
 func _floor_hit(pose_index: int) -> bool:
 	var desc: Array = _desc(pose_index)
 	var row: int = ((dy + (y & 0xFF)) >> 8) + desc[0]
-	return _solid(desc[1], row) or _solid(desc[2], row)
+	floor_kind = _floor_class(pose_index, row)
+	return floor_kind != 0
 
 
 func _floor_solid(pose_index: int) -> bool:
-	var desc: Array = _desc(pose_index)
-	return _solid(desc[1], desc[0]) or _solid(desc[2], desc[0])
+	floor_kind = _floor_class(pose_index, _desc(pose_index)[0])
+	return floor_kind != 0
 
 
 ## $AD9E
@@ -774,11 +835,35 @@ func _mud(other: int) -> void:
 		if not sunk:
 			# $B1AA: the sinking is not slowed by what does the sinking
 			y += int(cfg["sink"])
-		if (y >> 8) >= int(cfg["drown_y"]):
+		if ((y >> 8) & 0xFF) >= int(cfg["drown_y"]):
 			dead = true
 			return
 	sunk = true
 
 
 func _solid(off_x: int, off_y: int) -> bool:
-	return _class_byte((x >> 8) + off_x, (y >> 8) + off_y) & 0x80 != 0
+	var sx: int = (x >> 8) + off_x
+	var sy: int = (y >> 8) + off_y
+	if _class_byte(sx, sy) & 0x80:
+		return true
+	return _object_at(sx, sy) >= 0
+
+
+## $AC5C -- a thing standing in the level is as good as a wall.
+##
+## The point is pushed to the edge of the screen before it is compared, the way
+## the cartridge does it: anything off to the left counts as column zero and
+## anything off to the right as column two hundred and fifty five.  Answers
+## which thing it was, or minus one.
+func _object_at(sx: int, sy: int) -> int:
+	if solids.is_empty():
+		return -1
+	sx = 0 if sx < 0 else (0xFF if sx > 0xFF else sx)
+	sy = 0 if sy < 0 else (0xFF if sy > 0xFF else sy)
+	# $ACB4 counts down, so the last of them is met first.
+	for i in range(solids.size() - 1, -1, -1):
+		var b: Array = solids[i]
+		if sx >= int(b[0]) and sx <= int(b[1]) \
+				and sy >= int(b[2]) and sy <= int(b[3]):
+			return i
+	return -1

@@ -124,6 +124,11 @@ func terrain_at(px: int, py: int) -> int:
 func class_byte(px: int, py: int) -> int:
 	var tx := (px >> 4) << 1
 	var ty := (py >> 4) << 1
-	if tx < 0 or ty < 0 or tx >= width_tiles or ty >= height_tiles:
+	# The cartridge keeps sixteen rows of cells whatever the area's height, and
+	# the ones past its bottom were never filled in -- so there is nothing
+	# there rather than a wall.
+	if ty >= height_tiles:
+		return 0x00
+	if tx < 0 or ty < 0 or tx >= width_tiles:
 		return 0x80
 	return class_bytes[terrain_class[tiles[ty * width_tiles + tx]]]
