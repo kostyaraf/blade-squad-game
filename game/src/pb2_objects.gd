@@ -103,7 +103,9 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x13: "_mind_13", 0x1D: "_mind_1d",
 		0x2C: "_mind_2c", 0x2D: "_mind_2c",
 		0x42: "_mind_42",
-		0x2E: "_mind_2c"}
+		0x2E: "_mind_2c",
+		0x22: "_mind_22", 0x37: "_mind_37", 0x2F: "_mind_2f",
+		0x1E: "_mind_1e"}
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
@@ -1984,6 +1986,303 @@ func make_child_at_hero(s: PackedByteArray, side: int, down: int, what: int,
 		set_speed_at(c, mag, ang)
 		return k
 	return -1
+
+
+## $9D02 -- how far the risen line stands above a thing, and whether the
+## thing has gone under it.  Only the areas that fill up ($87 = 5) have such a
+## line at all; anywhere else the cartridge answers $FF and "not under", which
+## every caller reads as leave to carry on.  [gap, gone under]
+##
+## The line the area was entered with is the line used here.  Whatever makes
+## it climb has not been found yet, so an area that fills while it is played
+## will read short until it is.
+func under_line(s: PackedByteArray) -> Array:
+	if lvl.kind != 5:                                  # $9D04
+		return [0xFF, false]
+	if s[F_YHI] & 0x80:                                # $9D08, above the top
+		return [0xFF, false]
+	if s[F_YHI] != 0:                                  # below the bottom
+		return [0x00, true]
+	var d: int = lvl.line - s[F_Y]                     # $9D0F
+	if d < 0:
+		return [d & 0xFF, true]
+	return [d, false]
+
+
+## $A650 -- the hatch.  It opens, lets one out, shuts, and waits; and it keeps
+## its own number in the table in $05FA so that afterwards it can look at what
+## it let out and hold the next one back until that one is done.
+func _mind_1e(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_1e(n, s)
+		1: _wait_1e(s)
+		2: _open_1e(s)
+		3: _shut_1e(s)
+
+
+## $A66C
+func _wake_1e(n: int, s: PackedByteArray) -> void:
+	if not lvl.vertical:                               # $A715
+		nudge_side(s, 0, 8)                            # $C936
+	var r: int = random()                              # $C939
+	s[F_SELF] = ((r & 0x1F) + 0x1F + (1 if rng_carry else 0)) & 0xFF
+	s[F_COUNT] = s[F_LIFE]
+	s[F_LIFE] = 0x10                                   # $BE5A
+	s[F_MARK] = 0x01
+	s[F_KEEP] = n                                      # $A683, its own number
+	start_anim(s, 0x0E)                                # $BEAD
+	s[F_STATE] += 1                                    # $C966
+
+
+## $A68E -- shut and counting.  The bottom bit of the record's own byte says
+## whether it lets out the grabber, and a hatch that does waits for the one it
+## let out to be gone before it opens again.
+func _wait_1e(s: PackedByteArray) -> void:
+	if s[F_SELF] != 0:
+		var u: Array = under_line(s)                   # $9D02
+		if u[1] or u[0] < 0x10:
+			return
+		s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+		return
+	if s[F_COUNT] & 1:                                 # $A693
+		var t: int = slots[s[F_KEEP]][F_TYPE]
+		if t == 0x2C or t == 0x2D or t == 0x2E:
+			return
+	s[F_STATE] += 1                                    # $C966
+
+
+## $A6BA -- opening.  At the picture $40, the widest, out it comes -- into the
+## level's own eight places, not the six the children use.
+func _open_1e(s: PackedByteArray) -> void:
+	step_anim(s)                                       # $C837
+	if s[F_KIND] != 0x40:
+		return
+	if s[F_XHI] == 0 and s[F_YHI] == 0:                # $C9C3
+		var u: Array = under_line(s)                   # $9D02
+		if not u[1] and u[0] >= 0x10:
+			var px: int = s[F_X]                       # $C924
+			var py: int = s[F_Y]
+			for k in range(FIRST_PLACED, SLOTS):       # $C86A
+				var c: PackedByteArray = slots[k]
+				if c[F_TYPE] != 0:
+					continue
+				c[F_X] = px                            # $C927
+				c[F_Y] = py
+				if s[F_COUNT] & 1:
+					c[F_STATE] = 0x06
+					s[F_KEEP] = k
+					c[F_TYPE] = 0x2C
+				else:
+					c[F_TYPE] = 0x1F
+				slots[k] = c
+				break
+	s[F_STATE] += 1                                    # $A6FB
+
+
+## $A6FE -- shutting.  How long it then waits hangs on the top bit of the
+## record's own byte: forty frames or a hundred and twenty.
+func _shut_1e(s: PackedByteArray) -> void:
+	if step_anim(s) != 0x3D:                           # $C837
+		return
+	s[F_SELF] = 0x78 if s[F_COUNT] & 0x80 else 0x28
+	s[F_STATE] = 1                                     # $C96F
+
+
+## $93A8 -- the one that opens up and lets one out.  It plays one run of
+## pictures through; at the picture $54, the moment it is widest, it puts a
+## $33 out where it stands itself, and from then on it only shuts.
+func _mind_2f(_n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_COUNT] = s[F_LIFE]                         # $93AD
+		s[F_LIFE] = 0x05                               # $BE5A
+		s[F_MARK] = 0x01
+		start_anim(s, 0x1A)                            # $BEAD
+		s[F_SELF] = 0x28                               # $BE75
+		s[F_STATE] += 1                                # $C966
+		return
+	if s[F_SELF] != 0:
+		# $93C7 -- while it still has a count to burn it holds at the last
+		# picture, and burns the count every other frame.
+		if s[F_KIND] != 0x53:
+			step_anim(s)                               # $C837
+			return
+		if clock & 1:                                  # $0119, ROR
+			s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+		return
+	if step_anim(s) != 0x54:                           # $93DB
+		return
+	if s[F_XHI] == 0 and s[F_YHI] == 0:                # $C9C3
+		var spot_x: int = s[F_X]                       # $C924
+		var spot_y: int = s[F_Y]
+		for k in range(FIRST_LIVE, FIRST_PLACED):      # $C873
+			var c: PackedByteArray = slots[k]
+			if c[F_TYPE] != 0:
+				continue
+			c[F_X] = spot_x                            # $C927
+			c[F_Y] = spot_y
+			c[F_TYPE] = 0x33
+			c[F_STATE] = 3
+			c[F_COUNT] = s[F_COUNT]
+			slots[k] = c
+			break
+	s[F_SELF] = 0xFF                                   # $BE75
+
+
+## $910D -- the one that hangs in the air and spits.  The bottom bit of the
+## record's own byte says which way round it is: clear and it hangs above and
+## sinks towards him, set and it stands below and rises.
+func _mind_22(_n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		_wake_22(s)
+		return
+	_hang_22(s)
+
+
+## $9112
+func _wake_22(s: PackedByteArray) -> void:
+	nudge_eight(s, s[F_LIFE])                          # $C9BD
+	s[F_SELF] = s[F_LIFE] & 0x01
+	s[F_LIFE] = 0x01                                   # $BE5A
+	s[F_MARK] = 0x01
+	record_home(s)                                     # $C9AE
+	s[F_STATE] += 1                                    # $C966
+	_arm_22(s)
+
+
+## $912A -- the start of a sweep, and of every sweep after the first.  How
+## long it waits before setting off is a fresh number each time; the carry the
+## seed left behind counts towards it.
+func _arm_22(s: PackedByteArray) -> void:
+	face_hero(s)                                       # $C8FD
+	var r: int = random()                              # $C939
+	s[F_COUNT] = ((r & 0x3F) + 0x40 + (1 if rng_carry else 0)) & 0xFF
+	s[F_KIND] = 0x3A                                   # $BE6E
+	var v: int = 0xFE
+	if s[F_SELF] != 0:
+		s[F_KIND] = (s[F_KIND] + 1) & 0xFF             # $9144
+		v = 0x02
+	s[F_VY] = v
+	s[F_VYFR] = 0
+	s[F_REC_BYTE] = 0x2A                               # $BE9F
+
+
+## $9156 -- wait, then sweep for forty-two frames, spitting at the twenty-first
+## and coming home at the last.
+func _hang_22(s: PackedByteArray) -> void:
+	if s[F_COUNT] != 0:
+		s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+		return
+	face_hero(s)                                       # $C8FD
+	if s[F_SELF] == 0:
+		add_speed_down(s, 0x18)                        # $C90C
+	else:
+		sub_speed_down(s, 0x18)                        # $C90F
+	step_down(s)                                       # $C8F4
+	s[F_REC_BYTE] = (s[F_REC_BYTE] - 1) & 0xFF
+	if s[F_REC_BYTE] == 0:
+		restore_home(s)                                # $C9BA
+		_arm_22(s)
+		return
+	if s[F_REC_BYTE] != 0x15:
+		return
+	if s[F_SELF] == 0:
+		_spit_22(s, 0xA0, 0xF8)                        # $9186
+	else:
+		_spit_22(s, 0x60, 0xFA)                        # $918C
+
+
+## $8F63 -- two of them at once: one at the angle it was given, mirrored if it
+## looks the other way, and one straight along the ground.
+func _spit_22(s: PackedByteArray, ang: int, down: int) -> void:
+	var looks_right: bool = (s[F_BITS] & 0x40) != 0    # $C990
+	if looks_right:
+		ang ^= 0x40
+	_shot_22(s, ang, down)
+	_shot_22(s, 0x00 if looks_right else 0x80, down)
+
+
+## $8F7C -- and each of them leaves its mouth, which is six points behind it
+## or seven in front.
+func _shot_22(s: PackedByteArray, ang: int, down: int) -> void:
+	var side: int = 0xFA
+	if s[F_BITS] & 0x40:                               # $C990
+		side = (0x100 - side + 1) & 0xFF               # $C858
+	make_child_aimed(s, side, down, 0x14, 0x0C, ang)
+
+
+## $B0B8 and $B0BC -- where the one that dives leaves what it leaves: always
+## from the corner it has just come from.
+const TRAIL_37 := [[0x0C, 0x10], [0xF4, 0x10], [0x0C, 0xF0], [0xF4, 0xF0]]
+
+
+## $B00E -- the one that dives.  It hangs still until he comes within half a
+## screen, then sets off across and down at him and drops four on the way.
+func _mind_37(_n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		_wake_37(s)
+		return
+	_dive_37(s)
+
+
+## $B017
+func _wake_37(s: PackedByteArray) -> void:
+	if s[F_YHI] != 0:
+		return
+	var side: Array = hero_side(s)                     # $C93C
+	if side[2] or side[0] >= 0x80:
+		return
+	set_speed_side_at_hero(s, 0x00, 0x80)              # $BEBF with 80 00
+	turn_about(s)                                      # $C91B
+	set_speed_down(s, 0x00, 0x80)                      # $BEB9 with 80 00
+	if s[F_Y] >= slots[0][F_Y]:
+		flip_speed_down(s)                             # $C921
+	start_anim(s, 0x1D if s[F_VY] & 0x80 else 0x1E)    # $C83A
+	s[F_LIFE] = 0x04                                   # $BE5A
+	s[F_MARK] = 0x01
+	s[F_COUNT] = 0x04                                  # $BE7C
+	s[F_STATE] += 1                                    # $C966
+
+
+## $B054 -- and from then on it only flies.  Its own byte counts nineteen
+## frames between one dropping and the next.
+func _dive_37(s: PackedByteArray) -> void:
+	step_anim(s)                                       # $C8EE
+	step_both(s)
+	if s[F_COUNT] == 0:
+		return
+	if s[F_SELF] == 0:
+		if not _ready_37(s):
+			return
+		s[F_SELF] = 0x02                               # $BE75
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] != 1:
+		return
+	s[F_SELF] = 0x14                                   # $BE75
+	var q := 0
+	if not (s[F_VY] & 0x80):
+		q = 2
+	if not (s[F_VX] & 0x80):
+		q += 1
+	var t: Array = TRAIL_37[q]
+	if make_child_at_hero(s, int(t[0]), int(t[1]), 0x14, 0x06) < 0:
+		return                                         # $B0B2
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+
+
+## $B061 -- whether this is the moment.  Which way it is going decides which
+## side of him counts and which way round the two eighths of a screen are
+## read, so it always lets go on the near side of him.
+func _ready_37(s: PackedByteArray) -> bool:
+	var d: Array = hero_down(s)                        # $C93F
+	if d[2]:
+		return false
+	if s[F_VY] & 0x80:                                 # $B061, going up
+		if d[1]:
+			return false
+		return d[0] >= 0x20
+	if d[1]:                                           # $B073, going down
+		return true
+	return d[0] < 0x20
 
 
 ## $91A2 -- the one that swaps floor for ceiling.  The top bit of the record's
