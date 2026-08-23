@@ -159,6 +159,8 @@ def replay(rows):
         stage=start['stage'], area=start['area'],
         x=s24(start['xh'], start['xp'], start['xf']),
         y=s24(start['yh'], start['yp'], start['yf']),
+        vx=start['vx'], vy=start['vy'],
+        anim_t=start['anim_t'], anim_i=start['anim_f'],
         cam=start['cam'], state=start['state'], sub=start['sub'],
         pose=start['pose'], face_left=bool(start['face'] & 0x40),
         fall=start['fall'], tick=start['tick'],

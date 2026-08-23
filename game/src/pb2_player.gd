@@ -276,6 +276,13 @@ func _slide() -> void:
 	elif not (pad & DOWN) and not roof:
 		_slide_end()
 		return
+	# $90AB: under a ceiling too low to stand up under he can still turn about,
+	# and the slide carries him back the other way.
+	if (pad & (LEFT | RIGHT)) and roof:
+		var about: bool = (pad & RIGHT) == 0
+		if about != face_left:
+			vy = -vy                    # $B303
+			face_left = about
 	dx += vx
 	if _move_x(4) and not roof:
 		_slide_end()
@@ -447,7 +454,7 @@ func _crouch_start() -> void:
 
 func _slide_wanted() -> bool:
 	# $8FCA: there has to be room in front of him for the sliding body
-	return not _wall(-8 if face_left else 7, 4)
+	return not _wall(-8 if face_left else 7, 4, face_left)
 
 
 ## $8FEC
@@ -567,7 +574,7 @@ func _move_x(pose_index: int) -> bool:
 	# $ACBA reaches as far as the frame asked for, not as far as the water
 	# will let him go: what slows him down is taken off only at $B16D, where
 	# the step is actually made.
-	if _wall((dx + (x & 0xFF)) >> 8, pose_index):
+	if _wall((dx + (x & 0xFF)) >> 8, pose_index, dx < 0):
 		vx = 0
 		return true
 	x += _scaled(dx)
@@ -578,17 +585,20 @@ func _move_x(pose_index: int) -> bool:
 ##
 ## The screen is a wall too: the console never lets him past its sixteenth
 ## column or its two hundred and forty first, which is what keeps him in view.
-func _wall(step_px: int, pose_index: int) -> bool:
-	return _wall_class(step_px, pose_index) != 0
+func _wall(step_px: int, pose_index: int, left: bool) -> bool:
+	return _wall_class(step_px, pose_index, left) != 0
 
 
 ## What is beside him: nothing, the map ($01), a thing standing in the level
 ## ($80), what the level itself holds him against ($81), or the edge of the
 ## screen ($82).
-func _wall_class(step_px: int, pose_index: int) -> int:
+## Which way he is going is the sign of what he was asked to move ($ACD7 reads
+## the high byte of it), not the sign of what is left after his own fraction is
+## added in -- half a pixel to the left still looks to the left.
+func _wall_class(step_px: int, pose_index: int, left: bool) -> int:
 	var desc: Array = _desc(pose_index)
 	var edge: int
-	if step_px < 0:
+	if left:
 		if held & 0x20:                     # $ACDA
 			return 0x81
 		if (x >> 8) < int(cfg["screen_left"]):
@@ -622,7 +632,7 @@ func _wall_class(step_px: int, pose_index: int) -> int:
 ## standing in the level.
 func _carry(i: int) -> void:
 	if push_x != 0:
-		var c: int = _wall_class(push_x, i)
+		var c: int = _wall_class(push_x, i, push_x < 0)
 		if c == 0x00 or c == 0x80:
 			x += push_x << 8
 	if push_y == 0:
