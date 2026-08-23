@@ -303,6 +303,12 @@ func _run_spawns(path: String) -> void:
 			# the rest.  It is the cartridge's count, not the engine's, so
 			# it comes with the table.
 			things.clock = int(f["turns"][i_tbl])
+			# The seed is one for the whole game and every mind that takes
+			# a number leaves the next one behind, so an engine holding only
+			# some of the minds cannot keep it in step: it is told until
+			# they are all here.
+			things.seed = int(f["seeds"][i_tbl])
+			things.suit = int(f["suits"][i_tbl])
 			# What changed since the last hand-over: the place's number and
 			# then its twenty-nine bytes.  Everything else still stands.
 			for chg in tbl:

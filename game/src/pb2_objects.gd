@@ -99,6 +99,10 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10",
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
+## $0168:$0169 -- the seed the whole game shares.
+var seed := 0
+## $9A -- which suit he has on; nought is none.
+var suit := 0
 ## $2A -- while it is set the level stands still.
 var frozen := 0
 ## $66:$67 -- where the view stands; the minds read the map through it.
@@ -824,6 +828,13 @@ func walled_either_turn(n: int, s: PackedByteArray, side: int, down: int,
 	if not its_turn(n, clock):
 		return out_of_turn
 	return walled_either(s, side, down)
+
+
+## $FAFB ($C939) -- the next number.  The seed is stirred and its new
+## HIGH byte is the answer.
+func random() -> int:
+	seed = (seed * 5 + 0x3711) & 0xFFFF
+	return seed >> 8
 
 
 ## A byte the cartridge reads as a signed offset.
