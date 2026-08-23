@@ -232,6 +232,15 @@ func _run_spawns(path: String) -> void:
 		var was := {}
 		for n in range(Pb2Objects.FIRST_PLACED, Pb2Objects.LAST_PLACED + 1):
 			was[n] = things.slots[n].rec
+		# The engine has no minds, so nothing it puts out is ever picked
+		# up and nothing ever reports itself done: both are told.
+		things.got = int(f["got"])
+		# Every number JSON hands back is a float; the list is put
+		# back into words the engine can compare here, once.
+		var d := []
+		for v in f["done"]:
+			d.append(int(v))
+		things.done = d
 		things.scan(view.pos, before)
 		var born := PackedStringArray()
 		for n in range(Pb2Objects.FIRST_PLACED, Pb2Objects.LAST_PLACED + 1):

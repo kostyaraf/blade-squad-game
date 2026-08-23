@@ -141,7 +141,7 @@ def logic_frames(rows):
         r = dict(r, shift_after=0, frames=1)
         if out and r['tick'] == out[-1]['tick']:
             merged = dict(r)
-            for k in ('pad', 'hit', 'cam', 'shots', 'lim'):
+            for k in ('pad', 'hit', 'cam', 'shots', 'lim', 'got', 'done'):
                 merged[k] = out[-1][k]
             for k in ('solids', 'hold'):
                 merged[k] = r[k] if r[k] is not None else out[-1][k]

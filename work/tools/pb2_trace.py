@@ -69,6 +69,15 @@ SHIFT = ((0x04C6, 'D363'), (0x0508, 'D392'))
 # down a level and along one.  What the sweep at $8134 reads is the table as it
 # stands the moment this block has finished and before any of the things has had
 # a turn to move itself, so that is where a copy of it has to be taken.
+# $2B and $2C hold the sixteen things picked up for good ($E523), and
+# $0172, $0171 long, what this visit of the area has already given out
+# ($E559).  Both are read by the scan, which runs at the top of the frame,
+# so they are taken as the frame began -- a pickup later in the same frame
+# belongs to the next one.
+GOT = (0x2B, 0x2C)
+DONE_N = 0x0171
+DONE = 0x0172
+
 SHIFT_PC = frozenset(('D363', 'D36B', 'D37B', 'D383',
                       'D392', 'D39A', 'D3AA', 'D3B2'))
 # The four bytes of a place, in the order they are written down.
@@ -258,6 +267,8 @@ def _trace(d, state, script, first, frames):
         # through, and a bank switch is a JSR, and a JSR writes to the stack:
         # taking the first store that is not the block's own would stop half
         # way down the slots and read the rest a frame stale.
+        got = mem[GOT[0]] | (mem[GOT[1]] << 8)
+        done = [mem[DONE + i] for i in range(mem[DONE_N])]
         chg = list(changes.get(fr, ()))
         last_shift = -1
         for i, (_a, _v, pc) in enumerate(chg):
@@ -290,7 +301,7 @@ def _trace(d, state, script, first, frames):
             if i == last_shift:
                 place = [[mem[a + n] for a in PLACE_FIELD]
                          for n in range(SLOTS)]
-        row = {'frame': fr - first}
+        row = {'frame': fr - first, 'got': got, 'done': done}
         for name, addr in WATCH.items():
             row[name] = mem[addr]
         row['x'] = (row['xh'] << 16) | (row['xp'] << 8) | row['xf']

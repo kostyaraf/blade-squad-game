@@ -15,6 +15,11 @@ sys.path.insert(0, TOOLS)
 import pb2_spawns                                                # noqa: E402
 
 NTYPES = 90                 # $8212 is exactly 90 bytes long
+# $E5B1 in the fixed bank: which bit of $2B/$2C a collectable answers to.
+# $E534 masks the record's top nibble with $0F and indexes this, so sixteen
+# bytes are read even though only the first eight are bits.
+PICKUP_BITS = 0xE5B1
+NPICKUP = 16
 CLASSES = 0x8212
 MARGINS = 0x820A            # four pairs: how far past the left / right edge
 
@@ -43,6 +48,8 @@ CLASS_RULES = [
 def export():
     rom = pb2_spawns.Rom()
     b10 = rom.bank(10)
+    b15 = rom.bank(15)
+    pickup = list(b15[PICKUP_BITS - 0xE000:PICKUP_BITS - 0xE000 + NPICKUP])
     classes = list(b10[CLASSES - 0x8000:CLASSES - 0x8000 + NTYPES])
     margins = list(b10[MARGINS - 0x8000:MARGINS - 0x8000 + 8])
     d = outdir('pb2')
@@ -53,6 +60,10 @@ def export():
         # the far side, while the low byte is < the second.
         cull_margin=margins,
         cull_rules=CLASS_RULES,
+        # $E5B1: which bit of $2B / $2C a collectable answers to.  Only the
+        # first eight are bits; the rest is whatever follows in the bank, and
+        # is carried across because $E534 can reach it.
+        pickup_bit=pickup,
     ))
     print('%d types, %d classes, %d bytes'
           % (NTYPES, len(set(classes)), size))

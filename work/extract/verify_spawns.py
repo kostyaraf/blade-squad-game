@@ -81,7 +81,8 @@ def script_for(rows, stage, area, spot, script):
         # a wrong place would only ask it a question the cartridge never asked.
         # How often it had the place right anyway is counted and reported.
         frames.append({'screen': here, 'died': told, 'taken': r['taken'],
-                       'place': r['place'], 'culled': sorted(r['culled'])})
+                       'place': r['place'], 'culled': sorted(r['culled']),
+                       'got': r['got'], 'done': r['done']})
     return dict(
         stage=stage, area=area,
         cam=start['cam'],
@@ -106,7 +107,26 @@ def want(rows):
     return out
 
 
-def check(name, script, stage, area, tmp, spot, frames, drag=False):
+# Neither gate on the way to a slot ($E523, $E559) ever says no in an area
+# walked once from a standing start: nothing has been picked up and nothing
+# has been killed, so both lists are empty and the gates are never on trial.
+# So one run of each area is made with the lists held full: every one of the
+# sixteen collectables taken, and the first few records of the area already
+# given out.  The engine is told the same lists, and must drop the same
+# records the cartridge drops.
+#
+# The list may only be five long.  Nothing bounds it in the cartridge -- $B757
+# writes at $0172 and counts up -- but the cartridge also keeps other things
+# from $0177 on ($DF8B, $DFA0, $DFA3 and $E0BE all write there), so a longer
+# list would be held over memory that is in use, and what the scan read would
+# depend on which ran first.  $0172 to $0176 nothing else touches.
+NDONE = 5
+GATES = ([(0x2B, 0xFF, 0), (0x2C, 0xFF, 0), (0x0171, NDONE, 0)]
+         + [(0x0172 + i, i + 1, 0) for i in range(NDONE)])
+
+
+def check(name, script, stage, area, tmp, spot, frames, drag=False,
+          gates=False):
     P = pb2_trace.P
     P.ROMPOKE = list(P.IMMORTAL) if drag else []
     if drag:
@@ -115,6 +135,8 @@ def check(name, script, stage, area, tmp, spot, frames, drag=False):
         P.FREEZE = [(pin, far, 0), (pin, near, P.IN_LEVEL + frames // 2)]
     else:
         P.FREEZE = []
+    if gates:
+        P.FREEZE = P.FREEZE + GATES
     try:
         return _check(script, stage, area, tmp, spot, frames)
     finally:
@@ -166,11 +188,13 @@ def main():
         # lean on one direction are given as long as the whole area takes.
         scripts = [(n, s, V.FRAMES, False) for n, s in
                    V.random_scripts(n_random, seed + 31 * (stage * 16 + area))]
-        scripts.append(('drag', [(0, '-')], DRAG, True))
-        for name, script, frames, drag in scripts:
+        scripts.append(('drag', [(0, '-')], DRAG, True, False))
+        scripts.append(('drag-gated', [(0, '-')], DRAG, True, True))
+        scripts = [s if len(s) == 5 else s + (False,) for s in scripts]
+        for name, script, frames, drag, gates in scripts:
             ran += 1
             n, b, diff = check(name, script, stage, area, tmp, spot, frames,
-                               drag)
+                               drag, gates)
             label = '%d:%-2d %-12s' % (stage, area, name)
             if diff is None:
                 steps += n

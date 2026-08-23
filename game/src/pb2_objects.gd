@@ -12,6 +12,9 @@ class_name Pb2Objects
 const SLOTS := 22
 ## $801A and $D36B: the sweep and the slide walk from here to the end.
 const FIRST_LIVE := 0x06
+
+## $E55E -- the four types the area gives out once each time it opens.
+const ONCE_A_VISIT := [0x24, 0x3E, 0x40, 0x3A]
 ## $E499 and $E4B3: the records of a level may only be put in these.  The
 ## search runs upwards but keeps the last free one it saw, not the first, so
 ## they fill from the top down.
@@ -33,11 +36,18 @@ class Slot:
 
 var lvl: Pb2Level
 var slots: Array = []
+## $E5B1 -- which bit of `got` a collectable answers to.
+var pickup_bit := PackedByteArray()
 ## $8212 and $820A -- which sweep a type belongs to and how far past the edge
 ## that sweep lets a thing get.  Read from data/pb2/objects.json.
 var cull_class := PackedByteArray()
 var cull_margin := PackedByteArray()
 var cull_rules: Array = []
+
+## $2B:$2C -- the sixteen collectables taken for good.
+var got := 0
+## $0172, $0171 long -- what this visit of the area has given out.
+var done: Array = []
 ## $8A -- set as the area opens, so that the first scan fills the whole screen
 ## and not only its edge.  The first scan to reach the end of the list, or a
 ## record that is still ahead of the screen, puts it out.
@@ -53,6 +63,7 @@ func _init(level: Pb2Level) -> void:
 	# Every number that comes back from JSON is a float, and a float will not
 	# even be compared with a word without complaint, so they are put back into
 	# the shape the code below expects once, here.
+	pickup_bit = PackedByteArray(t["pickup_bit"])
 	cull_class = PackedByteArray(t["cull_class"])
 	cull_margin = PackedByteArray(t["cull_margin"])
 	for r in t["cull_rules"]:
@@ -106,6 +117,9 @@ func _place(rec_index: int, rec: Dictionary, delta: int) -> void:
 			return                       # $E4AE -- it is out there already
 	if free < 0:
 		return                           # $E4BA -- no room; it is dropped
+	# $E4BD and $E4C2 -- the two things that are not put out twice.
+	if _gated(rec_index, rec):
+		return
 	var s: Slot = slots[free]
 	s.type = int(rec["type"])
 	s.flags = int(rec["flags"])
@@ -230,3 +244,27 @@ func _off_down(s: Slot, rule) -> bool:
 	if s.yhi < 0x80:
 		return true
 	return s.y < 0xE0
+
+
+## $E523 and $E559 -- may this record come out at all?
+##
+## Two kinds of thing are not put out again.  A collectable (type $02) that
+## has been taken is gone for the whole game: sixteen bits in `got` remember
+## which.  Four other types -- the door, the two lifts and the switch -- are
+## given out once per visit to an area, and `done` is the list of the records
+## that have already been.
+##
+## Both are asked after a free place has been found and before anything is
+## written, so a blocked record leaves the place free for the next one.
+func _gated(rec_index: int, rec: Dictionary) -> bool:
+	var kind := int(rec["type"])
+	if kind == 0x02:
+		var f := int(rec["flags"])
+		# $E530: the top nibble says which of the sixteen it is, and the
+		# bottom bit which of the two bytes holds it.
+		var bit: int = pickup_bit[(f >> 4) & 0x0F]
+		var word: int = (got >> 8) if (f & 1) else (got & 0xFF)
+		return (word & bit) != 0
+	if kind in ONCE_A_VISIT:
+		return done.has(rec_index)
+	return false
