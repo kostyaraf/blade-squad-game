@@ -101,6 +101,9 @@ def export():
         slide_retry=b8[0x10A2] * 256,
         # $AFD7: landing puts his feet on the last row of a sixteen pixel cell
         snap_down=[s8(x) for x in a9(0xAFD7, 16)],
+        # $AFF7: standing up out of a slide puts him on the far side of the
+        # cell instead -- the ceiling that made him slide is above him
+        snap_stand=[s8(x) for x in a9(0xAFF7, 16)],
         # $AF91/$AF99: the same trick sideways, into and out of a wall
         snap_right=[s8(x) for x in a9(0xAFD7, 16)],
         snap_left=[s8(x) for x in a9(0xAFE7, 16)],

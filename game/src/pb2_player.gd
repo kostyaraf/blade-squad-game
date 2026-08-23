@@ -288,7 +288,27 @@ func _slide() -> void:
 		_slide_end()
 		return
 	if not _floor_solid(5):
-		_step_off()
+		_slide_off()
+
+
+## $9107 -- the slide runs off a ledge.
+##
+## What made him slide was something low over his head, and standing up under it
+## would leave him inside it.  So before he steps off he is put down eight
+## pixels, and then set on the line the cell he is in gives him -- against the
+## bottom of what is over him if that is a thing standing in the level, and on
+## the far side of the cell if it is the map.
+func _slide_off() -> void:
+	var v: int = _ceiling_class(11, _desc(11)[0])
+	if v != 0:
+		y += 8 << 8
+		var head: int = ((y >> 8) - 36) & 0xFF
+		if v == 0x01:
+			y += int(cfg["snap_stand"][_grid_y(head)]) << 8
+		elif v == 0x80 and floor_obj < solids.size():
+			var d: int = (int(solids[floor_obj][3]) - head) & 0xFF
+			y += (d - 0x100 if d >= 0x80 else d) << 8
+	_step_off()
 
 
 ## $912E -- the slide is over: he sheds most of his speed and crouches.
@@ -721,7 +741,11 @@ func _ceiling_class(pose_index: int, row: int) -> int:
 			or _class_byte((x >> 8) + desc[2], (y >> 8) + row) & 0x80:
 		return 0x01
 	for i in [1, 2]:
-		if _object_at((x >> 8) + desc[i], (y >> 8) + row) >= 0:
+		# $AE09: which thing it was is written down, the same slot the floor
+		# probe uses.
+		var n: int = _object_at((x >> 8) + desc[i], (y >> 8) + row)
+		if n >= 0:
+			floor_obj = n
 			return 0x80
 	return 0x00
 
