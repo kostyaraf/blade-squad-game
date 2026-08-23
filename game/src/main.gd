@@ -80,12 +80,11 @@ func _run_replay(path: String) -> void:
 	p.fall = int(cfg["fall"])
 	p.ticks = int(cfg["tick"])
 	var out := PackedStringArray()
-	var dbg_at: int = int(cfg.get("dbg", -1))
-	var n := 0
 	for f in cfg["frames"]:
-		n += 1
-		p.dbg = n == dbg_at
 		p.solids = f["solids"]
+		p.held = int(f["hold"])
+		p.push_x = int(f["push"][0])
+		p.push_y = int(f["push"][1])
 		p.step(int(f["pad"]), int(f["hit"]), int(f["cam"]),
 				int(f["shots"]), int(f["lim"]))
 		out.append("%d %d %d %d %d %d %d %d" % [p.x, p.y, p.vx, p.vy,

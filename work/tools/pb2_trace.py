@@ -37,6 +37,8 @@ WATCH = {
     'mode': 0x27,            # $27: 3 is ordinary play, 6 is a scripted pan
     'alive': 0x049A,         # zero the moment something kills him
     'lim': 0x99, 'p1': 0x0401, 'p2': 0x0402, 'p3': 0x0403,
+    'hold': 0x0668,          # see HOLD below; here only to widen the window
+    'px': 0x063C, 'py': 0x0652,
 }
 SHOT_SLOTS = (0x0401, 0x0402, 0x0403)
 # $AC5C: the objects that are solid to him keep a box each -- left, right,
@@ -46,6 +48,14 @@ SOLID = (0x011F, 0x012F, 0x013F, 0x014F)
 # $8E55: the count is wiped at the end of the hero's update, so the boxes have
 # to be read out just before that -- a dump taken between frames shows none.
 SOLID_PC = '8E55'
+# $0668: what the level itself decides about him -- a boss room pins him where
+# he stands by declaring floor, ceiling and both walls solid.  It has to be
+# read before his own update adds the mud to it and then wipes the lot.
+HOLD = 0x0668
+HOLD_PC = ('B47B', '8E4C')
+# $063C and $0652: how far a moving floor is carrying him this frame, along and
+# down.  Wiped at the end of his update like the rest, so read the same way.
+PUSH = ((0x063C, '8E46'), (0x0652, '8E49'))
 SPAWN_PC = 'A2A9'        # where a new shot takes its slot in the object table
 
 LO = min(WATCH.values())
@@ -109,7 +119,14 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
         # sweep that retires dead objects has already run.
         shots = None
         solids = None
+        hold = None
+        push = [None, None]
         for addr, val, pc in changes.get(fr, ()):
+            if addr == HOLD and pc in HOLD_PC and hold is None:
+                hold = mem[HOLD]
+            for k, (a, apc) in enumerate(PUSH):
+                if addr == a and pc == apc and push[k] is None:
+                    push[k] = mem[a]
             if pc == SPAWN_PC and shots is None:
                 shots = sum(1 for a in SHOT_SLOTS if mem[a])
             if addr == SOLID_N and pc == SOLID_PC and solids is None:
@@ -130,8 +147,15 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
         row['shots'] = (sum(1 for k in ('p1', 'p2', 'p3') if row[k])
                         if shots is None else shots)
         row['solids'] = solids or []
+        row['hold'] = mem[HOLD] if hold is None else hold
+        row['push'] = [_s8(mem[a] if push[k] is None else push[k])
+                       for k, (a, _pc) in enumerate(PUSH)]
         out.append(row)
     return out
+
+
+def _s8(v):
+    return v - 0x100 if v & 0x80 else v
 
 
 def _s16(v):

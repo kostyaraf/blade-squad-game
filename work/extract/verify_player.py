@@ -150,7 +150,8 @@ def replay(rows):
         pose=start['pose'], face_left=bool(start['face'] & 0x40),
         fall=start['fall'], tick=start['tick'],
         frames=[dict(pad=r['pad'], hit=r['hit'], cam=r['cam'],
-                     shots=r['shots'], lim=r['lim'], solids=r['solids'])
+                     shots=r['shots'], lim=r['lim'], solids=r['solids'],
+                     hold=r['hold'], push=r['push'])
                 for r in rows[1:]],
     )
 

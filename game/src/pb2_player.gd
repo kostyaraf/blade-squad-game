@@ -78,9 +78,6 @@ var sunk := false               # $0668 bit 6
 var floor_kind := 0
 ## Which of the things standing in the level he came down on ($0115).
 var floor_obj := 0
-## Set while a single frame is being watched, so that the checks it makes can
-## be laid beside the cartridge's own.
-var dbg := false
 ## $0110 -- the frames, counted.  In water and mud the animations only move
 ## on every other one of them.
 var ticks := 0
@@ -88,6 +85,13 @@ var ticks := 0
 ## each one left, right, top and bottom in the screen's own numbers.  Э3 fills
 ## these from the objects themselves; until then the race feeds them in.
 var solids: Array = []
+## $0668 as the level left it before his own update ran: bit 7 a ceiling, bit 6
+## a floor, bit 5 a wall to his left, bit 4 one to his right.  A boss room sets
+## all four and he cannot move at all.
+var held := 0
+## $063C and $0652 -- how far a moving floor is carrying him this frame.
+var push_x := 0
+var push_y := 0
 
 
 func _init(level: Pb2Level) -> void:
@@ -118,9 +122,18 @@ func step(buttons: int, pressed: int, camera: int,
 	dy = 0
 	scale = 0
 	# $8E49 clears it at the end of every update, so what the mud says about
-	# him is said afresh each frame.
-	sunk = false
+	# him is said afresh each frame -- on top of whatever the level says.
+	sunk = (held & 0x40) != 0
 	ticks = (ticks + 1) & 0xFF          # $8E1A
+	# $D389 runs before his update: the objects are kept in the camera's frame
+	# of reference, so when the view slides everything in it slides the other
+	# way.  He runs against the edge of the screen and stops moving across it
+	# -- the world moves.
+	if lvl.vertical:
+		y -= (camera - cam) << 8
+	else:
+		x -= (camera - cam) << 8
+	cam = camera
 	_terrain()
 	match sub:
 		SUB_GROUND: _ground()
@@ -129,19 +142,12 @@ func step(buttons: int, pressed: int, camera: int,
 		SUB_SLIDE: _slide()
 		SUB_LANDED: _landed()
 		_: _ground()
-	# $D389: the objects are kept in the camera's frame of reference, so when
-	# the view slides everything in it slides the other way.  He runs against
-	# the edge of the screen and stops moving across it -- the world moves.
-	if lvl.vertical:
-		y -= (camera - cam) << 8
-	else:
-		x -= (camera - cam) << 8
-	cam = camera
 
 
 ## $8EC1 -- standing, walking, and everything that starts from the ground.
 func _ground() -> void:
 	_apply_vertical(8)
+	_carry(0x18)
 	_a1c2()
 	if state & 0x80:
 		state = 0x80
@@ -184,6 +190,7 @@ func _ground_exits() -> void:
 
 ## $91B5 -- in the air.
 func _air() -> void:
+	_carry(0x2B)
 	_a1c2()
 	if state & 0x80:
 		dx += vx
@@ -216,6 +223,7 @@ func _air() -> void:
 ## $8F8C -- crouching.
 func _crouch() -> void:
 	_apply_vertical(10)
+	_carry(0x1B)
 	body_x = 2
 	_friction()
 	if not _floor_solid(10):
@@ -226,10 +234,12 @@ func _crouch() -> void:
 		if pad & (LEFT | RIGHT):
 			face_left = (pad & LEFT) != 0
 		return
-	if not (pad & DOWN):
+	# $8FB0: he only straightens up if there is room over his head.
+	if not (pad & DOWN) and _ceiling_free(11):
 		_stand()
 		return
-	if (hit & A) and _slide_wanted():
+	# $8FC5: there is no sliding in mud.
+	if (hit & A) and not (scale & 0x80) and _slide_wanted():
 		_slide_start()
 	elif pad & (LEFT | RIGHT):
 		face_left = (pad & LEFT) != 0
@@ -241,6 +251,7 @@ func _crouch() -> void:
 ## it; when it runs out the slide is over.
 func _slide() -> void:
 	_apply_vertical(8)
+	_carry(0x21)
 	# $9040: a ceiling low enough to make him keep sliding
 	var roof: bool = not _ceiling_free(11)
 	if face_left:
@@ -278,6 +289,7 @@ func _slide_end() -> void:
 ## $9193 -- the twelve frames after a long fall.
 func _landed() -> void:
 	_apply_vertical(10)
+	_carry(0x1B)
 	body_x = 2
 	_friction()
 	if not _floor_solid(10):
@@ -559,27 +571,61 @@ func _move_x(pose_index: int) -> bool:
 ## The screen is a wall too: the console never lets him past its sixteenth
 ## column or its two hundred and forty first, which is what keeps him in view.
 func _wall(step_px: int, pose_index: int) -> bool:
+	return _wall_class(step_px, pose_index) != 0
+
+
+## What is beside him: nothing, the map ($01), a thing standing in the level
+## ($80), what the level itself holds him against ($81), or the edge of the
+## screen ($82).
+func _wall_class(step_px: int, pose_index: int) -> int:
 	var desc: Array = _desc(pose_index)
 	var edge: int
 	if step_px < 0:
+		if held & 0x20:                     # $ACDA
+			return 0x81
 		if (x >> 8) < int(cfg["screen_left"]):
-			return true
+			return 0x82
 		edge = step_px - desc[0] - 1
 	else:
+		if held & 0x10:                     # $AD0B
+			return 0x81
 		if (x >> 8) >= int(cfg["screen_right"]):
-			return true
+			return 0x82
 		edge = step_px + desc[0]
+	# $AD2C and $AD5E: the map for every point of him, and only then the things
+	# standing in the level.
 	for i in range(1, desc.size()):
 		if i > 1 and desc[i] == 0:
 			break
-		if dbg:
-			printerr("wall pose=%d desc=%s edge=%d sx=%d sy=%d -> %02X"
-					% [pose_index, str(desc), edge, (x >> 8) + edge,
-					(y >> 8) + desc[i], _class_byte((x >> 8) + edge,
-					(y >> 8) + desc[i])])
-		if _solid(edge, desc[i]):
-			return true
-	return false
+		if _class_byte((x >> 8) + edge, (y >> 8) + desc[i]) & 0x80:
+			return 0x01
+	for i in range(1, desc.size()):
+		if i > 1 and desc[i] == 0:
+			break
+		if _object_at((x >> 8) + edge, (y >> 8) + desc[i]) >= 0:
+			return 0x80
+	return 0x00
+
+
+## $A126 -- a floor that moves takes him with it.
+##
+## He goes only as far as there is room for: a wall of the map stops him, but
+## the thing carrying him is not in his way, and neither is anything else
+## standing in the level.
+func _carry(i: int) -> void:
+	if push_x != 0:
+		var c: int = _wall_class(push_x, i)
+		if c == 0x00 or c == 0x80:
+			x += push_x << 8
+	if push_y == 0:
+		return
+	var v: int
+	if push_y > 0:
+		v = _floor_class(i + 1, push_y + _desc(i + 1)[0])
+	else:
+		v = _ceiling_class(i + 2, push_y + _desc(i + 2)[0])
+	if v == 0x00 or v == 0x80:
+		y += push_y << 8
 
 
 ## $A036 -- move him up or down by what this frame asked for.
@@ -637,16 +683,28 @@ func _floor_solid(pose_index: int) -> bool:
 	return floor_kind != 0
 
 
-## $AD9E
+## $AD9E -- what is over him at this row.
+func _ceiling_class(pose_index: int, row: int) -> int:
+	if held & 0x80:                         # $ADAC
+		return 0x81
+	var desc: Array = _desc(pose_index)
+	if _class_byte((x >> 8) + desc[1], (y >> 8) + row) & 0x80 \
+			or _class_byte((x >> 8) + desc[2], (y >> 8) + row) & 0x80:
+		return 0x01
+	for i in [1, 2]:
+		if _object_at((x >> 8) + desc[i], (y >> 8) + row) >= 0:
+			return 0x80
+	return 0x00
+
+
 func _ceiling_hit(pose_index: int) -> bool:
 	var desc: Array = _desc(pose_index)
-	var row: int = ((dy + (y & 0xFF)) >> 8) + desc[0]
-	return _solid(desc[1], row) or _solid(desc[2], row)
+	return _ceiling_class(pose_index,
+			((dy + (y & 0xFF)) >> 8) + desc[0]) != 0
 
 
 func _ceiling_free(pose_index: int) -> bool:
-	var desc: Array = _desc(pose_index)
-	return not (_solid(desc[1], desc[0]) or _solid(desc[2], desc[0]))
+	return _ceiling_class(pose_index, _desc(pose_index)[0]) == 0
 
 
 ## $AC35 -- what is the ground made of, this far from him?
