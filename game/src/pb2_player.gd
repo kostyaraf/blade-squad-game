@@ -62,6 +62,13 @@ var anim_t := 0                 # frames left on this pose
 var weapon := 0
 var shots := 0                  # his own shots still in the air
 var limit := 0                  # $99: one more than that many is too many
+## $54 -- how many frames the button has been held, counted up by $D23A once
+## every fourth picture and never past the world's own ceiling.
+var charge := 0
+## The table of things.  While it is there he takes his own places in it and
+## what he throws is really thrown; without it the harness tells him instead
+## how many of his throws are still in the air.
+var world = null
 var cam := 0                    # where the level is, in pixels
 ## Which body the sideways check uses; $A095 swaps it while he is off the
 ## ground, and the crouch and the slide name their own.
@@ -625,47 +632,140 @@ func _a1c2() -> void:
 			anim_t = 1                      # $A1F1
 			anim_i = 1
 		return
+	try_throw()
+
+
+## $A1F8 -- the throw itself, once it is settled that he is not already in the
+## middle of one.  It is its own entry so that the weapon check can ask him to
+## throw without asking him to move.
+func try_throw() -> void:
 	if not (hit & B):
 		return
-	if shots > limit:                       # $A3D9
+	# $A3D9 -- a free place, and only if he is under his count.  Without a
+	# table of things the harness says how many are out instead.
+	var k := -1
+	if world != null:
+		k = world.free_shot_slot()
+		if k < 0:
+			return
+	elif shots > limit:
 		return
-	var w := _a403()
-	if w < 0:
+	var aim: Array = _a403()
+	if aim[1] < 0:                          # $A209 -- this one cannot throw
 		return
-	weapon = w
+	weapon = aim[1]
 	state |= 0x80
 	_anim_start(int(weapon_anim[weapon]))
+	if world != null:                       # $A226
+		# $05A2 is his own cell and the throw reads it straight ($A358 for the
+		# speed water takes off, $A33E for the ceiling, $A3C2 for the beam's
+		# life).  The end of every step wipes it ($8E40) and his own movement
+		# fills it in again before $A1C2 is reached, so what the table of
+		# things last saw is always nought: the live one is his.
+		world.slots[0][Pb2Objects.F_HOLD] = scale
+		world.fire(k, aim[0], weapon, world.charge_tier(charge))
+	charge = 0                              # $A25A
 
 
 ## $A403 -- which throw this is: what he is doing decides, and where he aims.
-func _a403() -> int:
+##
+## Two answers come out of it, and the cartridge keeps them in two registers:
+## the way the throw goes (0..7, the compass the tables of $A8BD and $A905 are
+## laid out along) and the pose he throws in (0..14, which $A4EE turns into one
+## of his little animations).  A pose of minus one means this one cannot throw
+## at all.
+func _a403() -> Array:
 	var s := state
 	for bit in range(7):
 		if not (s & (1 << bit)):
 			continue
 		match bit:
-			0: return _aim_air()
-			1: return _aim_ground()
-			2: return 2
-			3: return 1
-			4: return -1                    # $A4EB -- this suit cannot throw
-			5: return _aim_ground()         # suit weapons wait for E3
-			6: return _aim_ground()
+			0: return _aim_air()            # $A448
+			1: return _aim_ground()         # $A421
+			2: return [_side(false), 2]     # $A468
+			3: return _aim_crouch()         # $A46C
+			4: return [0, -1]               # $A4EB
+			5: return _aim_suit()           # $A476
+			6: return _aim_hang()           # $A4D0
 	return _aim_ground()
 
 
-func _aim_ground() -> int:                  # $A421
+## $A43F and $A4C6 -- which of a pair of opposite ways he is looking.  The two
+## roads read the same bit the opposite way about, and $A476's road is the one
+## that wants `flip`.
+func _side(flip: bool) -> int:
+	return int(face_left != flip)
+
+
+func _aim_ground() -> Array:                # $A421
 	if not (pad & UP):
-		return 0
-	return 5 if pad & (LEFT | RIGHT) else 3
+		return [_side(false), 0]            # $A43D
+	return _aim_up(0)                       # $A427
 
 
-func _aim_air() -> int:                     # $A448
+## $A427 -- up, or up and to one side, out of the pose the caller names.
+func _aim_up(pose: int) -> Array:
+	if not (pad & (LEFT | RIGHT)):
+		return [2, 3]                       # $A438
+	return [4 + int(face_left), 5]          # $A42D
+
+
+func _aim_air() -> Array:                   # $A448
 	if not (pad & (UP | DOWN)):
-		return 0
+		return [_side(false), 0]            # $A44C
 	if pad & UP:
-		return 5 if pad & (LEFT | RIGHT) else 3
-	return 6 if pad & (LEFT | RIGHT) else 4
+		return _aim_up(0)                   # $A450
+	if not (pad & (LEFT | RIGHT)):
+		return [3, 4]                       # $A458
+	return [6 + int(face_left), 6]          # $A45D
+
+
+func _aim_crouch() -> Array:                # $A46C
+	if pad & (LEFT | RIGHT):
+		return [6 + int(face_left), 1]      # $A45F
+	return [_side(false), 1]                # $A43F
+
+
+## $A4D0 -- hanging.  Down and to one side is the only slant it allows.
+func _aim_hang() -> Array:
+	if not (pad & DOWN):
+		return [_side(false), 7]            # $A4E6
+	if not (pad & (LEFT | RIGHT)):
+		return [3, 8]                       # $A4DC
+	return [6 + int(face_left), 12]         # $A4E1
+
+
+## $A476 -- the eight ways a suit fires.  This road reads the way he looks the
+## other way about from every other road, and a slant only comes out when the
+## way pressed is not the way the picture of him still points.
+func _aim_suit() -> Array:
+	if not (pad & (UP | DOWN)):
+		return [_side(true), 9]             # $A4C4
+	if pad & DOWN:                          # $A47C
+		if not (pad & (LEFT | RIGHT)):
+			return [3, 11]                  # $A4BF
+		if pad & RIGHT:                     # $A4A8
+			return [6, 14] if face_left else [3, 11]
+		return [3, 11] if face_left else [7, 14]
+	if not (pad & (LEFT | RIGHT)):
+		return [2, 10]                      # $A49D
+	if pad & RIGHT:                         # $A486
+		return [4, 13] if face_left else [2, 10]
+	return [2, 10] if face_left else [5, 13]
+
+
+## $D23A -- one more frame of the hold, once every fourth picture and never
+## past the ceiling the world he is in sets.  It runs at $CF00, in the level's
+## own frame and not in his, so it is counted once for every picture and not
+## once for every step of his.
+func step_charge(tick: int) -> void:
+	if (tick & 0x03) != 0x03:
+		return
+	if world == null:
+		return
+	var cap: int = int(world.hold_cap[world.power])
+	if charge != cap:
+		charge += 1
 
 
 ## $9E44 -- a pose only sticks if he is not in the middle of a swing.

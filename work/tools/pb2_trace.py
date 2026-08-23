@@ -41,6 +41,10 @@ WATCH = {
                              # the view along by themselves count by it
     'alive': 0x049A,         # zero the moment something kills him
     'lim': 0x99, 'p1': 0x0401, 'p2': 0x0402, 'p3': 0x0403,
+    # What he throws with: $54 how long the button has been held, $55 how far
+    # the blade has been raised, $A2 which of the two blades it is, $9A the
+    # suit.  See work/re/pb2_weapons.md.
+    'held_b': 0x54, 'power': 0x55, 'second': 0xA2, 'wear': 0x9A,
     'hold': 0x0668,          # see HOLD below; here only to widen the window
     'px': 0x063C, 'py': 0x0652,
 }
@@ -150,13 +154,15 @@ LO = min(WATCH.values())
 HI = max(max(WATCH.values()), 0x0400 + 22 * FIELDS - 1)
 
 
-def state_for(first, stage, area, spot):
+def state_for(first, stage, area, spot, pokes=()):
     """The savestate a run of this area starts from.  Making one costs a run of
     the whole boot, so they are kept and shared."""
     os.makedirs(P.SCRATCH, exist_ok=True)
-    path = os.path.join(P.SCRATCH, 'pb2_%d_%s_%s_%s.st'
-                        % (first, stage, area, spot))
-    P.make_state(path, frame=first, stage=stage, area=area, spot=spot)
+    tag = '_'.join('%04X%02X' % (a, v) for a, v in pokes)
+    path = os.path.join(P.SCRATCH, 'pb2_%d_%s_%s_%s_%s.st'
+                        % (first, stage, area, spot, tag))
+    P.make_state(path, frame=first, stage=stage, area=area, spot=spot,
+                 pokes=pokes)
     return path
 
 
@@ -197,7 +203,7 @@ def objects(stage, area, spot=None, first=None, script=(), upto=None):
 
 
 def trace(script, frames, state=None, first=None, stage=None, area=None,
-          spot=None):
+          spot=None, pokes=()):
     """Play `script` and return a list of dicts, one per frame.
 
     Two runs are needed: the first stops at the starting frame and dumps all of
@@ -208,9 +214,10 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
     # The traces themselves are worth nothing once read, so they go in a
     # scratch of their own and are swept up below.
     if state is None:
-        state = state_for(first, stage, area, spot)
+        state = state_for(first, stage, area, spot, pokes)
     else:
-        P.make_state(state, frame=first, stage=stage, area=area, spot=spot)
+        P.make_state(state, frame=first, stage=stage, area=area, spot=spot,
+                     pokes=pokes)
     d = P.scratch('trace')
     try:
         return _trace(d, state, script, first, frames)

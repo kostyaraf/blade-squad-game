@@ -23,6 +23,7 @@ func _ready() -> void:
 	var shots := ""
 	var replay := ""
 	var spawns := ""
+	var weapon := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -35,12 +36,17 @@ func _ready() -> void:
 		elif a.begins_with("--shots="): shots = a.substr(8)
 		elif a.begins_with("--replay="): replay = a.substr(9)
 		elif a.begins_with("--spawns="): spawns = a.substr(9)
+		elif a.begins_with("--weapon="): weapon = a.substr(9)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
 		return
 	if spawns != "":
 		_run_spawns(spawns)
+		get_tree().quit()
+		return
+	if weapon != "":
+		_run_weapon(weapon)
 		get_tree().quit()
 		return
 	if shots != "":
@@ -435,4 +441,110 @@ func _run_spawns(path: String) -> void:
 			things.clear(int(n))
 		for t in f["taken"]:
 			things.take(int(t[0]), int(t[1]))
+	print("\n".join(out))
+
+
+## Э3.3 acceptance -- what he throws, judged a frame at a time.
+##
+## The hero is driven by his own module, as `_run_replay` drives him, and the
+## three places his throws take are driven by the engine's own weapon code and
+## by nothing else.  Everything the weapon code reads and does not yet work out
+## -- where he stands, what the level declared solid, the suit, the blade's
+## power -- is told from the recording; the three places themselves are never
+## told before they have been judged.
+##
+## The order is the cartridge's own.  Inside one picture $D23A counts the
+## button at $CF00, $D34D writes the table down at $CF14, and only after that
+## does the step of the game run: $8E26 moves what is already in the air and
+## $8E29 -- his state machine, and $A1C2 inside it -- lets go of the next one.
+## So the table handed over at the head of a picture is what the engine must
+## already have answered, and the step that follows it is the next answer.
+func _run_weapon(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_load("pb2", int(cfg["stage"]), int(cfg["area"]))
+	var p := Pb2Player.new(level_pb2)
+	p.place(int(cfg["x"]), int(cfg["y"]), int(cfg["cam"]))
+	p.x = int(cfg["x"])
+	p.y = int(cfg["y"])
+	p.vx = int(cfg["vx"])
+	p.vy = int(cfg["vy"])
+	p.anim_t = int(cfg["anim_t"])
+	p.anim_i = int(cfg["anim_i"])
+	p.state = int(cfg["state"])
+	p.sub = int(cfg["sub"])
+	p.pose = int(cfg["pose"])
+	p.face_left = bool(cfg["face_left"])
+	p.fall = int(cfg["fall"])
+	p.ticks = int(cfg["tick"])
+	p.charge = int(cfg["charge"])
+	var view := Pb2Camera.new(level_pb2)
+	view.place(int(cfg["cam"]) >> 8, int(cfg["cam"]) & 0xFF,
+			int(cfg["cam_pend"]), int(cfg["clock"]))
+	var things := Pb2Objects.new(level_pb2)
+	# With the table in his hands he takes a place in it for every throw and
+	# what he throws is really thrown.
+	p.world = things
+	var out := PackedStringArray()
+	# Nothing has been handed over yet, so the first table is told and not
+	# judged: the throws in it were made over steps the engine never saw.
+	var told := false
+	for f in cfg["frames"]:
+		var bad := PackedStringArray()
+		var wholes: Array = f["whole"]
+		for i in range(wholes.size()):
+			things.power = int(f["power"])
+			things.second = int(f["second"])
+			things.extra = int(f["lim"])
+			# $CF00 -- how long the button has been down, counted once every
+			# fourth picture and never past the blade's own ceiling.
+			p.step_charge(int(f["clocks"][i]))
+			var tbl: Array = wholes[i]
+			# $CF14 -- the cartridge's own answer for this picture.
+			if told:
+				for k in range(1, 4):
+					var s: PackedByteArray = things.slots[k]
+					var w: Array = tbl[k]
+					for fl in range(Pb2Objects.FIELDS):
+						if fl == Pb2Objects.F_REC:
+							continue
+						if s[fl] != int(w[fl]):
+							bad.append("%d:%d:%d:%d"
+									% [k, fl, s[fl], int(w[fl])])
+			# Judged, then told: a step that went wrong is reported once and
+			# does not go on to spoil every step after it, so every line put
+			# out is one step of the throw's flight and nothing else.
+			for n in range(Pb2Objects.SLOTS):
+				var s2: PackedByteArray = things.slots[n]
+				var w2: Array = tbl[n]
+				for fl in range(Pb2Objects.FIELDS):
+					s2[fl] = int(w2[fl])
+			told = true
+			if i != 0:
+				continue
+			# $8E15 -- the step of the game, which runs in the first picture
+			# of its own count and in no other.
+			things.frame = int(f["clocks"][0])
+			things.clock = int(f["turns"][0])
+			things.seed = int(f["seeds"][0])
+			things.suit = int(f["suits"][0])
+			things.water = int(f["waters"][0])
+			things.held = int(f["helds"][0])
+			things.draw = int(f["draws"][0])
+			things.cam = int(f["cams"][0])
+			things.solids = f["solids"]
+			p.suit = things.suit
+			p.solids = f["solids"]
+			p.held = int(f["hold"])
+			p.push_x = int(f["push"][0])
+			p.push_y = int(f["push"][1])
+			# $8E26 -- what is already in the air moves first, and only then
+			# does $8E29 let go of the next one.  He is still where the table
+			# left him: $A945 does not move him until $8E2C, after both.
+			things.shots_turn()
+			view.drive()
+			p.shift = view.shift
+			p.step(int(f["pad"]), int(f["hit"]), view.pos,
+					int(f["shots"]), int(f["lim"]))
+			view.decide(((p.y if level_pb2.vertical else p.x) >> 8) & 0xFF)
+		out.append("%d %s" % [p.charge, " ".join(bad) if bad.size() else "-"])
 	print("\n".join(out))

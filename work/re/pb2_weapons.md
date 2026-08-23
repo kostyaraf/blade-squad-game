@@ -1,5 +1,34 @@
 # Power Blade 2 — the weapon system (fully decoded, for adding 8 new weapons)
 
+> **Corrections, Э3.3 (the port and its acceptance run).**  Everything below
+> was written before the weapon code was ported and driven against the
+> cartridge frame by frame.  Three things in it are wrong or incomplete:
+>
+> 1. **`$55` is not the world, the stage or the level.**  It is how far the
+>    blade has been raised, 0..3 — a pickup.  It is zeroed at `$D06C` beside
+>    `$A2`, `$99`, `$54` and `$9A`, and put up by one (ceiling 3) by the thing
+>    at `$B572` in bank 7.  Read every "world"/"stage" below as "the blade's
+>    power".
+> 2. **`$8C` is read**, by `$D243`: it is the ceiling the hold counter `$54`
+>    stops at.  `$D255,Y` holds the same four numbers, and `$D243` reads that
+>    one; `$8C` is the copy `$D8F1` leaves behind.  Raising `$55` behind the
+>    game's back without also copying `$8C..$8F` gives a hero whose ceiling is
+>    the new power's and whose three marks are the old one's.
+> 3. **The sub-tables at `$A885..$A89D` do not collide with the arc tables.**
+>    The four accel bases (`$A8BD`, `$A8CD`, `$A89D`, `$A8AD`) are biased, and
+>    only rows 8..23 are ever indexed, so the two readings never overlap.
+>
+> The numbers themselves are no longer read by hand out of this document: they
+> are pulled straight from the ROM by `work/extract/pb2_weapons.py` into
+> `game/data/pb2/weapons.json`.  The order the weapon code runs in, which
+> nothing below states, is `$8E15`: `$8E23` death, **`$8E26` what is already
+> in the air moves**, `$8E29` the state machine and `$A1C2` inside it — so a
+> blade let go this step does not move on the step it was let go.  He himself
+> is not moved until `$8E2C` (`$A945`), which is why a throw comes out of the
+> place the table still shows him standing in.  `$D23A`, which counts the
+> button, runs at `$CF00` — before the table is written down at `$CF14` and
+> before the step.
+
 Scope: everything needed to bolt eight new player weapons onto the existing
 engine — the shared object table, the fire/spawn code (both weapon paths),
 the generic sprite/animation pipeline, the damage model, the pause-menu

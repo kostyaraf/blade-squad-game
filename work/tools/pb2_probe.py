@@ -88,7 +88,7 @@ PICK_LEVEL = 1052        # $53 and $9C are chosen at 1051; this is right after
 
 
 def make_state(path, frame=IN_LEVEL, boot=BOOT, stage=None, area=None,
-               spot=None):
+               spot=None, pokes=()):
     """A savestate with the game standing in a level, ready for input.
 
     Which level is the game's business, except that it writes the stage and
@@ -117,6 +117,12 @@ def make_state(path, frame=IN_LEVEL, boot=BOOT, stage=None, area=None,
                      (field(14), 0), (field(15), 0),
                      (field(16), 0), (field(17), 0)):
             cmd += ['-poke', '%04X=%02X@%d' % (a, v, frame - 3)]
+    # Anything else the caller wants set before it takes control: which suit
+    # he is wearing, how far the blade has been raised, how many throws may be
+    # in the air at once.  None of these is reached by playing from the start
+    # of the game in the time a study run has.
+    for a, v in pokes:
+        cmd += ['-poke', '%04X=%02X@%d' % (a, v, frame - 3)]
     subprocess.run(cmd, check=True, capture_output=True)
     return path
 

@@ -189,6 +189,35 @@ var slide := 0
 var got := 0
 ## $0172, $0171 long -- what this visit of the area has given out.
 var done: Array = []
+## Э3.3 -- what he throws.  $55 is how far the blade has been raised, $A2
+## whether it is the second blade, $99 how many may be in the air at once
+## beyond the first, and $0400 -- the hero's own place, which keeps no type --
+## counts the frames of the blade's whirr.
+var power := 0
+var second := 0
+var extra := 0
+var whirr := 0
+## $011F and the three tables after it: the boxes the level itself declares
+## solid this frame.  The hero works them out; a throw aimed down asks them
+## whether there is floor under the place it would go.
+var solids: Array = []
+## The tables of work/re/pb2_weapons.md, out of data/pb2/weapons.json.
+var spawn_dy := PackedByteArray()
+var spawn_dx := PackedByteArray()
+var throw: Array = []
+var accel: Array = []
+var beam_tile := PackedByteArray()
+var beam_v: Array = []
+var beam_a: Array = []
+var beam_life: Array = []
+var hold_cap := PackedByteArray()
+var hold_mark: Array = []
+## $01 and $02 -- the step down and the step across that
+## $A764 works out, which the roads after it read.
+var aim_up := 0
+var aim_side := 0
+
+
 ## $8A -- set as the area opens, so that the first scan fills the whole screen
 ## and not only its edge.  The first scan to reach the end of the list, or a
 ## record that is still ahead of the screen, puts it out.
@@ -244,6 +273,27 @@ func _init(level: Pb2Level) -> void:
 		for pair in r:
 			steps.append([int(pair[0]), int(pair[1])])
 		box.append(steps)
+	var wf := FileAccess.open("res://data/pb2/weapons.json", FileAccess.READ)
+	var w: Dictionary = JSON.parse_string(wf.get_as_text())
+	spawn_dy = PackedByteArray(w["spawn_dy"])
+	spawn_dx = PackedByteArray(w["spawn_dx"])
+	beam_tile = PackedByteArray(w["beam_tile"])
+	hold_cap = PackedByteArray(w["hold_cap"])
+	for r in w["throw"]:
+		var worlds := []
+		for row in r:
+			worlds.append(_words(row))
+		throw.append(worlds)
+	for r in w["accel"]:
+		accel.append(_words(r))
+	for r in w["beam_v"]:
+		beam_v.append(_words(r))
+	for r in w["beam_a"]:
+		beam_a.append(_words(r))
+	for r in w["beam_life"]:
+		beam_life.append(_words(r))
+	for r in w["hold_mark"]:
+		hold_mark.append(_words(r))
 	for r in t["anims"]:
 		var run := {"last": int(r["last"]), "hold": int(r["hold"]),
 				"first": int(r["first"])}
@@ -253,6 +303,15 @@ func _init(level: Pb2Level) -> void:
 				steps.append(int(v))
 			run["steps"] = steps
 		anims.append(run)
+
+
+## Every number JSON hands back is a float; a table of them is put back into
+## words once, as it is read.
+static func _words(row: Array) -> Array:
+	var out := []
+	for v in row:
+		out.append(int(v))
+	return out
 
 
 static func empty_row() -> PackedByteArray:
@@ -5909,3 +5968,458 @@ func _mind_0d(n: int, s: PackedByteArray) -> void:
 		return
 	switch = switch ^ MASK_36[s[F_LIFE]]               # $8B7F
 	clear(n)                                           # $C810
+
+
+# --- What he throws ---------------------------------------------------
+#
+# $A17A and $A563 in bank 9, and the tables at $A84D..$A945.  Places one to
+# three are his and his alone: nothing the level puts out ever gets one, the
+# button fills them, and a wall, the edge of the level or his own hand coming
+# back empties them again.  See work/re/pb2_weapons.md.
+#
+# It runs inside his own step -- $8E23 throws and $8E26 moves what was thrown
+# -- so both come before the touch sweep at $CF08, and a blade let go this
+# step can cut this step.
+
+
+## $A3D9 -- a free place for a new throw, or minus one.  Only the first three
+## places are counted, and he may have one more in the air than $99 says.
+func free_shot_slot() -> int:
+	var out := 0
+	for k in range(1, 4):                              # $A3E0
+		if slots[k][F_TYPE] != 0:
+			out += 1
+	if out > extra:                                    # $A3F2
+		return -1
+	for k in range(1, SLOTS):                          # $A3F8
+		if slots[k][F_TYPE] == 0:
+			return k
+	return -1
+
+
+## $A247 -- how long he held the button, in four steps.  The three marks are
+## the world's own, and $54 is counted up elsewhere ($D23A).
+func charge_tier(hold: int) -> int:
+	var mark: Array = hold_mark[power]
+	if hold < mark[1]:
+		return 0
+	if hold < mark[2]:
+		return 1
+	if hold < mark[3]:
+		return 2
+	return 3
+
+
+## $A226 -- a new throw takes its numbers.  `pose` is the second answer of
+## $A403, which the cartridge keeps in his own $0458, and `tier` is $08.
+func fire(k: int, dir: int, pose: int, tier: int) -> void:
+	var h: PackedByteArray = slots[0]
+	var s: PackedByteArray = slots[k]
+	s[F_SELF] = dir                                    # $A229
+	s[F_BITS] = h[F_BITS] & 0x60                       # $A231
+	# $A235 -- while that mark of his is up the picture of him is the wrong
+	# way round, and what he throws is turned back to match.
+	if (h[F_MARK] & 0x20) != 0:
+		s[F_BITS] = s[F_BITS] ^ 0x40
+	_place_shot(k, pose)                               # $A4FD
+	# $A25E -- a throw aimed downwards out of the crouch is turned along the
+	# ground instead when there is floor in the way of it.
+	if pose == 0x01 and dir >= 0x06:
+		var off: int = 0x06 if dir == 0x06 else 0xFA
+		if ground(slots[k], off, 0x0C) >= 0x80 or _in_solid(off, 0x0C):
+			slots[k][F_SELF] = dir - 0x06              # $A288
+	if suit != 0:                                      # $A291
+		_beam_born(k, tier)
+	else:
+		_blade_born(k, tier)
+
+
+## $A4FD -- where it comes out of him: up by the pose's own step, and along by
+## it too, turned about when he faces left.  The 1/256ths of the place are not
+## written, and the place was wiped when the last throw in it died, so they
+## are nought.
+func _place_shot(k: int, pose: int) -> void:
+	var h: PackedByteArray = slots[0]
+	var s: PackedByteArray = slots[k]
+	var y: int = (((h[F_YHI] << 8) | h[F_Y]) + _signed(spawn_dy[pose])) & 0xFFFF
+	s[F_YHI] = y >> 8
+	s[F_Y] = y & 0xFF
+	var dx: int = spawn_dx[pose]
+	if (h[F_BITS] & 0x40) != 0:                        # $A526
+		dx = (-dx) & 0xFF
+	var x: int = (((h[F_XHI] << 8) | h[F_X]) + _signed(dx)) & 0xFFFF
+	s[F_XHI] = x >> 8
+	s[F_X] = x & 0xFF
+
+
+## $AC57 -- is that point, taken from where he stands, inside one of the boxes
+## the level itself declared solid this frame?
+func _in_solid(side_off: int, down_off: int) -> bool:
+	if solids.is_empty():                              # $011F
+		return false
+	var h: PackedByteArray = slots[0]
+	var x: int = (((h[F_XHI] << 8) | h[F_X]) + _signed(side_off)) & 0xFFFF
+	var col: int = x & 0xFF
+	if (x >> 8) != 0:                                  # $AC6D
+		col = 0x00 if (x >> 8) >= 0x80 else 0xFF
+	var y: int = (((h[F_YHI] << 8) | h[F_Y]) + _signed(down_off)) & 0xFFFF
+	var row: int = y & 0xFF
+	if (y >> 8) != 0:
+		row = 0x00 if (y >> 8) >= 0x80 else 0xFF
+	# $ACB4 counts down, so the last of them is met first; the answer is only
+	# yes or no, so the order makes no odds.
+	for b in solids:
+		if col >= int(b[0]) and col <= int(b[1]) \
+				and row >= int(b[2]) and row <= int(b[3]):
+			return true
+	return false
+
+
+## $A298 -- the blade that comes back.  Which of the two it is is $A2's to say
+## and both are thrown the same way.
+func _blade_born(k: int, tier: int) -> void:
+	var s: PackedByteArray = slots[k]
+	if second != 0:                                    # $A29C
+		s[F_BITS] = s[F_BITS] | 0x02
+	s[F_TYPE] = second + 1                             # $A2A6
+	start_anim(s, 0x08)                                # $A2A9 -> $C83A
+	# $A2AE -- how hard: which blade it is, how far it has been raised ($55)
+	# and how long he held the button all have a say.
+	var mag: int = throw[s[F_TYPE] - 1][power][tier]
+	var neg: int = (-mag) & 0xFFFF
+	var dir: int = s[F_SELF]
+	var vx := 0
+	if dir != 0x02 and dir != 0x03:                    # $A2E1
+		vx = neg if (dir & 1) != 0 else mag
+	s[F_VX] = vx >> 8
+	s[F_VXFR] = vx & 0xFF
+	var vy := 0
+	if dir >= 0x02:                                    # $A307
+		vy = mag if (dir >= 0x06 or dir == 0x03) else neg
+	s[F_VY] = vy >> 8
+	s[F_VYFR] = vy & 0xFF
+	_halve_in_water(k)                                 # $A358
+	# $A33E -- thrown straight up with a ceiling over him, it starts at the
+	# ceiling and not at his hand.  Only the low byte of the place is written.
+	if dir == 0x02 and (slots[0][F_HOLD] & 0x40) == 0:
+		if ground(slots[k], 0x00, 0xE3) >= 0x80:
+			slots[k][F_Y] = (slots[0][F_Y] + 0xE3) & 0xFF
+
+
+## $A37F -- the beam a suit fires.  One picture and one speed for each of the
+## eight ways, and a life in frames out of the world's own row.
+func _beam_born(k: int, tier: int) -> void:
+	var s: PackedByteArray = slots[k]
+	s[F_TYPE] = 0x03
+	s[F_COUNT] = 0x00                                  # $A386
+	var d: int = s[F_SELF]
+	s[F_KIND] = beam_tile[d]                           # $A38C
+	var v: Array = beam_v[d]
+	s[F_VXFR] = v[0]
+	s[F_VX] = v[1]
+	s[F_VYFR] = v[2]
+	s[F_VY] = v[3]
+	_halve_in_water(k)                                 # $A3AA
+	s = slots[k]
+	s[F_HOLD] = beam_life[power][tier]                 # $A3BD
+	# $A3C2 -- and water takes two frames of that life as well.
+	if (slots[0][F_HOLD] & 0x40) != 0 and suit != 0x02:
+		s[F_HOLD] = (s[F_HOLD] - 2) & 0xFF
+
+
+## $A358 -- water takes half the speed off what he throws, unless the suit
+## that swims is on.  The mark it leaves is read again every step.
+func _halve_in_water(k: int) -> void:
+	if (slots[0][F_HOLD] & 0x40) == 0:                 # $A35B
+		return
+	if suit == 0x02:                                   # $A35F
+		return
+	var s: PackedByteArray = slots[k]
+	s[F_KEEP] = 0x01                                   # $A363
+	var v: int = _asr16((s[F_VY] << 8) | s[F_VYFR])
+	s[F_VY] = v >> 8
+	s[F_VYFR] = v & 0xFF
+	v = _asr16((s[F_VX] << 8) | s[F_VXFR])
+	s[F_VX] = v >> 8
+	s[F_VXFR] = v & 0xFF
+
+
+## $A368 and the pairs like it -- one shift right with the sign kept.
+static func _asr16(v: int) -> int:
+	return ((v >> 1) | (v & 0x8000)) & 0xFFFF
+
+
+## $A563 -- every throw of his gets its turn, between his own step and the
+## sweep that says what it touched.
+func shots_turn() -> void:
+	for k in range(1, FIRST_LIVE):
+		var t: int = slots[k][F_TYPE]
+		if t == 0:
+			continue
+		if t == 0x03:                                  # $A573
+			_beam_step(k)
+		else:
+			_blade_step(k)
+
+
+## $A57A -- one step of the blade: the picture, the whirr, the wall, the move,
+## the gain, and then whatever the way it was thrown makes of it.
+func _blade_step(k: int) -> void:
+	var s: PackedByteArray = slots[k]
+	step_anim(s)                                       # $C837
+	# $A57D -- his own place keeps no type, so the whirr counts its frames
+	# there; every tenth is a sound ($1A).
+	whirr = (whirr + 1) & 0xFF
+	if whirr == 0x0A:
+		whirr = 0
+	if ground(s, 0x00, 0x00) >= 0x80:                  # $A591
+		clear(k)
+		return
+	if not _shot_move(k):                              # $A59C -> $A7B9
+		return
+	s = slots[k]
+	# $A59F -- the eight of its own kind, or the sixteen it shares with the
+	# second blade once it has turned about, and then the way it was thrown.
+	var dir: int = s[F_SELF]
+	var a: Array = accel[(0x10 if dir >= 0x80 else s[F_TYPE] * 8) + (dir & 0x7F)]
+	var ax: int = (a[1] << 8) | a[0]
+	var ay: int = (a[3] << 8) | a[2]
+	if s[F_KEEP] != 0:                                 # $A5CA
+		ax = _asr16(ax)
+		ay = _asr16(ay)
+	var v: int = (((s[F_VX] << 8) | s[F_VXFR]) + ax) & 0xFFFF
+	s[F_VX] = v >> 8
+	s[F_VXFR] = v & 0xFF
+	v = (((s[F_VY] << 8) | s[F_VYFR]) + ay) & 0xFFFF
+	s[F_VY] = v >> 8
+	s[F_VYFR] = v & 0xFF
+	match dir & 0x7F:                                  # $A606 -> $CA0B
+		0x00: _blade_out(k, false)                     # $A619
+		0x01: _blade_out(k, true)                      # $A646
+		0x02: _blade_straight(k)                       # $A691
+		0x03: _blade_down(k)                           # $A671
+		0x04: _blade_turn(k, false)                    # $A69A
+		0x05: _blade_turn(k, true)                     # $A6B0
+		0x06: _blade_turn(k, false)                    # $A6C4
+		0x07: _blade_turn(k, true)                     # $A6D9
+
+
+## $A619 and $A646 -- thrown along the ground.  It flies out for as long as
+## its speed is still the way it was thrown; once the gain has turned that
+## speed about it starts looking for him, and when he is the other side of it
+## it turns about outright and comes home fast.
+func _blade_out(k: int, left: bool) -> void:
+	if not _blade_returning(k, left):
+		return
+	if not _aim_shot(k):                               # $A764
+		return
+	if not _blade_returning(k, left):
+		return
+	if not _home_down(k):                              # $A701
+		return
+	var s: PackedByteArray = slots[k]
+	if left:
+		if s[F_VX] >= 0x80:                            # $A660
+			return
+		if aim_side < 0x80:                            # $A665
+			return
+		_turn_shot(k, 0x04, 0x80)
+	else:
+		if s[F_VX] < 0x80:                             # $A633
+			return
+		if aim_side == 0 or aim_side >= 0x80:          # $A638
+			return
+		_turn_shot(k, 0xFC, 0x81)
+
+
+## $A619 and $A653 -- has it turned about yet?  Either the mark of a throw
+## already sent home, or a speed that is no longer the way it was thrown.
+func _blade_returning(k: int, left: bool) -> bool:
+	var s: PackedByteArray = slots[k]
+	if s[F_SELF] >= 0x80:
+		return true
+	return s[F_VX] < 0x80 if left else s[F_VX] >= 0x80
+
+
+## $A69A, $A6B0, $A6C4 and $A6D9 -- thrown at a slant.  These four never take
+## the step down; they wait for the gain to turn the speed about and then go
+## straight home.
+func _blade_turn(k: int, left: bool) -> void:
+	var s: PackedByteArray = slots[k]
+	if left:
+		if s[F_VX] >= 0x80:
+			return
+	elif s[F_VX] < 0x80:
+		return
+	if not _aim_shot(k):
+		return
+	if left:
+		if aim_side < 0x80:
+			return
+		_turn_shot(k, 0x04, 0x80)
+	else:
+		if aim_side == 0 or aim_side >= 0x80:
+			return
+		_turn_shot(k, 0xFC, 0x81)
+
+
+## $A691 -- thrown straight up: look for him and take the step across.
+func _blade_straight(k: int) -> void:
+	if not _aim_shot(k):
+		return
+	_move_side(k)
+
+
+## $A671 -- thrown straight down.  While that mark of his is up and he is
+## falling, it rides down with him, and if that carries it off the screen it
+## is gone.
+func _blade_down(k: int) -> void:
+	var h: PackedByteArray = slots[0]
+	if (h[F_MARK] & 0x01) != 0 and h[F_VY] < 0x80:     # $A671
+		var s: PackedByteArray = slots[k]
+		var v: int = s[F_YFR] + h[F_VYFR]
+		s[F_YFR] = v & 0xFF
+		v = s[F_Y] + h[F_VY] + (v >> 8)
+		s[F_Y] = v & 0xFF
+		if (v >> 8) != 0:                              # $A68F
+			clear(k)
+			return
+	if not _aim_shot(k):
+		return
+	_move_side(k)
+
+
+## $A6EC -- turn about outright: a new way, a whole speed across, no speed
+## down, and half a point of each in the 1/256ths.
+func _turn_shot(k: int, vx: int, dir: int) -> void:
+	var s: PackedByteArray = slots[k]
+	s[F_VX] = vx
+	s[F_SELF] = dir
+	s[F_VY] = 0x00
+	s[F_VXFR] = 0x80
+	s[F_VYFR] = 0x80
+
+
+## $A764 -- how far off he is and which way to go for him.  Two steps come out
+## of it, one down and one across, and when he is near in both the throw has
+## come home: the place is emptied and the step it was in the middle of is
+## thrown away with it.
+func _aim_shot(k: int) -> bool:
+	var s: PackedByteArray = slots[k]
+	var h: PackedByteArray = slots[0]
+	var far := 0
+	aim_up = 0
+	aim_side = 0
+	var t: int = (h[F_Y] - 0x10) & 0xFF                # $A76C
+	var d: int = (t - s[F_Y]) & 0xFF
+	if d != 0:
+		if ((d + 0x10) & 0xFF) >= 0x21:                # $A77B
+			far += 1
+	t = (h[F_Y] - 0x1C) & 0xFF                         # $A781
+	d = (t - s[F_Y]) & 0xFF
+	if d != 0:
+		aim_up = 0x02 if t >= s[F_Y] else 0xFE
+	d = (h[F_X] - s[F_X]) & 0xFF                       # $A795
+	if d != 0:
+		aim_side = 0x02 if h[F_X] >= s[F_X] else 0xFE
+		if ((d + 0x0A) & 0xFF) >= 0x15:                # $A7A9
+			far += 1
+	if far == 0:                                       # $A7AF
+		clear(k)
+		return false
+	return true
+
+
+## $A701 -- one step of the way back to him down the screen, and then, while
+## that mark of his is up, a quarter of his own speed down on top of it.
+##
+## The cartridge weighs the carry of the first step against the wrong high
+## byte -- the one across the level, not the one down it -- and it is left as
+## it stands: a throw still alive has nought in both.
+func _home_down(k: int) -> bool:
+	var s: PackedByteArray = slots[k]
+	var sign: int = 0xFF if aim_up >= 0x80 else 0x00
+	var v: int = s[F_Y] + aim_up
+	s[F_Y] = v & 0xFF
+	var hi: int = sign + s[F_XHI] + (v >> 8)           # $A710
+	if (hi & 0xFF) != 0:
+		clear(k)                                       # $A748
+		return false
+	if (slots[0][F_MARK] & 0x01) == 0:                 # $A715
+		return true
+	var carry: int = hi >> 8
+	sign = 0xFF if slots[0][F_VY] >= 0x80 else 0x00
+	# $A72B -- three bytes shifted right twice through the carry that add
+	# left behind: the sign, the whole points and the 1/256ths.
+	var b: Array = [sign, slots[0][F_VY], slots[0][F_VYFR]]
+	for _round in range(2):
+		for i in range(3):
+			var out: int = b[i] & 1
+			b[i] = (b[i] >> 1) | (carry << 7)
+			carry = out
+	# $A735 -- the 1/256ths are added for the carry they make and nothing
+	# else; where they land the cartridge never keeps.
+	v = b[2] + s[F_YFR]
+	v = b[1] + s[F_Y] + (v >> 8)
+	s[F_Y] = v & 0xFF
+	if ((sign + s[F_YHI] + (v >> 8)) & 0xFF) != 0:     # $A742
+		clear(k)
+		return false
+	return true
+
+
+## $A74D -- the step across, and off the level it is gone.
+func _move_side(k: int) -> bool:
+	var s: PackedByteArray = slots[k]
+	var sign: int = 0xFF if aim_side >= 0x80 else 0x00
+	var v: int = s[F_X] + aim_side
+	s[F_X] = v & 0xFF
+	if ((sign + s[F_XHI] + (v >> 8)) & 0xFF) != 0:     # $A75E
+		clear(k)
+		return false
+	return true
+
+
+## $A7B9 -- move by its own speed, across and down, and off the level it is
+## gone.  Neither high byte is written back; both are nought while it lives.
+func _shot_move(k: int) -> bool:
+	var s: PackedByteArray = slots[k]
+	var sign: int = 0xFF if s[F_VY] >= 0x80 else 0x00
+	var v: int = s[F_YFR] + s[F_VYFR]
+	s[F_YFR] = v & 0xFF
+	v = s[F_Y] + s[F_VY] + (v >> 8)
+	s[F_Y] = v & 0xFF
+	if ((sign + s[F_YHI] + (v >> 8)) & 0xFF) != 0:     # $A7D2
+		clear(k)
+		return false
+	sign = 0xFF if s[F_VX] >= 0x80 else 0x00
+	v = s[F_XFR] + s[F_VXFR]
+	s[F_XFR] = v & 0xFF
+	v = s[F_X] + s[F_VX] + (v >> 8)
+	s[F_X] = v & 0xFF
+	if ((sign + s[F_XHI] + (v >> 8)) & 0xFF) != 0:     # $A7F0
+		clear(k)
+		return false
+	return true
+
+
+## $A7FB -- one step of the beam: it gains speed the way it was fired, moves,
+## and counts down the life it was born with.
+func _beam_step(k: int) -> void:
+	var s: PackedByteArray = slots[k]
+	var a: Array = beam_a[s[F_SELF]]
+	var ax: int = (a[1] << 8) | a[0]
+	var ay: int = (a[3] << 8) | a[2]
+	if s[F_KEEP] != 0:                                 # $A812
+		ax = _asr16(ax)
+		ay = _asr16(ay)
+	var v: int = (((s[F_VX] << 8) | s[F_VXFR]) + ax) & 0xFFFF
+	s[F_VX] = v >> 8
+	s[F_VXFR] = v & 0xFF
+	v = (((s[F_VY] << 8) | s[F_VYFR]) + ay) & 0xFFFF
+	s[F_VY] = v >> 8
+	s[F_VYFR] = v & 0xFF
+	step_both(s)                                       # $C8E8 -> $FA08
+	s[F_HOLD] = (s[F_HOLD] - 1) & 0xFF                 # $A84C
+	if s[F_HOLD] == 0:
+		clear(k)                                       # $A852
