@@ -28,6 +28,12 @@ var spawns: Array
 ## drop begins at.  Most areas are ordinary and say nothing.
 var kind: int
 var line: int
+## $66:$67 as the area is entered, and $59:$5A, past which the view does not
+## go.  Bytes three to six of the area's record.
+var cam_start_page: int
+var cam_start_low: int
+var cam_limit_page: int
+var cam_limit_low: int
 var _data: Dictionary
 
 
@@ -45,6 +51,10 @@ func _init(stage_index: int, area_index: int) -> void:
 	spawns = a["spawns"]
 	kind = int(a.get("kind", 1))
 	line = int(a.get("line", 0))
+	cam_start_page = int(a["cam_screen"])
+	cam_start_low = int(a["cam_sub"])
+	cam_limit_page = int(a["cam_last"])
+	cam_limit_low = int(a["cam_last_sub"])
 	_build(a)
 
 

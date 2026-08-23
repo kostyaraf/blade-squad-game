@@ -34,6 +34,8 @@ WATCH = {
     # allowed: $A3D9 refuses a new throw while the boomerang is out.
     'tick': 0x0110,          # counts the frames; animations follow its parity
     'acc0': 0x0111, 'acc1': 0x0112, 'acc2': 0x0113,
+    'pend': 0x60,            # $60: how far the view still has to slide
+    'allow': 0x0116,         # $0116: how far it may slide in one frame
     'mode': 0x27,            # $27: 3 is ordinary play, 6 is a scripted pan
     'alive': 0x049A,         # zero the moment something kills him
     'lim': 0x99, 'p1': 0x0401, 'p2': 0x0402, 'p3': 0x0403,

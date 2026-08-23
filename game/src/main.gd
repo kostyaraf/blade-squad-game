@@ -83,22 +83,30 @@ func _run_replay(path: String) -> void:
 	p.face_left = bool(cfg["face_left"])
 	p.fall = int(cfg["fall"])
 	p.ticks = int(cfg["tick"])
+	# The view is the engine's own now: it is put where the recording found it
+	# and after that decides for itself.
+	var view := Pb2Camera.new(level_pb2)
+	view.place(int(cfg["cam"]) >> 8, int(cfg["cam"]) & 0xFF, int(cfg["cam_pend"]))
 	var out := PackedStringArray()
 	for f in cfg["frames"]:
 		p.solids = f["solids"]
 		p.held = int(f["hold"])
 		p.push_x = int(f["push"][0])
 		p.push_y = int(f["push"][1])
-		p.shift = int(f["shift"])
-		p.step(int(f["pad"]), int(f["hit"]), int(f["cam"]),
-				int(f["shots"]), int(f["lim"]))
-		# The view can slide again after he has been moved, in frames the
-		# cartridge had no time to think in.  That slide only shifts him.
-		var after: int = int(f["shift_after"]) << 8
-		if level_pb2.vertical:
-			p.y -= after
-		else:
-			p.x -= after
+		# One step of the game can take more than one frame of the console, and
+		# in the frames it takes the view still slides and still decides.  Only
+		# the first of them is a step of his.
+		for k in range(int(f["ticks"])):
+			view.drive()
+			if k == 0:
+				p.shift = view.shift
+				p.step(int(f["pad"]), int(f["hit"]), view.pos,
+						int(f["shots"]), int(f["lim"]))
+			elif level_pb2.vertical:
+				p.y -= view.shift << 8
+			else:
+				p.x -= view.shift << 8
+			view.decide(((p.y if level_pb2.vertical else p.x) >> 8) & 0xFF)
 		out.append("%d %d %d %d %d %d %d %d" % [p.x, p.y, p.vx, p.vy,
 				p.state, p.sub, p.pose, 1 if p.face_left else 0])
 	print("\n".join(out))

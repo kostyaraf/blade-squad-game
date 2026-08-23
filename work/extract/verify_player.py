@@ -138,7 +138,7 @@ def logic_frames(rows):
     """
     out = []
     for r in rows:
-        r = dict(r, shift_after=0)
+        r = dict(r, shift_after=0, frames=1)
         if out and r['tick'] == out[-1]['tick']:
             merged = dict(r)
             for k in ('pad', 'hit', 'cam', 'shots', 'lim'):
@@ -150,6 +150,7 @@ def logic_frames(rows):
             merged['shift'] = out[-1]['shift']
             merged['shift_after'] = out[-1]['shift_after'] + r['shift']
             merged['seized'] = out[-1]['seized'] or r['seized']
+            merged['frames'] = out[-1]['frames'] + 1
             out[-1] = merged
         else:
             out.append(r)
@@ -166,14 +167,15 @@ def replay(rows):
         y=s24(start['yh'], start['yp'], start['yf']),
         vx=start['vx'], vy=start['vy'],
         anim_t=start['anim_t'], anim_i=start['anim_f'],
-        cam=start['cam'], state=start['state'], sub=start['sub'],
+        cam=start['cam'], cam_pend=start['pend'], state=start['state'],
+        sub=start['sub'],
         pose=start['pose'], face_left=bool(start['face'] & 0x40),
         fall=start['fall'], tick=start['tick'],
-        frames=[dict(pad=r['pad'], hit=r['hit'], cam=r['cam'],
+        frames=[dict(pad=r['pad'], hit=r['hit'],
                      shots=r['shots'], lim=r['lim'],
                      solids=r['solids'] or [], hold=r['hold'] or 0,
                      push=[r['push'][0] or 0, r['push'][1] or 0],
-                     shift=r['shift'], shift_after=r['shift_after'])
+                     ticks=r['frames'])
                 for r in rows[1:]],
     )
 
