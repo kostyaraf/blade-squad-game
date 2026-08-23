@@ -125,7 +125,9 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x3C: "_mind_3c", 0x1B: "_mind_1b", 0x1A: "_mind_1a", 0x15: "_mind_15",
 		0x27: "_mind_27", 0x28: "_mind_28",
 		0x07: "_mind_07", 0x08: "_mind_08", 0x2B: "_mind_2b",
-		0x29: "_mind_29", 0x20: "_mind_20"}
+		0x29: "_mind_29", 0x20: "_mind_20",
+		0x39: "_mind_39",
+		0x09: "_mind_09", 0x0A: "_mind_0a"}
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
@@ -139,6 +141,8 @@ var playing := 3
 var boss_step := 0
 ## $4A -- the switches of the level; $B5B7 reads bit three of it.
 var switch := 0
+## $0160:$0161 -- where the thing the hero rides stood when it last looked.
+var ridden := [0, 0]
 ## $0164 -- what has hold of the hero.  It is the hero's own book-keeping
 ## ($B90D in bank 9, and the moving floor at $A3C0 clears it); the things
 ## only read it.
@@ -1915,6 +1919,160 @@ func set_speed_reach(s: PackedByteArray, frames: int, lift: int) -> void:
 	q = divide16((dy << 8) & 0xFFFF, frames)
 	s[F_VYFR] = q & 0xFF
 	s[F_VY] = ((q >> 8) + lift) & 0xFF                 # $FEA3
+
+
+## $B90D и $B91C -- вещь, на которую герой встаёт ($8E06/$8E09 через $F1A0,
+## банк 9).  Первый ход кладёт коробку вещи в список твёрдых ($011F и
+## $0120..$0150), спрашивает, с какой стороны герой в неё вошёл ($B867), и
+## пишет ответ в $0164; второй по тому же ответу толкает героя ($063C и $0652
+## героя) и запоминает, где вещь стояла ($0160:$0161).
+## Ни один из двух не трогает полей самой вещи -- всё, что они пишут,
+## принадлежит герою, а герой в проверке умов приходит из картриджа уже
+## посчитанным.  Поэтому здесь от них нужен только порядок вызова; сама работа
+## -- долг Э3.4, записан в docs/status_ver3.md.
+## $BA44 (банк 9) -- коробка героя.  Какую из одиннадцати записей ($BB04 и
+## дальше, четыре числа со знаком: слева, справа, сверху, снизу) брать, решает
+## самый младший поднятый бит его метки ($0416), а позы $18 и $1A берут свои
+## записи помимо него.  Записи здесь уже разложены по этому же счёту, как их
+## называет указатель $BAEE.
+const HERO_BOX := [
+	[0xF9, 0x06, 0xE0, 0x01], [0xFA, 0x05, 0xE0, 0x01],
+	[0xFA, 0x05, 0xE0, 0x01], [0xFA, 0x05, 0xEA, 0x01],
+	[0xF8, 0x07, 0xF2, 0x01], [0xF9, 0x06, 0xDC, 0x01],
+	[0xFA, 0x05, 0xE0, 0x01], [0xFA, 0x05, 0xE0, 0x01],
+	[0xFA, 0x05, 0xDF, 0x01], [0xFF, 0x05, 0xDC, 0x01],
+	[0xFA, 0x01, 0xDC, 0x01]]
+## $BAE6 -- и по тому же счёту $011A: поза героя, умноженная на тридцать шесть.
+const HERO_BLOCK := [0x00, 0x24, 0x00, 0x24, 0x24, 0x6C, 0x48, 0x24]
+
+
+## $BA44..$BA52 -- счёт позы: сколько нулей снизу в метке героя, но не больше
+## семи.
+func _hero_pose() -> int:
+	var m: int = slots[0][F_MARK]                      # $0416
+	var y := 0
+	var x := 7
+	while true:                                        # $BA4B
+		var bit: int = m & 1
+		m >>= 1
+		if bit != 0:
+			break
+		y += 1
+		x -= 1
+		if x == 0:
+			break
+	return y
+
+
+## $BA8A..$BAE5 -- четыре края героя.  Край, что ушёл за свою страницу, либо
+## прижимается к краю экрана, либо -- если ушёл не в ту сторону -- объявляет
+## коробку негодной; у героя такого не бывает, и картридж её всё равно кладёт.
+func _hero_solid() -> Array:
+	var h: PackedByteArray = slots[0]
+	var i: int = _hero_pose()
+	if h[F_STATE] == 0x18:                             # $BA73
+		i = 0x0A if (h[F_BITS] & 0x40) != 0 else 0x09
+	elif h[F_STATE] == 0x1A:
+		i = 0x08
+	var r: Array = HERO_BOX[i]
+	var t: int = h[F_X] + r[0]                         # $BA96
+	var left: int = t & 0xFF
+	if ((0xFF + h[F_XHI] + (t >> 8)) & 0xFF) != 0:
+		left = 0x00
+	t = h[F_X] + r[1]                                  # $BAAA
+	var right: int = t & 0xFF
+	if ((h[F_XHI] + (t >> 8)) & 0xFF) != 0:
+		right = 0xFF
+	t = h[F_Y] + r[2]                                  # $BABE
+	var top: int = t & 0xFF
+	if ((0xFF + h[F_YHI] + (t >> 8)) & 0xFF) != 0:
+		top = 0x00
+	t = h[F_Y] + r[3]                                  # $BAD2
+	var bottom: int = t & 0xFF
+	if ((h[F_YHI] + (t >> 8)) & 0xFF) != 0:
+		bottom = 0xFF
+	return [left, right, top, bottom]
+
+
+## $B793 -- коробка вещи.  Два числа, что передаёт ум, -- половина ширины и
+## половина высоты, со знаком; правый край на них вперёд, левый на них назад и
+## ещё на один (там `CLC; SBC`), низ по самому месту, верх на высоту вверх.
+## Пустой ответ значит, что вещь целиком за краем.
+func _thing_solid(s: PackedByteArray, side: int, down: int) -> Array:
+	var t: int = s[F_X] + side                         # $B797
+	var right: int = t & 0xFF
+	var hi: int = (s[F_XHI] + (t >> 8)) & 0xFF
+	if hi != 0:
+		if hi >= 0x80:
+			return []
+		right = 0xFF
+	t = s[F_X] - side - 1                              # $B7AA
+	var left: int = t & 0xFF
+	hi = (s[F_XHI] - (1 if t < 0 else 0)) & 0xFF
+	if hi != 0:
+		if hi < 0x80:
+			return []
+		left = 0x00
+	var bottom: int = s[F_Y]                           # $B7BF
+	if s[F_YHI] != 0:
+		if s[F_YHI] >= 0x80:
+			return []
+		bottom = 0xFF
+	t = s[F_Y] + down                                  # $B7CF
+	var top: int = t & 0xFF
+	hi = (s[F_YHI] + 0xFF + (t >> 8)) & 0xFF
+	if hi != 0:
+		if hi < 0x80:
+			return []
+		top = 0x00
+	return [left, right, top, bottom]
+
+
+## $B867 -- с какой стороны герой вошёл в вещь.  Пересечение двух коробок:
+## шире, чем выше, -- значит сверху или снизу; выше, чем шире, -- сбоку; а
+## если герой целиком внутри, ответ пятый.
+func _which_side(b: Array) -> int:
+	var h: Array = _hero_solid()
+	if b[1] < h[0]:                                    # $B869
+		return 0
+	var ov_right: int = h[1] if b[1] >= h[1] else b[1]
+	if h[1] < b[0]:                                    # $B878
+		return 0
+	var ov_left: int = b[0] if b[0] >= h[0] else h[0]
+	if b[3] < h[2]:                                    # $B88B
+		return 0
+	var ov_bottom: int = h[3] if b[3] >= h[3] else b[3]
+	if h[3] < b[2]:                                    # $B89C
+		return 0
+	var ov_top: int = b[2] if b[2] >= h[2] else h[2]
+	var tall: int = (ov_bottom - ov_top) & 0xFF        # $B8AF
+	var wide: int = (ov_right - ov_left) & 0xFF
+	if wide < tall:                                    # $B8DD
+		if h[1] == ov_right:
+			return 5 if h[0] == ov_left else 3
+		return 5 if b[0] == ov_left else 4
+	if h[3] == ov_bottom:                              # $B8BF
+		return 5 if h[2] == ov_top else 1
+	return 5 if b[2] == ov_top else 2
+
+
+## $B90D ($8E06 через $F1A0, банк 9) -- вещь, на которую герой встаёт: коробка,
+## сторона, ответ в $0164 и памятка, где вещь стояла ($B900).  Ум читает $0164
+## сразу после этого хода, поэтому число возвращается и наружу.
+func ride(s: PackedByteArray, side: int, down: int) -> int:
+	var b: Array = _thing_solid(s, side, down)         # $B793
+	held = 0 if b.is_empty() else _which_side(b)       # $B867, $B915
+	ridden = [s[F_X], s[F_Y]]                          # $B900
+	return held
+
+
+## $B91C ($8E09) -- ответный ход: по $011A, прошлому $0164 и новой стороне
+## таблица $B990 выбирает, вытолкнуть героя, понести его за собой или ничего
+## не делать.  Всё, что он пишет, -- поля героя и список твёрдых, а герой в
+## проверке умов приходит из картриджа уже посчитанным; работа записана в
+## долги Э3.4.
+func ride_apply(_s: PackedByteArray, _side: int, _down: int) -> void:
+	pass
 
 
 # --- The minds ---------------------------------------------------------
@@ -3979,3 +4137,282 @@ func _lob_20(s: PackedByteArray, side: int, down: int) -> bool:
 	set_speed_reach(slots[k], 0x40, 0xFE)              # $C9CF
 	return true
 
+
+## $B697 (банк 11) -- прыгун.  Четыре состояния: заводится, падает, ходит и
+## бросает.  Запись он помнит в $0652 и по ней решает, много ли ходить.
+func _mind_39(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:                                  # $C97E
+		0: _wake_39(s)
+		1: _fall_39(n, s)
+		2: _walk_39(n, s)
+		3: _throw_39(s)
+
+
+## $B6A2
+func _wake_39(s: PackedByteArray) -> void:
+	s[F_REC_BYTE] = s[F_LIFE]
+	s[F_LIFE] = 0x08                                   # $BE63
+	record_home_along(s)                               # $C9B1
+	_start_39(s)
+
+
+## $B6B2 -- отсюда он начинает и сюда же возвращается, отбросив.
+func _start_39(s: PackedByteArray) -> void:
+	s[F_KIND] = 0xAC                                   # $BE6E
+	s[F_MARK] = 0x20                                   # $C9A5
+	set_speed_down(s, 0xFD, 0x00)                      # $BEB9 00 FD
+	s[F_SELF] = 0xB4                                   # $BE75
+	s[F_COUNT] = 0x00                                  # $BE7C
+	s[F_STATE] = 1                                     # $C96F
+
+
+## $B6C9 -- падает.  Вверх -- потолок его останавливает; вниз -- пол сажает,
+## и с третьего касания он переходит к ходьбе.
+func _fall_39(n: int, s: PackedByteArray) -> void:
+	if s[F_SELF] != 0:
+		s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	add_speed_down(s, 0x1C)                            # $C90C
+	if s[F_VY] >= 0x80:
+		# $BEDD E8 04 -- вбок $04, вниз $E8 (второй байт в A, первый в Y).
+		if walled_either_turn(n, s, 0x04, 0xE8, 0x00) >= 0x80:
+			set_speed_down(s, 0x00, 0x00)              # $BEB9 00 00
+		step_down(s)                                   # $C8F4
+		return
+	if s[F_VY] >= 0x04:                                # $B6EA
+		set_speed_down(s, 0x04, 0x00)                  # $BEB9 00 04
+	if walled_either_turn(n, s, 0x04, 0x04, 0x00) < 0x80:
+		step_down(s)                                   # $C8F4
+		return
+	# $B6FA -- пока идёт первый отсчёт, каждое касание пола считается.
+	if s[F_SELF] != 0:
+		s[F_COUNT] = (s[F_COUNT] + 1) & 0xFF
+		if s[F_COUNT] < 0x04:
+			set_speed_down(s, 0xFD, 0x00)              # $BEB9 00 FD
+			step_down(s)                               # $C8F4
+			return
+	# $B709
+	snap16(s, 0x00)                                    # $C987
+	start_anim(s, 0x20)                                # $BEAD
+	set_speed_side_at_hero(s, 0xFF, 0x80)              # $BEBF 80 FF
+	s[F_STATE] += 1                                    # $C966
+	s[F_SELF] = 0x01 if s[F_REC_BYTE] != 0 else 0x40   # $BE75
+
+
+## $B731 -- ходит.  Ушла земля из-под ног -- падает снова; ушёл далеко от
+## своего места или упёрся -- поворачивает; вышел отсчёт -- бросает.
+func _walk_39(n: int, s: PackedByteArray) -> void:
+	# $BEE3 04 08 -- вбок $08, вниз $04.
+	if walled_either_turn(n, s, 0x08, 0x04, 0x80) < 0x80:
+		s[F_SELF] = 0x00                               # $BE75
+		set_speed_down(s, 0x00, 0x80)                  # $BEB9 80 00
+		s[F_STATE] -= 1                                # $C969
+		return
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] == 0:
+		start_anim(s, 0x21)                            # $BEAD
+		s[F_MARK] = 0x01                               # $C99F
+		face_hero(s)                                   # $C8FD
+		s[F_SELF] = 0x46                               # $BE75
+		s[F_STATE] += 1                                # $C966
+		return
+	step_anim(s)                                       # $C837
+	var back: bool = strayed_far(s)                    # $ACD0
+	if not back:
+		# $BF06 F6 FF E8 -- вбок $F6, щупы $E8 и $FF.
+		back = walled_ahead_turn(n, s, 0xF6, 0xE8, 0xFF, 0x00) >= 0x80
+	if back:
+		s[F_SELF] = (s[F_SELF] + 0x14) & 0xFF
+		turn_about(s)                                  # $C91B
+	step_side(s)                                       # $C8F7
+
+
+## $B779 -- бросает.  Пока картинка не $B1, он только её и крутит; на $10
+## отсчёта из него вылетает вещь $14.
+func _throw_39(s: PackedByteArray) -> void:
+	face_hero(s)                                       # $C8FD
+	if s[F_KIND] != 0xB1:
+		step_anim(s)                                   # $C837
+		return
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] == 0:
+		_start_39(s)                                   # $B7AA -> $B6B2
+		return
+	if s[F_SELF] != 0x10:
+		return
+	var side: int = 0x0A if (s[F_BITS] & 0x40) != 0 else 0xF6   # $C990
+	make_child_at_hero(s, side, 0xEA, 0x14, 0x0C)      # $C8E2
+
+
+## $A1EC..$A30F (банк 11) -- четыре таблицы скоростей и дорожки площадок, одним
+## куском, как они лежат в картридже: указатели дорожек ($A20C и $A21D) метят
+## внутрь этого же куска.
+const RAIL_BASE := 0xA1EC
+const RAIL_DATA := [
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x80, 0x00, 0x00, 0x01, 0xFF,
+		0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x80, 0x80, 0x00, 0x00,
+		0xFF, 0x01, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x2E, 0x40, 0x4D, 0x59,
+		0x5E, 0x75, 0x8D, 0xA2, 0xB3, 0xD2, 0xF1, 0xF5, 0xFA, 0xFE, 0x2E, 0x01,
+		0x05, 0xA2, 0xA2, 0xA2, 0xA2, 0xA2, 0xA2, 0xA2, 0xA2, 0xA2, 0xA2, 0xA2,
+		0xA2, 0xA2, 0xA2, 0xA2, 0xA3, 0xA3, 0x43, 0x40, 0x43, 0x41, 0x43, 0x20,
+		0x53, 0x21, 0x43, 0x20, 0x53, 0x21, 0x43, 0x40, 0x43, 0x41, 0x53, 0x00,
+		0x1F, 0x10, 0xC7, 0x83, 0x83, 0x83, 0x83, 0x83, 0x83, 0xC7, 0x11, 0x23,
+		0x00, 0x52, 0x60, 0x53, 0x60, 0x52, 0x60, 0x53, 0x60, 0x52, 0x60, 0x53,
+		0x00, 0xE5, 0x32, 0xF1, 0xF1, 0x00, 0xE3, 0xA3, 0xE1, 0xE3, 0xE3, 0x63,
+		0xC0, 0x83, 0x21, 0x62, 0x21, 0x23, 0x21, 0x22, 0x41, 0xE3, 0xC0, 0x83,
+		0x61, 0xE3, 0xE3, 0xA1, 0x00, 0x62, 0xA2, 0x60, 0xC3, 0x21, 0x22, 0x41,
+		0xE3, 0x43, 0x20, 0xE3, 0xA1, 0xE3, 0xE3, 0x23, 0xE0, 0x43, 0x61, 0x63,
+		0x60, 0xE3, 0x23, 0x20, 0x00, 0x62, 0xA2, 0x61, 0xC3, 0x60, 0xE3, 0x43,
+		0x21, 0xE3, 0xA0, 0xE3, 0xC3, 0xE1, 0x63, 0x60, 0x63, 0x61, 0xE3, 0x23,
+		0x21, 0x00, 0xE3, 0xC3, 0xE0, 0xE3, 0xE3, 0x23, 0xE1, 0xC3, 0xE0, 0x82,
+		0x81, 0xE3, 0xE3, 0xE3, 0x23, 0x81, 0x00, 0xE2, 0xE2, 0x22, 0xE0, 0x22,
+		0xA1, 0xE2, 0x42, 0xA0, 0x62, 0x61, 0xE2, 0x60, 0x83, 0x81, 0xE2, 0x62,
+		0x21, 0x82, 0x21, 0x82, 0x21, 0x82, 0x40, 0x83, 0x20, 0xE2, 0xE2, 0x42,
+		0x81, 0x00, 0xA2, 0x21, 0x43, 0xA1, 0xE2, 0xE2, 0x82, 0x41, 0xC3, 0x20,
+		0xE2, 0xA2, 0x20, 0x63, 0x40, 0x82, 0x21, 0x82, 0x21, 0x82, 0x21, 0x63,
+		0x21, 0xE2, 0xE2, 0xE2, 0x42, 0x60, 0xA2, 0x61, 0x00, 0x60, 0xE3, 0xA3,
+		0x00, 0x41, 0xE3, 0xE3, 0x23, 0x00, 0x61, 0xE3, 0xE3, 0x00, 0xE3, 0xE3,
+		0x00, 0xE2, 0xE2, 0x22, 0x00, 0xE3, 0xE3, 0x23, 0x00, 0x20, 0x7E, 0xC9,
+		0x19, 0xA3, 0x51, 0xA3,
+]
+## $A20C:$A21D -- какая дорожка чьей записи ($049A).
+const RAIL_PATH := [0xA22E, 0xA240, 0xA24D, 0xA259, 0xA25E, 0xA275, 0xA28D, 0xA2A2, 0xA2B3, 0xA2D2, 0xA2F1, 0xA2F5, 0xA2FA, 0xA2FE, 0xA22E, 0xA301, 0xA305]
+## $A0B9 -- на сколько площадка опускается, когда просыпается.
+const DROP_0A := [0x00, 0x00, 0x00, 0x0A]
+
+
+## $A061 (банк 11) -- площадка, что срывается, когда на неё встали.
+func _mind_09(_n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:                                  # $C97E
+		0:                                             # $A06C
+			s[F_KIND] = 0x0D                           # $BE6E 0D
+			s[F_COUNT] = 0x28                          # $BE7C 28
+			set_speed_down(s, 0x04, 0x00)              # $BEB9 00 04
+			s[F_STATE] += 1                            # $C966
+		1:                                             # $A07C
+			ride(s, 0x0F, 0xF1)                        # $A053
+			if held == 0x01:                           # $0164
+				s[F_STATE] += 1
+			ride_apply(s, 0x0F, 0xF1)                  # $A05A
+		2:                                             # $A08C
+			ride(s, 0x0F, 0xF1)
+			s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+			if s[F_COUNT] == 0:
+				s[F_STATE] += 1
+			ride_apply(s, 0x0F, 0xF1)
+		3:                                             # $A09A
+			step_down(s)                               # $C8F4
+
+
+## $A09D (банк 11) -- площадка на рельсе.  Она идёт по дорожке из записей
+## $A22E и дальше: каждый байт -- сколько кадров ($FC) и в какую сторону ($03).
+## Нуль в дорожке значит "поворот": счёт идёт назад и сторона выворачивается.
+func _mind_0a(_n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:                                # $A09D
+		s[F_MARK] = 0x80                               # $C9AB
+		start_anim(s, 0x0A)                            # $BEAD 0A
+		_rail_pick(s)                                  # $A15A
+		nudge_down(s, 0x00, DROP_0A[s[F_LIFE]])        # $C930
+		s[F_STATE] += 1                                # $C966
+		return
+	ride(s, 0x10, 0xF6)                                # $A0BD
+	if s[F_ANG] != 0:                                  # $A0C4
+		s[F_ANG] = (s[F_ANG] - 1) & 0xFF               # $A109
+		if s[F_ANG] == 0 and _rail_lost(s):            # $A1C4
+			s[F_ANG] = 0x0F                            # $BE98 0F
+		_rail_step(s)
+		return
+	var pose: int = slots[0][F_STATE]                  # $A0C9
+	if pose == 0x0C or pose == 0x0E:
+		_rail_idle(s)
+		return
+	if held == 0:                                      # $A0D4
+		_rail_idle(s)
+		return
+	if held == 0x02 and suit != 0x01:                  # $A0D9, $9A
+		_rail_idle(s)
+		return
+	if s[F_VY] != 0:                                   # $A0E3
+		if s[F_REC_BYTE] < 0x14:                       # $A0F5
+			s[F_REC_BYTE] += 1
+			ride_apply(s, 0x10, 0xF6)
+			return
+		s[F_ANG] = 0x10                                # $A102
+	elif s[F_REC_BYTE] < 0x14:                         # $A0E8
+		s[F_REC_BYTE] += 1
+		ride_apply(s, 0x10, 0xF6)
+		return
+	_rail_step(s)                                      # $A117
+
+
+## $A14F -- герой сошёл: счёт ожидания с начала.
+func _rail_idle(s: PackedByteArray) -> void:
+	s[F_REC_BYTE] = 0x00                               # $BE9F 00
+	ride_apply(s, 0x10, 0xF6)                          # $A153
+
+
+## $A117 -- ход площадки: картинка, движение, звук раз в тринадцать кадров и
+## отсчёт до следующего колена дорожки.
+func _rail_step(s: PackedByteArray) -> void:
+	step_anim(s)                                       # $C8EE
+	step_both(s)
+	s[F_GROUND] = (s[F_GROUND] + 1) & 0xFF             # $A11A
+	if s[F_GROUND] == 0x0D:
+		s[F_GROUND] = 0x00                             # $BEA6 00
+	s[F_PUSH] = (s[F_PUSH] - 1) & 0xFF                 # $A12D
+	if s[F_PUSH] == 0:
+		if s[F_KEEP2] >= 0x80:                         # $A132
+			s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF
+		else:
+			s[F_KEEP] = (s[F_KEEP] + 1) & 0xFF
+		_rail_step_leg(s)                              # $A169
+		if s[F_VX] != 0:                               # $A143
+			s[F_ANG] = 0x00
+	ride_apply(s, 0x10, 0xF6)                          # $A153
+
+
+## $A15A -- какая дорожка досталась этой площадке, и сразу первое её колено.
+func _rail_pick(s: PackedByteArray) -> void:
+	var p: int = RAIL_PATH[s[F_LIFE]]                  # $A20C, $A21D
+	s[F_SELF] = p & 0xFF
+	s[F_COUNT] = (p >> 8) & 0xFF
+	_rail_step_leg(s)
+
+
+## $A169 -- взять из дорожки колено под счётом $05FA и разложить его на
+## сколько ($0626) и куда ($0576/$0560/$054A/$0534).
+func _rail_step_leg(s: PackedByteArray) -> void:
+	var p: int = ((s[F_COUNT] << 8) | s[F_SELF]) - RAIL_BASE
+	var y: int = s[F_KEEP]
+	if y >= 0x80:                                      # $A176
+		y = 0
+		s[F_KEEP] = 0
+		s[F_KEEP2] ^= 0x80
+	var a: int = RAIL_DATA[p + y]                      # $A186
+	while a == 0:                                      # $A188
+		y = (y - 1) & 0xFF
+		if y == 0:
+			break
+		s[F_KEEP] = y                                  # $A17A
+		s[F_KEEP2] ^= 0x80
+		a = RAIL_DATA[p + y]
+	s[F_PUSH] = a & 0xFC                               # $A18D
+	var flip: bool = (s[F_KEEP2] & 0x80) != 0          # $A192
+	var d: int = RAIL_DATA[p + y] & 0x03               # $A196
+	if flip:
+		d ^= 0x01
+	if s[F_TYPE] != 0x0A:                              # $A19F
+		d += 4
+	s[F_VXFR] = RAIL_DATA[0xA1EC - RAIL_BASE + d]      # $A1EC
+	s[F_VX] = RAIL_DATA[0xA1F4 - RAIL_BASE + d]        # $A1F4
+	s[F_VYFR] = RAIL_DATA[0xA1FC - RAIL_BASE + d]      # $A1FC
+	s[F_VY] = RAIL_DATA[0xA204 - RAIL_BASE + d]        # $A204
+
+
+## $A1C4 -- четыре щупа по углам: сошла ли площадка с рельса.
+func _rail_lost(s: PackedByteArray) -> bool:
+	if ground(s, 0xEC, 0x08) >= 0x80:                  # $C888
+		if ground(s, 0xEC, 0xF8) < 0x80:               # $A1CD
+			return true
+	if ground(s, 0x14, 0x08) < 0x80:                   # $A1D6
+		return false
+	return ground(s, 0x14, 0xF8) < 0x80                # $A1DF
