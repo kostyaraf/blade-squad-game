@@ -46,6 +46,8 @@ SWING = 0x9D72      # $19: how long it walks one way, by the record's nibble
 SPIN_LO = 0x9EE1    # $10: eight turning speeds, low byte
 SPIN_HI = 0x9EE9    # and high
 TRIG = 0xF301       # $F2E6: a quarter turn of cosine, 65 entries
+SNAP = 0xFD31       # $FD1D: how far to shift to sit on a tile's floor line
+AIM = 0xF64F        # $F637: the same quarter turn again, but scaled to $20
 
 # $814A / $8152 -- the eight class handlers, and what each of them checks.
 # The two checks are not "along the level" and "across" it: whichever way the
@@ -137,6 +139,12 @@ def export():
         # read -- $F2E6 answers the whole length for those -- but they are
         # kept so the table is indexed as the cartridge indexes it.
         trig=list(b15[TRIG - 0xE000:TRIG - 0xE000 + 65]),
+        # $FD31, read by the low four bits of where a thing stands down the
+        # screen: the shift that puts it on the floor line of its own tile.
+        snap=list(b15[SNAP - 0xE000:SNAP - 0xE000 + 16]),
+        # $F64F: the quarter turn $F5BA uses to point a speed at an angle.
+        # Shorter than $F301 because the answer is sixteen bits, not eight.
+        aim=list(b15[AIM - 0xE000:AIM - 0xE000 + 65]),
     ))
     print('%d types, %d classes, %d runs of pictures, %d bytes'
           % (NTYPES, len(set(classes)), len(runs), size))

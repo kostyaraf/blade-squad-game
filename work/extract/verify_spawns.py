@@ -104,6 +104,7 @@ def script_for(rows, stage, area, spot, script):
         # How often it had the place right anyway is counted and reported.
         frames.append({'screen': here, 'died': told, 'taken': r['taken'],
                        'whole': whole, 'shifts': r['shifts'],
+                       'turns': r['turns'],
                        'culled': sorted(r['culled']),
                        'got': r['got'], 'done': r['done']})
     return dict(

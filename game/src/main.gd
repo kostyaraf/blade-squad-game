@@ -297,6 +297,12 @@ func _run_spawns(path: String) -> void:
 		for tbl in f["whole"]:
 			i_tbl += 1
 			things.shift(int(f["shifts"][i_tbl]))
+			# $0119 -- half the questions a thing asks about the ground it
+			# only asks on the frames where this and its own place in the
+			# table agree in the lowest bit, and takes a settled answer on
+			# the rest.  It is the cartridge's count, not the engine's, so
+			# it comes with the table.
+			things.clock = int(f["turns"][i_tbl])
 			# What changed since the last hand-over: the place's number and
 			# then its twenty-nine bytes.  Everything else still stands.
 			for chg in tbl:
@@ -341,6 +347,13 @@ func _run_spawns(path: String) -> void:
 						and n >= Pb2Objects.FIRST_LIVE \
 						and Pb2Objects.MINDS.has(had):
 					mine += 1
+					# A blow the engine cannot see: nothing hits a thing in the
+					# engine yet, so a count of skipped turns that has gone up
+					# since the last hand-over came from the hero's shot or his
+					# shoulder and is told, not judged.  Counting it back down
+					# is the engine's own work and is judged as ever.
+					if was_told[Pb2Objects.F_STUN] > s[Pb2Objects.F_STUN]:
+						s[Pb2Objects.F_STUN] = was_told[Pb2Objects.F_STUN]
 					# This one drives itself, so it is judged, not told.  The
 					# record's number is the engine's own and is left out of
 					# both; so is the type, which take() above has settled.

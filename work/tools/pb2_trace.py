@@ -99,6 +99,8 @@ BORN_FIELD = {'type': 0x0400, 'x': 0x0508, 'y': 0x04C6, 'rec': 0x0484}
 # nothing else first.
 SNAP_FIELD = dict(BORN_FIELD, xhi=0x04F2, yhi=0x04B0)
 DIED_PC = 'D6D9'
+# $0119 -- the count of frames the gated questions are halved by.
+TURN = 0x0119
 SLOTS = 22
 # The scan is not the only thing that fills the table: a handler may put out a
 # shot or a piece of itself, and that takes a place the scan can then not have.
@@ -124,7 +126,11 @@ SEIZE = (0x0534, 0x054A, 0x05FA, 0x0610)
 OWN_BANKS = ('8', '9')
 
 LO = min(WATCH.values())
-HI = max(WATCH.values())
+# The window has to hold the whole table of things, not only the bytes named
+# above: a watch log says nothing about an address outside it, so a field left
+# out would read as whatever it was when the run began and never change.  The
+# last byte of the table is field twenty-nine of the twenty-second place.
+HI = max(max(WATCH.values()), 0x0400 + 22 * FIELDS - 1)
 
 
 def state_for(first, stage, area, spot):
@@ -265,6 +271,7 @@ def _trace(d, state, script, first, frames):
         taken = []
         place = None
         whole = None
+        turn = 0
         # $D34D runs once a frame and moves everything back by what the view
         # moved forward, and the table is wanted as it stood when it had
         # finished -- which is after the last of its eight stores, not after
@@ -308,6 +315,12 @@ def _trace(d, state, script, first, frames):
                          for n in range(SLOTS)]
                 whole = [[mem[0x0400 + 22 * f + n] for f in range(FIELDS)]
                          for n in range(SLOTS)]
+                # $0119 -- one up every frame.  Half the questions a thing
+                # asks about the ground it only asks when this and its own
+                # place in the table agree in the lowest bit ($FB81), so the
+                # engine cannot work out which frames it looks on: the count
+                # has to be handed over with the table it belongs to.
+                turn = mem[TURN]
         row = {'frame': fr - first, 'got': got, 'done': done}
         for name, addr in WATCH.items():
             row[name] = mem[addr]
@@ -347,6 +360,7 @@ def _trace(d, state, script, first, frames):
         # game can take two of them.  Empty when the level did not run.
         row['place'] = [] if place is None else [place]
         row['whole'] = [] if whole is None else [whole]
+        row['turns'] = [] if whole is None else [turn]
         row['taken'] = [t for t in taken if t[0] not in born]
         row['seized'] = fr in seized
         out.append(row)

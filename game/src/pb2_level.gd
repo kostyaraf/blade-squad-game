@@ -131,8 +131,13 @@ static func map_row(cam: int, sy: int) -> int:
 
 ## What the ground does at this world pixel: solid, ladder, water, spikes...
 func terrain_at(px: int, py: int) -> int:
-	var tx := px >> 3
-	var ty := py >> 3
+	# $F4D1 -- the map is read a cell of sixteen at a time, and the cell is as
+	# solid as its top left eighth: the four bytes of $F51C pick out only the
+	# even row and the even column of the block's sixteen.  Asking the eighth
+	# the point really falls in would answer for a tile the cartridge never
+	# looks at.
+	var tx := (px >> 4) << 1
+	var ty := (py >> 4) << 1
 	if tx < 0 or ty < 0 or tx >= width_tiles or ty >= height_tiles:
 		return 0
 	return terrain[tiles[ty * width_tiles + tx]]

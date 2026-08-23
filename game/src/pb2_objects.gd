@@ -60,6 +60,8 @@ const F_PUSH := 25       ## $0626 -- which way a blow threw it; also, for the
 const F_ANG := 26        ## $063C -- and its 1/256ths
 const F_REC_BYTE := 27   ## $0652 -- where a type keeps the record's own byte
                          ##          when the field it came in is wanted
+const F_GROUND := 28     ## $0668 -- nought in the air, $81 standing, $82 in
+                         ##          the water that has risen
 
 
 var lvl: Pb2Level
@@ -79,6 +81,10 @@ var spin_lo := PackedByteArray()
 var spin_hi := PackedByteArray()
 ## $F301 -- a quarter of a turn's worth of cosine, out of the fixed bank.
 var trig := PackedByteArray()
+## $FD31 -- the shift that sits a thing on the floor line of its own tile.
+var snap := PackedByteArray()
+## $F64F -- the same quarter turn as $F301, scaled to $20 for $F5BA.
+var aim := PackedByteArray()
 ## $8212 and $820A -- which sweep a type belongs to and how far past the edge
 ## that sweep lets a thing get.  Read from data/pb2/objects.json.
 var cull_class := PackedByteArray()
@@ -88,7 +94,8 @@ var cull_rules: Array = []
 ## $8080 -- the minds the engine has of its own.  A type that is not in here
 ## is still told what it did; a type that is drives itself and is compared.
 const MINDS := {0x02: "_mind_02", 0x10: "_mind_10",
-		0x12: "_mind_12", 0x17: "_mind_17", 0x19: "_mind_19"}
+		0x12: "_mind_12", 0x17: "_mind_17", 0x19: "_mind_19",
+		0x1D: "_mind_1d"}
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
@@ -136,6 +143,10 @@ func _init(level: Pb2Level) -> void:
 		spin_hi.append(int(v))
 	for v in t["trig"]:
 		trig.append(int(v))
+	for v in t["snap"]:
+		snap.append(int(v))
+	for v in t["aim"]:
+		aim.append(int(v))
 	for r in t["anims"]:
 		var run := {"last": int(r["last"]), "hold": int(r["hold"]),
 				"first": int(r["first"])}
@@ -657,24 +668,26 @@ func start_anim(s: PackedByteArray, which: int) -> void:
 
 ## $E30F ($C837) -- hold the step a frame longer, and when its frames are up
 ## go on to the next; at the end of the run it starts again.
-func step_anim(s: PackedByteArray) -> void:
+func step_anim(s: PackedByteArray) -> int:
 	s[F_HOLD] = (s[F_HOLD] - 1) & 0xFF
 	if s[F_HOLD] != 0:
-		return
-	_next_step(s, s[F_ANIM])
+		return s[F_HOLD]
+	return _next_step(s, s[F_ANIM])
 
 
 ## $E309 ($C88E) -- the same, except that the run to go on with is named
 ## rather than taken from the thing: $E309 walks into the middle of $E30F,
 ## past the load of $0458.  Finish this step, then carry on in that run.
-func step_anim_into(s: PackedByteArray, which: int) -> void:
+func step_anim_into(s: PackedByteArray, which: int) -> int:
 	s[F_HOLD] = (s[F_HOLD] - 1) & 0xFF
 	if s[F_HOLD] != 0:
-		return
-	_next_step(s, which)
+		return s[F_HOLD]
+	return _next_step(s, which)
 
 
-func _next_step(s: PackedByteArray, which: int) -> void:
+## Answers with the picture it settled on, because that is what the console
+## leaves in A and what the minds that watch a swing through look at.
+func _next_step(s: PackedByteArray, which: int) -> int:
 	var run: Dictionary = anims[which]
 	s[F_HOLD] = int(run["hold"])
 	var last: int = int(run["last"])
@@ -689,6 +702,7 @@ func _next_step(s: PackedByteArray, which: int) -> void:
 		s[F_KIND] = (int(run["first"]) + int(steps[s[F_STEP]])) & 0xFF
 	else:
 		s[F_KIND] = (int(run["first"]) + s[F_STEP]) & 0xFF
+	return s[F_KIND]
 
 
 # --- What a thing sees under it ----------------------------------------
@@ -815,6 +829,174 @@ func walled_either_turn(n: int, s: PackedByteArray, side: int, down: int,
 ## A byte the cartridge reads as a signed offset.
 static func _signed(b: int) -> int:
 	return b - 0x100 if b >= 0x80 else b
+
+
+## $CAF1 ($C870) -- how far the hero is above or below, as a plain length.
+func hero_gap_down(s: PackedByteArray) -> int:
+	var d: int = s[F_Y] - slots[0][F_Y]
+	return d if d >= 0 else -d
+
+
+## $FD1D and $FD20 -- sit the thing on the floor line of the tile it is in.
+## Down a level the view's own place is counted in, because there the map
+## slides under the thing instead of past it.
+func snap_down(s: PackedByteArray) -> void:
+	var y: int = s[F_Y]
+	if lvl.vertical:
+		y = (y + (cam & 0xFF)) & 0xFF
+	nudge_down(s, 0, snap[y & 0x0F])
+
+
+## $FD16 -- the same, reckoned from a place `off` below where it stands.
+func snap_down_from(s: PackedByteArray, off: int) -> void:
+	var y: int = (s[F_Y] + off) & 0xFF
+	if lvl.vertical:
+		y = (y + (cam & 0xFF)) & 0xFF
+	nudge_down(s, 0, snap[y & 0x0F])
+
+
+## $9C44 -- is it under the water that has risen?  Only kinds five and nine of
+## an area have such water, and how high it stands lives in $29, which is not
+## kept yet: one area apiece uses those kinds.  Until it is, the answer is no,
+## which is the answer for every other area anyway.
+func in_water(_s: PackedByteArray) -> bool:
+	return false
+
+
+## $9BD0 -- fall or stand.  A thing already standing is left standing: it is
+## whatever knocked it off that clears the field, not this.
+func ground_stand(s: PackedByteArray) -> void:
+	if s[F_GROUND] == 0x81:
+		if not in_water(s):
+			return
+	if ground(s, 0x00, 0x01) >= 0x80:
+		snap_down(s)
+		s[F_GROUND] = 0x81
+	else:
+		s[F_GROUND] = 0x00
+
+
+## $9BA5 -- the same, and then drowning: a thing in the risen water with
+## nothing under it at `deep` is taken away.  Nothing can be in that water
+## until $29 is kept, so for now this is only the standing.
+func ground_stand_deep(s: PackedByteArray, _deep: int) -> void:
+	ground_stand(s)
+
+
+## $FBF0 -- is there a wall the way it is looking?  The offset across is
+## turned about when it looks the other way, and the ground is asked at two
+## heights: one wall is enough.
+func walled_ahead(s: PackedByteArray, side: int, first: int,
+		second: int) -> int:
+	var a: int = side
+	if s[F_BITS] & 0x40:
+		a = (-_signed(a)) & 0xFF
+	if ground(s, a, first) >= 0x80:
+		return 0x80
+	if ground(s, a, second) >= 0x80:
+		return 0x80
+	return 0x00
+
+
+## $FBD7, $FBDC and $FBE6 -- asked every frame, or only on the thing's own
+## frame with a settled answer for the frames in between.  $FBDC answers "no
+## wall" out of turn and $FBE6 answers "a wall".
+func walled_ahead_turn(n: int, s: PackedByteArray, side: int, first: int,
+		second: int, out_of_turn: int) -> int:
+	if not its_turn(n, clock):
+		return out_of_turn
+	return walled_ahead(s, side, first, second)
+
+
+## $FC16 -- $FBDC, and turn round where there is a wall.
+func walled_ahead_turn_about(n: int, s: PackedByteArray, side: int,
+		first: int, second: int) -> void:
+	if walled_ahead_turn(n, s, side, first, second, 0x00) >= 0x80:
+		turn(s)
+		flip_speed_side(s)
+
+
+## $F637 -- how much of a length is left after `i` sixty-fourths of a quarter
+## turn, to sixteen bits.  The same missing CLC as $F2E6: read the note there.
+func _aim16(i: int, mag: int) -> Array:
+	var t: int = aim[i]
+	var a := 0
+	var f := 0
+	for _k in range(8):
+		var carry: int = t & 1
+		t >>= 1
+		if carry == 1:
+			var sum: int = a + mag + 1
+			a = sum & 0xFF
+			carry = sum >> 8
+		var out: int = a & 1
+		a = ((carry << 7) | (a >> 1)) & 0xFF
+		f = ((out << 7) | (f >> 1)) & 0xFF
+	return [a, f]
+
+
+## $F5BA -- point a speed of `mag` along the angle `ang`.  This is $F274 over
+## again, but the answer goes straight into the speed and keeps its fraction.
+## A length of nought stops the thing outright.
+func set_speed_at(s: PackedByteArray, mag: int, ang: int) -> void:
+	if mag == 0:
+		s[F_VXFR] = 0
+		s[F_VX] = 0
+		s[F_VYFR] = 0
+		s[F_VY] = 0
+		return
+	var m: int = (mag - 1) & 0xFF
+	var q: int = ang & 0x3F
+	var i := 0
+	var j := 0
+	if q == 0:
+		if ang & 0x40:
+			i = 0x40
+		else:
+			j = 0x40
+	elif ang & 0x40:
+		i = (-q) & 0x3F
+		j = q
+	else:
+		i = q
+		j = (-q) & 0x3F
+	var side: Array = _aim16(i, m)
+	s[F_VX] = side[0]
+	s[F_VXFR] = side[1]
+	var down: Array = _aim16(j, m)
+	s[F_VY] = down[0]
+	s[F_VYFR] = down[1]
+	if ang & 0x80:
+		flip_speed_down(s)
+	if ((ang + 0x40) & 0xFF) >= 0x80:
+		flip_speed_side(s)
+
+
+## $F8D3 ($C8E5) -- put a new thing out beside this one and send it off at an
+## angle.  As with $F8A1 neither the child nor the parent may be off the
+## screen; the cartridge gives up on the whole turn where it is, and the -1
+## here stands for that.
+func make_child_aimed(s: PackedByteArray, side: int, down: int, what: int,
+		mag: int, ang: int) -> int:
+	var x: int = ((s[F_XHI] << 8) | s[F_X]) + _signed(side)
+	if (x >> 8) & 0xFF:
+		return -1
+	var y: int = ((s[F_YHI] << 8) | s[F_Y]) + _signed(down)
+	if (y >> 8) & 0xFF:
+		return -1
+	if s[F_XHI] != 0 or s[F_YHI] != 0:                 # $F913
+		return -1
+	for n in range(FIRST_LIVE, FIRST_PLACED):
+		var c: PackedByteArray = slots[n]
+		if c[F_TYPE] != 0:
+			continue
+		c[F_TYPE] = what
+		c[F_X] = x & 0xFF
+		c[F_Y] = y & 0xFF
+		c[F_MARK] = 0x08
+		set_speed_at(c, mag, ang)
+		return n
+	return -1
 
 
 # --- The minds ---------------------------------------------------------
@@ -985,3 +1167,122 @@ func _mind_10(_n: int, s: PackedByteArray) -> void:
 			+ _signed(off[1])) & 0xFFFF
 	s[F_Y] = y & 0xFF
 	s[F_YHI] = y >> 8
+
+
+## $8E9D -- the one that walks the floor and stops to shoot.  Whatever it is
+## doing, it falls first.
+func _mind_1d(n: int, s: PackedByteArray) -> void:
+	ground_stand_deep(s, 0xF2)                         # $9BA5 with $F2
+	match s[F_STATE]:
+		0: _wake_1d(s)
+		1: _walk_1d(n, s)
+		2: _raise_1d(s)
+		3: _fire_1d(s)
+		4: _lower_1d(s)
+		5: _stuck_1d(n, s)
+
+
+## $8EB1
+func _wake_1d(s: PackedByteArray) -> void:
+	s[F_MARK] = 0x20                                   # $FD7E
+	s[F_KIND] = 0x31                                   # $BE6E
+	s[F_LIFE] = 0x02                                   # $BE63
+	s[F_COUNT] = 0x30                                  # $BE7C
+	s[F_STATE] += 1
+
+
+## $8EC3 -- walk.  Far above or below him it takes its time; level with him it
+## hurries, and counts down to the moment it stops and shoots.
+func _walk_1d(n: int, s: PackedByteArray) -> void:
+	if hero_gap_down(s) >= 0x10:
+		set_speed_side_facing(s, 0xFF, 0x80)           # $BEC5 with 80 FF
+	else:
+		s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+		if s[F_COUNT] == 0:
+			# $8F04 -- turn to him and start the swing.
+			face_hero(s)
+			start_anim(s, 4)
+			s[F_STATE] += 1
+			return
+		set_speed_side_facing(s, 0xFE, 0x00)           # $BEC5 with 00 FE
+	# $BF06 with F6 F1 FF -- a wall ten points ahead, at two heights.
+	if walled_ahead_turn(n, s, 0xF6, 0xFF, 0xF1, 0x00) >= 0x80:
+		_stop_1d(s)
+		return
+	# And the ledge: eight ahead and four down.  Out of its own turn the
+	# answer is a floor, so it walks two frames for every one it looks.
+	var ahead: int = 0x08 if s[F_BITS] & 0x40 else 0xF8
+	if ground_turn_wall(n, s, ahead, 0x04) >= 0x80 or in_water(s):
+		step_both(s)
+		return
+	_stop_1d(s)
+
+
+## $8EFD -- there is nowhere to walk: stand a moment, then turn.
+func _stop_1d(s: PackedByteArray) -> void:
+	s[F_KEEP] = 0x04                                   # $BE83
+	s[F_STATE] = 5                                     # $FD0A
+
+
+## $8F0E -- the swing goes up; at the top of it the arm is out and it can hurt.
+func _raise_1d(s: PackedByteArray) -> void:
+	if step_anim(s) != 0x33:
+		return
+	s[F_COUNT] = 0x18                                  # $BE7C
+	s[F_MARK] = 0x01                                   # $FD76
+	s[F_STATE] += 1
+
+
+## $8F20 -- hold the arm out, and at the end of it let two go at once.
+func _fire_1d(s: PackedByteArray) -> void:
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		return
+	_shoot_1d(s, 0xF8, 0xF8, 0xA0)
+	s[F_STATE] += 1
+
+
+## $8F63 -- two shots, one after the other, and the angle of each is turned
+## about when it is looking the other way.
+func _shoot_1d(s: PackedByteArray, down: int, side: int, ang: int) -> void:
+	var a: int = ang
+	if s[F_BITS] & 0x40:
+		a = a ^ 0x40
+	_shoot_one_1d(s, down, side, a)
+	a = 0x00 if s[F_BITS] & 0x40 else 0x80
+	_shoot_one_1d(s, down, side, a)
+
+
+## $8F7C
+func _shoot_one_1d(s: PackedByteArray, down: int, side: int,
+		ang: int) -> void:
+	var across: int = side
+	if s[F_BITS] & 0x40:
+		across = ((-_signed(across)) + 1) & 0xFF
+	make_child_aimed(s, across, down, 0x14, 0x0C, ang)
+
+
+## $8F36 -- the arm comes down and it walks again.
+func _lower_1d(s: PackedByteArray) -> void:
+	if step_anim(s) != 0x31:
+		return
+	s[F_MARK] = 0x20                                   # $FD7E
+	s[F_COUNT] = 0x30                                  # $BE7C
+	s[F_STATE] = 1                                     # $FCFA
+
+
+## $8F48 -- stood against a wall or a drop.  Turn, and if that way is walled
+## too, turn back and try again in two frames.
+func _stuck_1d(n: int, s: PackedByteArray) -> void:
+	s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF
+	if s[F_KEEP] != 0:
+		return
+	turn(s)
+	flip_speed_side(s)                                 # $F97D
+	# $BF00 -- this one is asked every frame, not every other.
+	if walled_ahead(s, 0xF6, 0xFF, 0xF1) < 0x80:
+		s[F_STATE] = 1                                 # $FCFA
+		return
+	turn(s)
+	flip_speed_side(s)
+	s[F_KEEP] = 0x02                                   # $BE83

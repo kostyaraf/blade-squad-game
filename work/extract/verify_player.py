@@ -176,6 +176,7 @@ def logic_frames(rows):
             merged['place'] = out[-1]['place'] + r['place']
             merged['whole'] = out[-1]['whole'] + r['whole']
             merged['shifts'] = out[-1]['shifts'] + r['shifts']
+            merged['turns'] = out[-1]['turns'] + r['turns']
             merged['seized'] = out[-1]['seized'] or r['seized']
             merged['frames'] = out[-1]['frames'] + 1
             out[-1] = merged
