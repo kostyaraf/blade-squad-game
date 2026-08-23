@@ -78,6 +78,7 @@ func _run_replay(path: String) -> void:
 	p.pose = int(cfg["pose"])
 	p.face_left = bool(cfg["face_left"])
 	p.fall = int(cfg["fall"])
+	p.ticks = int(cfg["tick"])
 	var out := PackedStringArray()
 	for f in cfg["frames"]:
 		p.step(int(f["pad"]), int(f["hit"]), int(f["cam"]),

@@ -24,6 +24,10 @@ var terrain_class: PackedByteArray  # the two bits the physics actually reads
 var class_bytes := PackedByteArray([0x00, 0x01, 0x80, 0x02])
 var tiles: PackedByteArray          # tile number per 8x8 cell, row major
 var spawns: Array
+## $87 and $29: what sort of place this is, and the line its water or its
+## drop begins at.  Most areas are ordinary and say nothing.
+var kind: int
+var line: int
 var _data: Dictionary
 
 
@@ -39,6 +43,8 @@ func _init(stage_index: int, area_index: int) -> void:
 	terrain = PackedByteArray(a["terrain"])
 	terrain_class = PackedByteArray(a["terrain_class"])
 	spawns = a["spawns"]
+	kind = int(a.get("kind", 1))
+	line = int(a.get("line", 0))
 	_build(a)
 
 

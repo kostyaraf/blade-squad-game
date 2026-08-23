@@ -32,8 +32,10 @@ WATCH = {
     'sub': P.field(18), 'scale': P.field(19),
     # How many shots of his own are still in the air, and how many he is
     # allowed: $A3D9 refuses a new throw while the boomerang is out.
+    'tick': 0x0110,          # counts the frames; animations follow its parity
     'acc0': 0x0111, 'acc1': 0x0112, 'acc2': 0x0113,
     'mode': 0x27,            # $27: 3 is ordinary play, 6 is a scripted pan
+    'alive': 0x049A,         # zero the moment something kills him
     'lim': 0x99, 'p1': 0x0401, 'p2': 0x0402, 'p3': 0x0403,
 }
 SHOT_SLOTS = (0x0401, 0x0402, 0x0403)

@@ -59,6 +59,9 @@ def export():
         hi = min(e for e in astop if e > lo)
         anims['%04X' % lo] = list(a9(lo, hi - lo))
 
+    # $B514/$B51A: one list of feeling-points per kind of stance
+    pptr = [a9(0xB51A + i)[0] * 256 + a9(0xB514 + i)[0] for i in range(6)]
+
     out = dict(
         anim_index=['%04X' % p for p in aptr],
         anims=anims,
@@ -105,6 +108,27 @@ def export():
         hard_landing=a8(0x9443)[0],
         # $F5A9: what the two collision bits mean
         class_bytes=[0x00, 0x01, 0x80, 0x02],
+        # $B4D6: which set of feeling-points a pose uses, and $B520: the sets
+        # themselves -- eight points down each side of him, from his feet to
+        # the top of his head, which is how the game knows he is in water.
+        probe_set=list(a9(0xB4D6, 0x40)),
+        probe_index=['%04X' % p for p in pptr],
+        probes={'%04X' % p: [[s8(a9(p + i * 2)[0]), s8(a9(p + i * 2 + 1)[0])]
+                             for i in range(8)] for p in sorted(set(pptr))},
+        # $B4AF: water carries him up, and takes half his speed for it.  The
+        # two numbers are the push while he is already going up and the push
+        # while he is coming down; both stop at the same speed.
+        swim_up=[s16(a9(0xB4CB)[0] * 256 + a9(0xB4CC)[0]),
+                 s16(a9(0xB4D3)[0] * 256 + a9(0xB4D4)[0])],
+        swim_limit=s16(a9(0xB4C9)[0] * 256 + a9(0xB4CA)[0]),
+        # $B47C..$B494: the moving floors, with him and against him
+        belt=[s16(a9(0xB47F)[0] * 256 + a9(0xB480)[0]),
+              s16(a9(0xB48B)[0] * 256 + a9(0xB48C)[0]),
+              s16(a9(0xB491)[0] * 256 + a9(0xB492)[0]),
+              s16(a9(0xB49D)[0] * 256 + a9(0xB49E)[0])],
+        # $B462: what he sinks into swallows him a fraction of a pixel a frame
+        sink=s16(a9(0xB465)[0] * 256 + a9(0xB466)[0]),
+        drown_y=a9(0xB46B)[0],
         # where the level sits on the screen
         view_top=0x10, view_bottom=0xB0,
         screen_left=0x10, screen_right=0xF1,

@@ -65,6 +65,17 @@ var cam := 0                    # where the level is, in pixels
 var body_x := 1
 var pad := 0
 var hit := 0
+## $05A2 -- how much of a movement survives what he is standing in: bit 6
+## takes half of it and bit 7 takes half again.
+var scale := 0
+## $9A -- which suit he is wearing; one of them wades as if the water were
+## not there.
+var suit := 0
+var dead := false
+var sunk := false               # $0668 bit 6
+## $0110 -- the frames, counted.  In water and mud the animations only move
+## on every other one of them.
+var ticks := 0
 
 
 func _init(level: Pb2Level) -> void:
@@ -93,6 +104,9 @@ func step(buttons: int, pressed: int, camera: int,
 	limit = shot_limit
 	dx = 0
 	dy = 0
+	scale = 0
+	ticks = (ticks + 1) & 0xFF          # $8E1A
+	_terrain()
 	match sub:
 		SUB_GROUND: _ground()
 		SUB_AIR: _air()
@@ -462,6 +476,10 @@ func _anim_start(id: int) -> void:
 ## $B01F -- one tick of it; true when the script says it is over.
 func _anim_step(id: int) -> bool:
 	anim_id = id
+	# $B01F: what slows him down slows the picture of him with it
+	if scale != 0 and not ((scale & 0x40) and suit == 2):
+		if (ticks & 1) == 0:
+			return false
 	anim_t -= 1
 	if anim_t > 0:
 		return false
@@ -490,6 +508,7 @@ func _advance() -> bool:
 
 ## $ACBA -- can he move sideways this frame?  Nothing moves if he cannot.
 func _move_x(pose_index: int) -> bool:
+	dx = _scaled(dx)
 	if dx == 0:
 		return false
 	if _wall((dx + (x & 0xFF)) >> 8, pose_index):
@@ -538,7 +557,7 @@ func _apply_vertical(pose_index: int) -> void:
 
 
 func _move_y() -> void:
-	y += dy
+	y += _scaled(dy)
 
 
 func _desc(i: int) -> Array:
@@ -582,8 +601,183 @@ func _class_byte(sx: int, sy: int) -> int:
 		if sy < 0 or sy >= bottom:
 			return 0x80
 		return lvl.class_byte(sx, Pb2Level.map_row(sy + cam))
-	sy = clampi(sy, top, bottom - 1)
+	# $F57E: below the two hundred and twenty fourth line nothing is read at
+	# all, and above the top of the view the cache holds the last area's rows,
+	# which we have no way of keeping -- so the first row stands in for them.
+	if sy >= 0xE0:
+		return 0x00
+	sy = maxi(sy, top)
 	return lvl.class_byte(cam + sx, sy - top)
+
+
+## $B16D -- water and mud take their share of every movement.
+func _scaled(v: int) -> int:
+	if scale == 0:
+		return v
+	# $B174: the wading suit walks through water at its own pace
+	if (scale & 0x40) and suit == 2:
+		return v
+	v >>= 1
+	if scale & 0x80:
+		v >>= 1
+	return v
+
+
+# ------------------------------------------------------- what he stands in
+
+## $B316 -- what the place he is standing in does to him.
+##
+## Eight points down his two sides, from under his feet to the top of his head,
+## are asked what the level is made of there.  Water slows him and lifts him,
+## a moving floor carries him along, deep mud swallows him, and one or two
+## things kill him outright.  Which eight points depends on how he is standing.
+func _terrain() -> void:
+	if sub < 4:
+		return
+	var set_id: int = int(cfg["probe_set"][pose])
+	if set_id == 0:
+		return
+	var pts: Array = cfg["probes"][cfg["probe_index"][set_id]]
+	# The cartridge counts the points up and stores them down, so the first
+	# point -- his left foot -- ends up last.
+	var p := [0, 0, 0, 0, 0, 0, 0, 0]
+	for i in range(8):
+		p[7 - i] = _feel(int(pts[i][0]), int(pts[i][1]))
+
+	if p[0] == 2:
+		dead = true
+		return
+	if p[0] == 4:
+		scale = 0x40                    # $B394: his head is under water
+	if p[1] == 2:
+		dead = true
+		return
+	if p[2] == 4:
+		_swim(p)
+		return
+	if p[2] == 2:
+		dead = true
+		return
+	if p[3] == 4:
+		_swim(p)
+		return
+	if p[3] == 2:
+		dead = true
+		return
+	_b3b6(p)
+
+
+## $B3B6 -- what is level with his knees, and then what is under his feet.
+func _b3b6(p: Array) -> void:
+	if p[4] == 2:
+		dead = true
+		return
+	if p[4] == 5:                           # $B401
+		if p[5] == 2:
+			dead = true
+			return
+		_belt(1 if p[5] == 6 and _far_side() else 3)
+		_b3d2(p)
+		return
+	if p[4] == 6:                           # $B41C
+		if p[5] == 2:
+			dead = true
+			return
+		_belt(3 if p[5] == 5 and _far_side() else 1)
+		_b3d2(p)
+		return
+	if p[5] == 2:
+		dead = true
+		return
+	if p[5] == 5:
+		_belt(3)
+	elif p[5] == 6:
+		_belt(1)
+	_b3d2(p)
+
+
+## $B3D2 -- the two points under his feet: moving floors, and deep mud.
+func _b3d2(p: Array) -> void:
+	if p[6] == 0x87:                        # $B42D
+		_belt(0 if p[7] == 0x88 and _far_side() else 2)
+		return
+	if p[6] == 0x88:                        # $B43A
+		_belt(2 if p[7] == 0x87 and _far_side() else 0)
+		return
+	if p[6] == 3:
+		_mud(p[7])
+		return
+	if p[7] == 0x88:
+		_belt(0)
+	elif p[7] == 0x87:
+		_belt(2)
+	elif p[7] == 3:
+		_mud(p[6])
+
+
+## $ABA6 and $F42C -- what the level is made of at a point beside him.
+func _feel(ox: int, oy: int) -> int:
+	var sx: int = (x >> 8) + ox
+	var sy: int = (y >> 8) + oy
+	if not lvl.vertical:
+		sy = clampi(sy, 0x10, 0xAF)
+	# $B34A: a few areas have a line across them -- water below it, or a fall
+	# that kills -- and there the map underneath does not matter.
+	match lvl.kind:
+		8:
+			if lvl.line + 0x1F >= sy:
+				return 2
+		0x0A:
+			if sy < 0x98 and sy >= lvl.line:
+				return 4
+		6:
+			if sy - 4 >= lvl.line:
+				return 2
+	if lvl.vertical:
+		return lvl.terrain_at(sx, Pb2Level.map_row(sy + cam))
+	return lvl.terrain_at(cam + sx, sy - int(cfg["view_top"]))
+
+
+## $B4A0 -- which half of a sixteen pixel cell he is standing in, which is how
+## two different floors under his two feet are settled between them.
+func _far_side() -> bool:
+	var v: int = (x >> 8) & 0xFF
+	if not lvl.vertical:
+		v = (v + (cam & 0xFF)) & 0xFF
+	return (v & 0x0F) >= 8
+
+
+## $B47C..$B494 -- a floor that moves carries him with it.
+func _belt(which: int) -> void:
+	# $B482 and $B494: against his own way the wading suit is not carried
+	if (which == 1 or which == 3) and suit == 2:
+		return
+	dx += int(cfg["belt"][which])
+
+
+## $B4AF -- water: half of every movement, and a push towards the surface.
+func _swim(p: Array) -> void:
+	scale = 0x40
+	if state & 0x01 and sub != 0x0E:
+		var up: Array = cfg["swim_up"]
+		vy = _toward(vy, int(cfg["swim_limit"]),
+				int(up[0]) if vy < 0 else int(up[1]))
+	_b3b6(p)
+
+
+## $B44E -- deep mud: a quarter of every movement, and it swallows him.
+func _mud(other: int) -> void:
+	scale = 0x80
+	if state & 0x60:
+		return
+	if other < 0x80:
+		if not sunk:
+			# $B1AA: the sinking is not slowed by what does the sinking
+			y += int(cfg["sink"])
+		if (y >> 8) >= int(cfg["drown_y"]):
+			dead = true
+			return
+	sunk = true
 
 
 func _solid(off_x: int, off_y: int) -> bool:

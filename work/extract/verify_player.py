@@ -107,31 +107,76 @@ def spot_for(stage, area):
     return _SPOTS[key]
 
 
-def check(name, script, stage, area, tmp, spot=None):
-    """Play one script on the cartridge and in the engine.  Returns the frames
-    compared, or a description of the first frame that disagreed."""
-    rows = pb2_trace.trace(script, FRAMES, stage=stage, area=area, spot=spot)
+def settled(stage, area, spot):
+    """Whether an area opened out of turn is really being played.
+
+    Some of them are not: a room the game only ever enters with a scripted
+    walk-on, or one where slot zero is a boss's and not the hero's.  There the
+    numbers we compare mean nothing, so the area is left out.  A quiet man who
+    stays put and blinks is the sign that everything is ordinary.
+    """
+    rows = pb2_trace.trace([(2, '-')], 40, stage=stage, area=area, spot=spot)
+    a, b = rows[0], rows[-1]
+    return (a['mode'] == 3 and b['mode'] == 3 and a['sub'] == b['sub'] == 4
+            and a['x'] == b['x'] and a['y'] == b['y']
+            and a['alive'] == b['alive'] and a['alive'] != 0
+            and a['state'] == b['state'] == 0)
+
+
+def logic_frames(rows):
+    """Drop the frames the console itself did not think on.
+
+    When a frame has more work in it than fits between two pictures the game
+    simply does not run its logic that time; its own frame count stands still.
+    The engine has one step per thought, so those frames are left out of the
+    comparison rather than pretended away.
+    """
+    out = [rows[0]]
+    for r in rows[1:]:
+        if r['tick'] != out[-1]['tick']:
+            out.append(r)
+    return out
+
+
+def replay(rows):
+    """The script the engine is given: where the hero starts and, one line per
+    frame, everything the cartridge decided that the engine does not yet."""
     start = rows[0]
-    # Only ordinary play in the area he started in can be compared: once the
-    # game moves on -- a new area, or one of its scripted camera pans, which
-    # freeze the hero outright -- its numbers mean something else.
-    for i, r in enumerate(rows):
-        if (r['area'] != start['area'] or r['stage'] != start['stage']
-                or r['mode'] != start['mode']):
-            rows = rows[:i]
-            break
-    cfg = dict(
+    return dict(
         stage=start['stage'], area=start['area'],
         x=s24(start['xh'], start['xp'], start['xf']),
         y=s24(start['yh'], start['yp'], start['yf']),
         cam=start['cam'], state=start['state'], sub=start['sub'],
         pose=start['pose'], face_left=bool(start['face'] & 0x40),
-        fall=start['fall'],
+        fall=start['fall'], tick=start['tick'],
         frames=[dict(pad=r['pad'], hit=r['hit'], cam=r['cam'],
                      shots=r['shots'], lim=r['lim'])
                 for r in rows[1:]],
     )
-    got = run_engine(cfg, os.path.join(tmp, 'r.json'))
+
+
+def ordinary(rows):
+    """The stretch of the run that can be compared at all.
+
+    Only ordinary play in the area he started in: once the game moves on -- a
+    new area, one of its scripted camera pans, which freeze the hero outright,
+    or a hit, which throws him about in a way that belongs to the next stage of
+    the work -- its numbers mean something else.
+    """
+    start = rows[0]
+    for i, r in enumerate(rows):
+        if (r['area'] != start['area'] or r['stage'] != start['stage']
+                or r['mode'] != start['mode'] or r['alive'] != start['alive']):
+            return rows[:i]
+    return rows
+
+
+def check(name, script, stage, area, tmp, spot=None):
+    """Play one script on the cartridge and in the engine.  Returns the frames
+    compared, or a description of the first frame that disagreed."""
+    rows = logic_frames(ordinary(pb2_trace.trace(
+        script, FRAMES, stage=stage, area=area, spot=spot)))
+    got = run_engine(replay(rows), os.path.join(tmp, 'r.json'))
     want = [(s24(r['xh'], r['xp'], r['xf']), s24(r['yh'], r['yp'], r['yf']),
              r['vx'], r['vy'], r['state'], r['sub'], r['pose'])
             for r in rows[1:]]
@@ -176,9 +221,13 @@ def main():
         scripts = list(SCRIPTS) if targets == [(0, 0)] else []
         scripts += random_scripts(n_random, seed + 31 * (stage * 16 + area))
         spot = None if targets == [(0, 0)] else spot_for(stage, area)
-        if spot is None and targets != [(0, 0)]:
-            print('%d:%-2d no place to stand' % (stage, area))
-            continue
+        if targets != [(0, 0)]:
+            if spot is None:
+                print('%d:%-2d no place to stand' % (stage, area))
+                continue
+            if not settled(stage, area, spot):
+                print('%d:%-2d not ordinary play' % (stage, area))
+                continue
         for name, script in scripts:
             if args and name not in args:
                 continue

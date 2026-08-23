@@ -25,25 +25,9 @@ def main():
             seed = 7 + 31 * (stage * 16 + area)
             spot = V.spot_for(stage, area)
     scripts = dict(V.SCRIPTS + V.random_scripts(40, seed))
-    rows = pb2_trace.trace(scripts[name], V.FRAMES, stage=stage, area=area,
-                           spot=spot)
-    start = rows[0]
-    for i, r in enumerate(rows):
-        if (r['area'] != start['area'] or r['stage'] != start['stage']
-                or r['mode'] != start['mode']):
-            rows = rows[:i]
-            break
-    cfg = dict(
-        stage=start['stage'], area=start['area'],
-        x=V.s24(start['xh'], start['xp'], start['xf']),
-        y=V.s24(start['yh'], start['yp'], start['yf']),
-        cam=start['cam'], state=start['state'], sub=start['sub'],
-        pose=start['pose'], face_left=bool(start['face'] & 0x40),
-        fall=start['fall'],
-        frames=[dict(pad=r['pad'], hit=r['hit'], cam=r['cam'],
-                     shots=r['shots'], lim=r['lim'])
-                for r in rows[1:]],
-    )
+    rows = V.logic_frames(V.ordinary(pb2_trace.trace(
+        scripts[name], V.FRAMES, stage=stage, area=area, spot=spot)))
+    cfg = V.replay(rows)
     got = V.run_engine(cfg, os.path.join(tempfile.mkdtemp(), 'r.json'))
     for i in range(max(0, at - span), min(len(rows) - 1, at + span)):
         r = rows[i + 1]
