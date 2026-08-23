@@ -929,6 +929,6 @@ the three (it is the only one `ares` implements); **52** tracks 45 almost exactl
   banking logic (MMC3 core + outer registers → physical PRG/CHR offsets), the
   configuration-byte generator, the PB3 layout constants, the NES 2.0 header builder,
   and a self-test that asserts every claim in §3 and §4.
-  Run it as `python3 /Users/hropl/pr/mypr/PB3/work/tools/mapper_ref.py` **from a
-  directory other than `work/tools/`** — `work/tools/dis.py` shadows the Python
-  standard-library `dis` module and breaks `import dataclasses`/`inspect` otherwise.
+  Run it as `python3 /Users/hropl/pr/mypr/PB3/work/tools/mapper_ref.py`.
+  (It used to have to be run from elsewhere: `work/tools/dis.py` shadowed the
+  standard-library `dis` module.  That file is now `disasm.py`.)

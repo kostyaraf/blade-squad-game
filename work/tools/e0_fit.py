@@ -43,8 +43,9 @@ import os
 import sys
 
 _d = os.path.dirname(os.path.abspath(__file__))
-# work/tools/dis.py shadows the standard library's dis, which PIL and inspect
-# both need -- import PIL BEFORE work/tools joins sys.path.
+# PIL is imported before work/tools joins sys.path, so that no file here can
+# shadow a standard module it needs.  (What used to shadow one, dis.py, is now
+# disasm.py; the order is kept because the trap is easy to lay again.)
 sys.path[:] = [p for p in sys.path if os.path.abspath(p or '.') != _d]
 try:
     from PIL import Image, ImageDraw

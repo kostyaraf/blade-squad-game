@@ -222,7 +222,9 @@ func _run_spawns(path: String) -> void:
 		s.type = int(r["type"])
 		s.rec = int(r["rec"])
 		s.x = int(r["x"])
+		s.xhi = int(r["xhi"])
 		s.y = int(r["y"])
+		s.yhi = int(r["yhi"])
 	# $E3F3 runs before $D924, so the scroll it looks at is the one before.
 	var before := int(cfg["shift_before"])
 	var out := PackedStringArray()
@@ -238,12 +240,55 @@ func _run_spawns(path: String) -> void:
 				born.append("%d:%d:%d:%d:%d" % [n, s.type, s.rec, s.x, s.y])
 		view.drive()
 		before = view.shift
+		# $CF14 -- the view has moved, so everything standing on it moves back.
+		things.shift(view.shift)
 		view.decide(int(f["screen"]))
-		# Where the view ended the step, and what came alive in it.  The view
-		# is put out too: it drives the scan, so a scan that agrees only
-		# because the view was wrong in both would prove nothing.
-		out.append("%d|%s" % [view.pos,
-				" ".join(born) if born.size() else "-"])
+		# $CF1C, before any of them gets a turn.
+		# The cartridge sweeps once a frame and a step of the game can take
+		# two of them, so there is one table for each frame the sweep ran in,
+		# and the sweep runs once against each.
+		#
+		# The table is told, not worked out: a thing that moves itself the
+		# engine cannot yet place, and what is on trial here is the sweep's
+		# answer, not the places.  How many it had right by itself is counted
+		# and put out with the rest.
+		var same := 0
+		var seen := 0
+		var gone := []
+		for tbl in f["place"]:
+			var place: Array = tbl
+			for n in range(place.size()):
+				# [type, $04F2, $0508, $04B0, $04C6].
+				var p: Array = place[n]
+				var s: Pb2Objects.Slot = things.slots[n]
+				var had: int = s.type
+				if int(p[0]) == 0:
+					continue
+				if had != int(p[0]):
+					# Either something the engine never put out -- a shot, or
+					# a piece of a thing that broke -- or a thing that has
+					# turned into something else.  Both are told, place and
+					# all, so that the sweep is asked what the cartridge asked:
+					# what a thing is decides how far past the edge it is let.
+					things.take(n, int(p[0]))
+				if had != 0:
+					seen += 1
+					if s.xhi == int(p[1]) and s.x == int(p[2]) \
+							and s.yhi == int(p[3]) and s.y == int(p[4]):
+						same += 1
+				s.xhi = int(p[1])
+				s.x = int(p[2])
+				s.yhi = int(p[3])
+				s.y = int(p[4])
+			gone.append_array(things.cull())
+		# Where the view ended the step, what came alive in it, and what the
+		# sweep threw away.  The view is put out too: it drives the scan, so a
+		# scan that agrees only because the view was wrong in both would prove
+		# nothing.
+		out.append("%d|%s|%s|%d/%d" % [view.pos,
+				" ".join(born) if born.size() else "-",
+				" ".join(PackedStringArray(gone)) if gone.size() else "-",
+				same, seen])
 		for n in f["died"]:
 			things.clear(int(n))
 		for t in f["taken"]:

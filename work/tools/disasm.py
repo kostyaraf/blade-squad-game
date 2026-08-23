@@ -1,7 +1,7 @@
 """Recursive-descent 6502 disassembler for PB2/Solbrain.
 
 Usage:
-  python3 dis.py <rom> <bank> <base_hex> [entry_hex ...]     -> listing to stdout
+  python3 disasm.py <rom> <bank> <base_hex> [entry_hex ...]     -> listing to stdout
 Entries default to: all addresses in-range referenced by JSR/JMP from bank 15,
 plus vectors if bank is the fixed bank.
 """

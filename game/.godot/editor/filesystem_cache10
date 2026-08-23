@@ -2,8 +2,9 @@
 ::res://::1787438215
 ::res://data/::1787437420
 nes_palette.json::JSON::-1::1787437420::0::1::::<><><>0<>0<><>::
-::res://data/pb2/::1787440357
+::res://data/pb2/::1787475514
 chr.json::JSON::-1::1787437420::0::1::::<><><>0<>0<><>::
+objects.json::JSON::-1::1787475648::0::1::::<><><>0<>0<><>::
 player.json::JSON::-1::1787452899::0::1::::<><><>0<>0<><>::
 tiles.png::CompressedTexture2D::6767466221105871537::1787437420::1787438218::1::::<><><>0<>0<>ad7bf4f5adc2553acfbf4e20683f025f<>res://.godot/imported/tiles.png-7578adbe5d41d196e59aa88a5e44d0ff.ctex::
 ::res://data/pb2/levels/::1787437480
@@ -42,13 +43,13 @@ stage18.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
 stage19.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
 ::res://src/::1787471189
 clock.gd::GDScript::2216181933474047874::1787438544::0::1::::Clock<>RefCounted<><>0<>0<><>::
-main.gd::GDScript::1218616883181121138::1787473751::0::1::::<>Node2D<><>0<>0<><>::
+main.gd::GDScript::1218616883181121138::1787476010::0::1::::<>Node2D<><>0<>0<><>::
 main.tscn::PackedScene::-1::1787438203::0::1::::<><><>0<>0<><>::res://src/main.gd<>res://src/nes_bg.gdshader
 nes.gd::GDScript::2050658942601880072::1787438157::0::1::::Nes<>Node<><>0<>0<><>::
 nes_bg.gdshader::Shader::4407094755704472713::1787438420::0::1::::<><><>0<>0<><>::
 pad.gd::GDScript::791787335458079663::1787438544::0::1::::Pad<>RefCounted<><>0<>0<><>::
 pb2_camera.gd::GDScript::4984305006521351138::1787468389::0::1::::Pb2Camera<>RefCounted<><>0<>0<><>::
 pb2_level.gd::GDScript::389559947152639130::1787468403::0::1::::Pb2Level<>RefCounted<><>0<>0<><>::
-pb2_objects.gd::GDScript::4640950097199176057::1787471201::0::1::::Pb2Objects<>RefCounted<><>0<>0<><>::
+pb2_objects.gd::GDScript::4640950097199176057::1787475997::0::1::::Pb2Objects<>RefCounted<><>0<>0<><>::
 pb2_player.gd::GDScript::3533764488342760044::1787452899::0::1::::Pb2Player<>RefCounted<><>0<>0<><>::
 sol_level.gd::GDScript::5046486342476241528::1787438504::0::1::::SolLevel<>RefCounted<><>0<>0<><>::

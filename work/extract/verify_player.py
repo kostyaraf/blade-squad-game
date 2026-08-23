@@ -156,6 +156,8 @@ def logic_frames(rows):
             merged['born'] = out[-1]['born'] + r['born']
             merged['died'] = out[-1]['died'] + r['died']
             merged['taken'] = out[-1]['taken'] + r['taken']
+            merged['culled'] = out[-1]['culled'] + r['culled']
+            merged['place'] = out[-1]['place'] + r['place']
             merged['seized'] = out[-1]['seized'] or r['seized']
             merged['frames'] = out[-1]['frames'] + 1
             out[-1] = merged

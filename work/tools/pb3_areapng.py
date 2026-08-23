@@ -3,7 +3,8 @@ will show them, with every solid tile outlined.  This is the picture to compare
 against work/tools/sol_map.py's rendering of the original stage."""
 import sys, os
 _d = os.path.dirname(os.path.abspath(__file__))
-# work/tools has a dis.py that shadows the standard library's, which PIL needs
+# PIL first, before work/tools joins sys.path: no file here should be able to
+# shadow a standard module PIL needs.  (dis.py, which used to, is now disasm.py.)
 sys.path[:] = [p for p in sys.path if os.path.abspath(p or '.') != _d]
 from PIL import Image, ImageDraw
 sys.path.append(_d)

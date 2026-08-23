@@ -314,7 +314,9 @@ static RomPokeEnt rompokes[256]; static int n_rompokes = 0;
 /* -sample PC=ADDR: what an address held at the moment a piece of code was
  * reached.  A watch says what was written; this says what was read, which is
  * the only way to see what a routine actually decided on. */
-typedef struct { uint16_t pc, addr; } SampleEnt;
+/* `spec` is either an address to read or, when `reg` is set, one of the
+   processor's own registers: 1 = A, 2 = X, 3 = Y, 4 = P. */
+typedef struct { uint16_t pc, addr; int reg; } SampleEnt;
 static SampleEnt samples[64]; static int n_samples = 0;
 
 /* input script */
@@ -1328,10 +1330,22 @@ static void cpu_step(void)
     uint8_t I0 = P & FI;
 
     if (trace_fp && n_samples) {
-        for (int k = 0; k < n_samples; k++)
-            if (samples[k].pc == PC)
-                fprintf(trace_fp, "SAMPLE %ld,%04X,%04X,%02X\n", cur_frame,
-                        PC, samples[k].addr, dbg_read(samples[k].addr));
+        for (int k = 0; k < n_samples; k++) {
+            if (samples[k].pc != PC) continue;
+            uint8_t v;
+            char what[8];
+            switch (samples[k].reg) {
+            case 1: v = A; strcpy(what, "A"); break;
+            case 2: v = X; strcpy(what, "X"); break;
+            case 3: v = Y; strcpy(what, "Y"); break;
+            case 4: v = P; strcpy(what, "P"); break;
+            default:
+                v = dbg_read(samples[k].addr);
+                sprintf(what, "%04X", samples[k].addr);
+            }
+            fprintf(trace_fp, "SAMPLE %ld,%04X,%d,%s,%02X\n", cur_frame,
+                    PC, prg_bank_at(PC), what, v);
+        }
     }
     if (cov_bits || trace_fp) {
         uint8_t op0 = dbg_read(PC);
@@ -2248,7 +2262,8 @@ static void usage(void)
         "  -poke A=V@N       write byte V to CPU address A once at frame N (hex A/V)\n"
         "  -freeze A=V[@N]   rewrite byte V to CPU address A every frame from N on\n"
         "  -rompoke O=V      write byte V at PRG file offset O before the run (hex O/V)\n"
-        "  -sample P=A       log what address A held whenever PC reached P (hex)\n"
+        "  -sample P=A       log what address A held whenever PC reached P (hex);\n"
+        "                    A may instead be a register: A, X, Y or P\n"
         "  -verbose LO-HI    one line per frame in that range: frame, PC, PRG banks\n");
 }
 
@@ -2343,7 +2358,21 @@ int main(int argc, char **argv)
             if (!eq) { fprintf(stderr, "-sample needs PC=ADDR\n"); return 1; }
             if (n_samples >= 64) { fprintf(stderr, "too many -sample\n"); return 1; }
             samples[n_samples].pc   = (uint16_t)strtol(s, NULL, 16);
-            samples[n_samples].addr = (uint16_t)strtol(eq + 1, NULL, 16);
+            samples[n_samples].reg  = 0;
+            samples[n_samples].addr = 0;
+            {
+                const char *w = eq + 1;
+                if (w[0] && !w[1]) {
+                    switch (w[0]) {
+                    case 'A': case 'a': samples[n_samples].reg = 1; break;
+                    case 'X': case 'x': samples[n_samples].reg = 2; break;
+                    case 'Y': case 'y': samples[n_samples].reg = 3; break;
+                    case 'P': case 'p': samples[n_samples].reg = 4; break;
+                    }
+                }
+                if (!samples[n_samples].reg)
+                    samples[n_samples].addr = (uint16_t)strtol(w, NULL, 16);
+            }
             n_samples++;
         }
         else if (!strcmp(o, "-rompoke")) {

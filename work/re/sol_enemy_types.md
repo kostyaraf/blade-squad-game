@@ -687,11 +687,11 @@ at `$93B5`/`$ADD8` drives.  The type-override route was used instead; every type
 in the table has runtime evidence from *some* stage.
 
 **Tooling gotchas.**
-* A file named `dis.py` anywhere on `sys.path[0]` shadows the stdlib `dis`
+* A file named `dis.py` anywhere on `sys.path` shadows the stdlib `dis`
   module and makes `import PIL` fail with
-  `AttributeError: module 'dis' has no attribute 'COMPILER_FLAG_NAMES'`.  Both
-  `work/tools/dis.py` and a scratch `dis.py` triggered this.  Run helper scripts
-  from a directory that contains no `dis.py`.
+  `AttributeError: module 'dis' has no attribute 'COMPILER_FLAG_NAMES'`.  The
+  one in the repo is now `work/tools/disasm.py`, so the trap is gone, but a
+  scratch `dis.py` lays it again.
 * `-watch` only prints when `-trace` is also given.  Use
   `-tracepc FFFE-FFFE` as a dummy so the trace file stays tiny.
 * Only the **last** `-watch` flag is honoured; `-freeze` and `-poke` may be

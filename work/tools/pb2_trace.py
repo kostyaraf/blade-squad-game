@@ -65,6 +65,14 @@ PUSH = ((0x063C, '8E46'), (0x0652, '8E49'))
 # How far is $94, which is not worth following on its own -- the store itself
 # says it, being the old value less the shift.
 SHIFT = ((0x04C6, 'D363'), (0x0508, 'D392'))
+# All eight stores of that same routine -- the hero's four and the loop's four,
+# down a level and along one.  What the sweep at $8134 reads is the table as it
+# stands the moment this block has finished and before any of the things has had
+# a turn to move itself, so that is where a copy of it has to be taken.
+SHIFT_PC = frozenset(('D363', 'D36B', 'D37B', 'D383',
+                      'D392', 'D39A', 'D3AA', 'D3B2'))
+# The four bytes of a place, in the order they are written down.
+PLACE_FIELD = (0x0400, 0x04F2, 0x0508, 0x04B0, 0x04C6)
 SPAWN_PC = 'A2A9'        # where a new shot takes its slot in the object table
 # $E4CD..$E4FC -- the six stores that turn a record of the level's list into a
 # live object, and $D6D4's loop, which wipes a slot that has died or been left
@@ -72,6 +80,11 @@ SPAWN_PC = 'A2A9'        # where a new shot takes its slot in the object table
 # along from the addresses in work/re/pb2_spawns.md.
 BORN = {'E4D0': 'type', 'E4F0': 'x', 'E4F5': 'y', 'E4FF': 'rec'}
 BORN_FIELD = {'type': 0x0400, 'x': 0x0508, 'y': 0x04C6, 'rec': 0x0484}
+# The same, plus the two high bytes that say how many screens away the thing has
+# got.  A birth never writes them -- $D6D4 has just put them at zero -- but a
+# snapshot of the table has to have them, because the sweep at $8134 reads
+# nothing else first.
+SNAP_FIELD = dict(BORN_FIELD, xhi=0x04F2, yhi=0x04B0)
 DIED_PC = 'D6D9'
 SLOTS = 22
 # The scan is not the only thing that fills the table: a handler may put out a
@@ -84,6 +97,12 @@ PLACED = range(0x0E, 0x16)
 # wanted is what was read, and only at that one instruction: a step of the game
 # can fall in either frame of a pair, so guessing from the frames is guessing.
 SEEN = {'D3CA': ('see_x', 0x0508), 'D3D2': ('see_y', 0x04C6)}
+# $8075 in bank 10 -- reached only when the check at $8134 has said that the
+# thing has gone far enough past the edge to be thrown away.  Which place is
+# about to go lives only in X, so it is X that has to be asked; and only in
+# bank 10, because the same address in another bank is somebody else's code.
+CULL_PC = '8075'
+CULL_BANK = '10'
 # His own speed and his own step for the frame.  Only his own code -- banks 8
 # and 9 -- has any business writing these, so when another bank does, he is not
 # being played any more: something in the level has taken hold of him and is
@@ -128,11 +147,14 @@ def objects(stage, area, spot=None, first=None, script=(), upto=None):
             for fr, keys in sorted(script):
                 f.write('%d %s\n' % (first + fr, keys or '-'))
         last = first + (0 if upto is None else upto)
+        # -frames N runs up to and including frame N, so N is the frame the
+        # dump is taken at the end of -- and that is the frame the table is
+        # wanted at, not the one after it.
         subprocess.run(P.emu('-loadstate', state, '-input', inp,
-                        '-frames', str(last + 1), '-ramdump', ram),
+                        '-frames', str(last), '-ramdump', ram),
                        check=True, capture_output=True)
         m = open(ram, 'rb').read()
-        return [{k: m[a + n] for k, a in BORN_FIELD.items()}
+        return [{k: m[a + n] for k, a in SNAP_FIELD.items()}
                 for n in range(SLOTS)]
     finally:
         P.sweep(d)
@@ -174,7 +196,7 @@ def _trace(d, state, script, first, frames):
     mem = bytearray(open(ram, 'rb').read())
 
     last = first + frames
-    sample = []
+    sample = ['-sample', '%s=X' % CULL_PC]
     for pc, (_name, addr) in SEEN.items():
         sample += ['-sample', '%s=%04X' % (pc, addr)]
     subprocess.run(P.emu('-loadstate', state, '-input', inp,
@@ -185,9 +207,14 @@ def _trace(d, state, script, first, frames):
     changes = {}
     seized = set()
     seen = {}
+    culled = {}
     for ln in open(log):
         if ln.startswith('SAMPLE'):
-            fr, pc, _addr, val = ln[7:].strip().split(',')
+            fr, pc, bank, what, val = ln[7:].strip().split(',')
+            if pc == CULL_PC:
+                if bank == CULL_BANK:
+                    culled.setdefault(int(fr), []).append(int(val, 16))
+                continue
             name = SEEN[pc][0]
             seen.setdefault(int(fr), {}).setdefault(name, int(val, 16))
             continue
@@ -223,7 +250,20 @@ def _trace(d, state, script, first, frames):
         born = {}
         died = []
         taken = []
-        for addr, val, pc in changes.get(fr, ()):
+        place = None
+        # $D34D runs once a frame and moves everything back by what the view
+        # moved forward, and the table is wanted as it stood when it had
+        # finished -- which is after the last of its eight stores, not after
+        # the first thing that is not one of them.  It switches banks part way
+        # through, and a bank switch is a JSR, and a JSR writes to the stack:
+        # taking the first store that is not the block's own would stop half
+        # way down the slots and read the rest a frame stale.
+        chg = list(changes.get(fr, ()))
+        last_shift = -1
+        for i, (_a, _v, pc) in enumerate(chg):
+            if pc in SHIFT_PC:
+                last_shift = i
+        for i, (addr, val, pc) in enumerate(chg):
             if pc in BORN:
                 what = BORN[pc]
                 slot = addr - BORN_FIELD[what]
@@ -247,6 +287,9 @@ def _trace(d, state, script, first, frames):
                 solids = [[mem[a + i] for a in SOLID]
                           for i in range(1, mem[SOLID_N] + 1)]
             mem[addr] = val
+            if i == last_shift:
+                place = [[mem[a + n] for a in PLACE_FIELD]
+                         for n in range(SLOTS)]
         row = {'frame': fr - first}
         for name, addr in WATCH.items():
             row[name] = mem[addr]
@@ -276,6 +319,15 @@ def _trace(d, state, script, first, frames):
             row[name] = seen.get(fr, {}).get(name)
         row['born'] = [born[k] for k in sorted(born)]
         row['died'] = [n for n in died if n not in born]
+        # Of those deaths, the ones the sweep at $8134 caused.  The engine has
+        # to work these out for itself, so they must not be told to it; the
+        # rest -- a thing that ended its own life -- still must, until there
+        # are minds to end it.
+        row['culled'] = [n for n in culled.get(fr, ()) if n not in born]
+        # The table as the sweep saw it, once for each frame in which the
+        # sweep ran -- the cartridge sweeps every frame, and a step of the
+        # game can take two of them.  Empty when the level did not run.
+        row['place'] = [] if place is None else [place]
         row['taken'] = [t for t in taken if t[0] not in born]
         row['seized'] = fr in seized
         out.append(row)

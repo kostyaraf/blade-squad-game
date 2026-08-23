@@ -49,12 +49,15 @@ def run_engine(cfg, path):
         line = line.strip()
         if '|' not in line:
             continue
-        cam, _, rest = line.partition('|')
-        if not cam.isdigit():
+        parts = line.split('|')
+        if len(parts) != 4 or not parts[0].isdigit():
             continue
+        cam, rest, gone, agree = parts
         born = [] if rest == '-' else [tuple(int(x) for x in p.split(':'))
                                        for p in rest.split()]
-        out.append((int(cam), sorted(born)))
+        culled = [] if gone == '-' else [int(x) for x in gone.split()]
+        out.append(((int(cam), sorted(born), sorted(culled)),
+                    tuple(int(x) for x in agree.split('/'))))
     if not out:
         sys.stderr.write(r.stdout[-3000:] + r.stderr[-3000:])
     return out
@@ -69,8 +72,16 @@ def script_for(rows, stage, area, spot, script):
     frames = []
     for r in rows[1:]:
         here = r['see_y'] if vertical else r['see_x']
-        frames.append({'screen': here, 'died': r['died'],
-                       'taken': r['taken']})
+        # Only the deaths the engine cannot yet reach on its own are told to
+        # it; the sweep's own it must find, and what it finds is compared.
+        told = [n for n in r['died'] if n not in r['culled']]
+        # Where everything stood when the sweep looked.  The engine has no minds
+        # for the things yet, so anything that moves itself it cannot place --
+        # what is being compared here is the sweep's answer, not the places, and
+        # a wrong place would only ask it a question the cartridge never asked.
+        # How often it had the place right anyway is counted and reported.
+        frames.append({'screen': here, 'died': told, 'taken': r['taken'],
+                       'place': r['place'], 'culled': sorted(r['culled'])})
     return dict(
         stage=stage, area=area,
         cam=start['cam'],
@@ -90,7 +101,8 @@ def want(rows):
     for r in rows[1:]:
         out.append((r['cam'],
                     sorted((b['slot'], b['type'], b['rec'], b['x'], b['y'])
-                           for b in r['born'] if 'rec' in b)))
+                           for b in r['born'] if 'rec' in b),
+                    sorted(r['culled'])))
     return out
 
 
@@ -119,11 +131,15 @@ def _check(script, stage, area, tmp, spot, frames):
     w = want(rows)
     got = run_engine(script_for(rows, stage, area, spot, script),
                      os.path.join(tmp, 's.json'))
+    agree = [0, 0]
     for i, expect in enumerate(w):
-        have = got[i] if i < len(got) else None
+        have = got[i][0] if i < len(got) else None
         if have != expect:
             return None, None, (i + 1, expect, have)
-    return len(w), sum(len(x[1]) for x in w), None
+        agree[0] += got[i][1][0]
+        agree[1] += got[i][1][1]
+    return len(w), (sum(len(x[1]) for x in w),
+                    sum(len(x[2]) for x in w), agree[0], agree[1]), None
 
 
 def main():
@@ -139,7 +155,8 @@ def main():
             targets = [tuple(int(x) for x in p.split(':'))
                        for p in a.split('=')[1].split(',')]
     tmp = pb2_trace.P.scratch('spawnverify')
-    ran = bad = steps = births = 0
+    ran = bad = steps = births = culls = 0
+    same = seen = 0
     for stage, area in targets:
         spot = V.spot_for(stage, area)
         if spot is None or not V.settled(stage, area, spot):
@@ -157,8 +174,12 @@ def main():
             label = '%d:%-2d %-12s' % (stage, area, name)
             if diff is None:
                 steps += n
-                births += b
-                print('%s ok   %d steps %d born' % (label, n, b))
+                births += b[0]
+                culls += b[1]
+                same += b[2]
+                seen += b[3]
+                print('%s ok   %d steps %d born %d swept'
+                      % (label, n, b[0], b[1]))
             else:
                 bad += 1
                 print('%s DIFF at step %d' % (label, diff[0]))
@@ -166,8 +187,12 @@ def main():
                 print('    engine %s' % (diff[2],))
             sys.stdout.flush()
     pb2_trace.P.sweep(tmp)
-    print('%d of %d scripts differ, %d steps, %d births matched'
-          % (bad, ran, steps, births))
+    print('%d of %d scripts differ, %d steps, %d births and %d sweeps '
+          'matched' % (bad, ran, steps, births, culls))
+    if seen:
+        print('the engine had the place right by itself for %d of %d '
+              '(%.1f%%) -- the rest move themselves and have no minds yet'
+              % (same, seen, 100.0 * same / seen))
     return 1 if bad else 0
 
 
