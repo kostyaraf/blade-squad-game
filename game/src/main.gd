@@ -262,6 +262,8 @@ func _run_spawns(path: String) -> void:
 						s[Pb2Objects.F_Y]])
 		view.drive()
 		before = view.shift
+		# The minds read the map through the view, as the hero does.
+		things.cam = view.pos
 		view.decide(int(f["screen"]))
 		# $CF1C, before any of them gets a turn.
 		# The cartridge sweeps once a frame and a step of the game can take
@@ -305,7 +307,13 @@ func _run_spawns(path: String) -> void:
 				var was_told: PackedByteArray = truth[n]
 				var s: PackedByteArray = things.slots[n]
 				var had: int = s[Pb2Objects.F_TYPE]
-				if was_told[Pb2Objects.F_TYPE] == 0:
+				# The hero keeps nought in the field that says what a thing
+				# is -- he is not one of the things the list puts out -- so an
+				# empty place is only empty from the sixth on.  His own row
+				# has to be handed over all the same: the minds look at where
+				# he stands to decide which way to face.
+				if was_told[Pb2Objects.F_TYPE] == 0 \
+						and n >= Pb2Objects.FIRST_LIVE:
 					continue
 				if had != was_told[Pb2Objects.F_TYPE]:
 					# Either something the engine never put out -- a shot, or
@@ -342,6 +350,13 @@ func _run_spawns(path: String) -> void:
 						if s[k] != was_told[k]:
 							wrong.append("%d:%d:%d:%d" % [n, k, s[k],
 									was_told[k]])
+					if wrong.size() > 0:
+						wrong.append("hero=%d.%d thing=%d.%d/%d.%d" % [
+								things.slots[0][Pb2Objects.F_XHI],
+								things.slots[0][Pb2Objects.F_X],
+								s[Pb2Objects.F_XHI], s[Pb2Objects.F_X],
+								was_told[Pb2Objects.F_XHI],
+								was_told[Pb2Objects.F_X]])
 					continue
 				# The rest have no mind of their own yet, so all of it is
 				# told -- every field but the record's number, which is the
