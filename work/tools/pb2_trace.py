@@ -111,6 +111,13 @@ TICK = 0x1C
 WATER = 0x29
 # $0164 -- what has hold of the hero; $B1A8 in bank 11 reads it.
 HELD = 0x0164
+# $FC -- how far down the level the screen itself has been drawn, counted in
+# lines and kept between nought and two hundred and thirty nine ($DA97).  It
+# is not $66:$67: the view is moved in one go and the screen is drawn a line
+# at a time, so in a frame where the view jumps the two disagree.  Down a
+# level a thing asks the ground about the screen ($F52C), and the screen is
+# this, so it goes over with the table.
+DRAW = 0xFC
 SLOTS = 22
 # The scan is not the only thing that fills the table: a handler may put out a
 # shot or a piece of itself, and that takes a place the scan can then not have.
@@ -287,6 +294,7 @@ def _trace(d, state, script, first, frames):
         tick = 0
         water = 0
         held = 0
+        draw = 0
         # $D34D runs once a frame and moves everything back by what the view
         # moved forward, and the table is wanted as it stood when it had
         # finished -- which is after the last of its eight stores, not after
@@ -341,6 +349,7 @@ def _trace(d, state, script, first, frames):
                 tick = mem[TICK]
                 water = mem[WATER]
                 held = mem[HELD]
+                draw = mem[DRAW]
         row = {'frame': fr - first, 'got': got, 'done': done}
         for name, addr in WATCH.items():
             row[name] = mem[addr]
@@ -386,6 +395,7 @@ def _trace(d, state, script, first, frames):
         row['ticks'] = [] if whole is None else [tick]
         row['waters'] = [] if whole is None else [water]
         row['helds'] = [] if whole is None else [held]
+        row['draws'] = [] if whole is None else [draw]
         row['taken'] = [t for t in taken if t[0] not in born]
         row['seized'] = fr in seized
         out.append(row)

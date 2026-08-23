@@ -159,6 +159,14 @@ var rng_carry := false
 var frozen := 0
 ## $66:$67 -- where the view stands; the minds read the map through it.
 var cam := 0
+## $FC -- how far down the level the screen itself has been drawn, in lines,
+## kept between nought and two hundred and thirty nine ($DA97).  It is not the
+## view: the view is moved in one go and the screen is drawn a line at a time,
+## so in a frame where the view jumps the two part company for that frame.
+## Down a level a thing asks the ground about the screen ($F52C), so it is
+## this and not the view that road must read.  Below nought it means the
+## harness has not said, and the view answers for it.
+var draw := -1
 ## $94 -- how far the view moved this frame; a thing that holds an old place
 ## of its own has to move it back by the same, or its circle would ride along
 ## with the screen instead of standing in the world.
@@ -416,12 +424,12 @@ func _walk_38(n: int, s: PackedByteArray) -> void:
 		return
 	if int(side[0]) < 0x18:
 		return
-	if facing_hero(s):                                 # $C98D
+	if looking_away(s):                                # $C98D -- $B14E BCS
 		return
 	s[F_SELF] = 0x20
 
 
-## $B15A -- the rush.  It gathers speed for as long as its own byte lasts and
+## $B15A -- the rush.  It bleeds speed for as long as its own byte lasts and
 ## wears the other picture for the last ten frames of it.
 func _rush_38(n: int, s: PackedByteArray) -> void:
 	step_side(s)                                       # $C8F7
@@ -431,10 +439,13 @@ func _rush_38(n: int, s: PackedByteArray) -> void:
 		step_anim(s)                                   # $C837
 		if s[F_SELF] < 0x0A:
 			s[F_KIND] = 0xB6                           # $BE6E B6
+		# $B175 -- the cartridge looks at the whole of the speed across and
+		# takes the sixteenth off the way it is already going, so the run is
+		# a slowing one: away from him it adds, towards him it takes away.
 		if s[F_VX] & 0x80:
-			sub_speed_side(s, 0x10)                    # $C915
+			add_speed_side(s, 0x10)                    # $B17A -> $C912
 		else:
-			add_speed_side(s, 0x10)                    # $C912
+			sub_speed_side(s, 0x10)                    # $B17D -> $C915
 		return
 	# $B180 -- it has run itself out.
 	if strayed_far(s):                                 # $ACD0
@@ -457,7 +468,7 @@ func _grab_38(s: PackedByteArray) -> void:
 	var hero: PackedByteArray = slots[0]
 	if (hero[F_MARK] & 0x60) != 0:
 		return                                         # $B1A1 -- already held
-	if not facing_hero(s):                             # $C98D
+	if not looking_away(s):                            # $C98D -- $B1B2 BCC
 		return
 	if hero[F_STUN] == 0:
 		return
@@ -848,7 +859,7 @@ func _free_side(s: PackedByteArray) -> void:
 func boomerang_coming(s: PackedByteArray) -> bool:
 	if (s[F_XHI] | s[F_YHI]) != 0:                     # $C9C3 -- $FD8C
 		return false
-	if facing_hero(s):                                 # $C98D
+	if looking_away(s):                                # $C98D -- $AD17 BCS
 		return false
 	for y in range(1, 4):
 		var shot: PackedByteArray = slots[y]
@@ -1253,12 +1264,20 @@ func hero_down(s: PackedByteArray) -> Array:
 	return [d, true, false]
 
 
-## $FD41 ($C98D) -- is it looking his way?  The cartridge weighs only the low
-## bytes of the two places ($CADB), so a hero a screen off still counts as
-## being to one side or the other.
-func facing_hero(s: PackedByteArray) -> bool:
+## $FD41 ($C98D) -- is it looking away from him?  The cartridge weighs only
+## the low bytes of the two places ($CADB), so a hero a screen off still counts
+## as being to one side or the other.
+##
+## The name is the way round the cartridge answers, and it is worth saying
+## why.  Bit six set is looking the way the numbers grow ($F9C5 sets it when
+## the hero is the further along), $CADB hands back the carry set when the
+## hero is the further along, and $FD41 sets its own carry when those two
+## **disagree** -- which is the thing looking the other way.  Every branch off
+## $C98D in the game is written against that, so the answer is kept as it is
+## and the name is made to match.
+func looking_away(s: PackedByteArray) -> bool:
 	var he_is_right: bool = s[F_X] < slots[0][F_X]
-	return he_is_right == ((s[F_BITS] & 0x40) != 0)
+	return he_is_right != ((s[F_BITS] & 0x40) != 0)
 
 
 ## $F97D ($C91B) -- turn round: the speed across changes sign and so does the
@@ -1514,8 +1533,30 @@ func _ground_near(sx: int, sy: int) -> int:
 	if sy >= 0xE0:
 		return 0x00
 	if lvl.vertical:
-		return lvl.class_byte(sx, Pb2Level.map_row(cam, sy))
+		return lvl.class_byte(sx, Pb2Level.map_row(_drawn_view(), sy))
 	return lvl.class_byte(cam + sx, sy - VIEW_TOP)
+
+
+## The view as the screen has it ($FC), in the view's own numbers.  Only the
+## line within the page is kept in $FC, so the page comes from the view, and
+## the two are brought together the short way round: a screen that has fallen
+## behind is a handful of lines behind, never half a level.
+func _drawn_view() -> int:
+	if draw < 0:
+		return cam
+	var lo: int = cam & 0xFF
+	var d: int = draw - lo
+	if d > 120:
+		d -= 240
+	elif d < -120:
+		d += 240
+	var here: int = lo + d
+	var out: int = cam + d
+	if here < 0:
+		out -= 16
+	elif here >= 240:
+		out += 16
+	return out
 
 
 ## $F42C -- past the edge of the screen the cache holds nothing, so the map
@@ -2177,7 +2218,7 @@ func _charge_2c(n: int, s: PackedByteArray, may_grab: bool) -> void:
 		return
 	var side: Array = hero_side(s)                     # $C93C
 	var near: bool = not side[2] and side[0] < 0x40
-	if near and facing_hero(s):                        # $C98D
+	if near and not looking_away(s):                   # $C98D -- $AA4D BCS
 		var r: int = _gap_2c(s, 0x20, 0x10)            # $AACF
 		if r < 0:
 			_give_up_2c(s)
@@ -2266,7 +2307,7 @@ func _grab_2c(s: PackedByteArray) -> bool:
 		return false
 	if (s[F_BITS] ^ slots[0][F_BITS]) & 0x40:          # they look the same way
 		return false
-	if not facing_hero(s):                             # $C98D
+	if looking_away(s):                                # $C98D -- $AB1A BCS
 		return false
 	if _gap_2c(s, 0x04, 0x04) != 0:                    # $AACF
 		return false
@@ -2438,13 +2479,13 @@ func strayed_far(s: PackedByteArray) -> bool:
 	var hi: int = d >> 8
 	var lo: int = d & 0xFF
 	var going_back: bool = (s[F_VX] & 0x80) != 0
-	if hi < 0x80:
-		if hi != 1 and lo < 0x80:
+	if lo < 0x80:
+		if hi != 1:                                    # $ACED CPY #$01
 			return false
-		return going_back
-	if hi != 0xFE and lo >= 0x80:
+		return going_back                              # $ACF5 BMI
+	if hi != 0xFE:                                     # $ACFC CPY #$FE
 		return false
-	return not going_back
+	return not going_back                              # $AD04 BPL
 
 
 ## $FE08 -- and the way back.

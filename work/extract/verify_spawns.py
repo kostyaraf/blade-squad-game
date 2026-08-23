@@ -107,7 +107,7 @@ def script_for(rows, stage, area, spot, script):
                        'turns': r['turns'], 'seeds': r['seeds'],
                        'suits': r['suits'], 'ticks': r['ticks'],
                        'helds': r['helds'],
-                       'waters': r['waters'],
+                       'waters': r['waters'], 'draws': r['draws'],
                        'culled': sorted(r['culled']),
                        'got': r['got'], 'done': r['done']})
     return dict(
@@ -213,8 +213,8 @@ def main():
     ran = bad = steps = births = culls = 0
     same = seen = mine = 0
     for stage, area in targets:
-        spot = V.spot_for(stage, area)
-        if spot is None or not V.settled(stage, area, spot):
+        spot = V.settled_spot(stage, area)
+        if spot is None:
             continue
         # The scan is a walk of the level's list, so what tests it is the view
         # travelling far.  The button scripts are short, but the four that only

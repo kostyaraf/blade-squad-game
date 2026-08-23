@@ -136,6 +136,34 @@ def settled(stage, area, spot):
     return all(r['sub'] == 4 and r['state'] == 0 for r in rows[-20:])
 
 
+_HOLDS = {}
+
+
+def settled_spot(stage, area, tries=16):
+    """The first place in an area where a hero left alone really settles.
+
+    `spot_for` picks the middle of the screen and no more, and in a good half
+    of the areas that middle is under a spike or beside something that wakes
+    and hits him, so the sixty idle frames show his life going down and the
+    area is thrown out although it plays perfectly well two steps to the left.
+    So the spots are walked in turn, nearest the middle first, and the first
+    one that holds is kept.  None of them holding is the real answer that the
+    area is not being played -- a room the game only enters with a scripted
+    walk-on, or one where slot zero is a boss's.
+    """
+    key = (stage, area)
+    if key in _HOLDS:
+        return _HOLDS[key]
+    cam = pb2_trace.trace([(2, '-')], 2, stage=stage, area=area)[0]['cam']
+    found = None
+    for spot in Area(stage, area).spots_on_screen(cam)[:tries]:
+        if settled(stage, area, spot):
+            found = spot
+            break
+    _HOLDS[key] = found
+    return found
+
+
 def logic_frames(rows):
     """Put the console's frames back together into the game's own steps.
 
@@ -182,6 +210,7 @@ def logic_frames(rows):
             merged['ticks'] = out[-1]['ticks'] + r['ticks']
             merged['waters'] = out[-1]['waters'] + r['waters']
             merged['helds'] = out[-1]['helds'] + r['helds']
+            merged['draws'] = out[-1]['draws'] + r['draws']
             merged['seized'] = out[-1]['seized'] or r['seized']
             merged['frames'] = out[-1]['frames'] + 1
             out[-1] = merged

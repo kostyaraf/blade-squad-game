@@ -330,6 +330,10 @@ func _run_spawns(path: String) -> void:
 			# moves it lives in the level's own frame, which the harness does
 			# not run, so it comes with the table.
 			things.water = int(f["waters"][i_tbl])
+			# $FC -- how far down the level the screen has been drawn.  The
+			# drawing is the level's own frame, which the harness does not
+			# run, so it comes with the table.
+			things.draw = int(f["draws"][i_tbl])
 			# His forty pictures of grace were counted down on the cartridge
 			# before the row was written down, so the sweep must not count
 			# them again.
@@ -392,8 +396,8 @@ func _run_spawns(path: String) -> void:
 						if k == Pb2Objects.F_REC or k == Pb2Objects.F_TYPE:
 							continue
 						if s[k] != was_told[k]:
-							wrong.append("%d:%d:%d:%d" % [n, k, s[k],
-									was_told[k]])
+							wrong.append("%d/%02X:%d:%d:%d" % [n, had, k,
+									s[k], was_told[k]])
 					if wrong.size() > 0:
 						wrong.append("hero=%d.%d thing=%d.%d/%d.%d" % [
 								things.slots[0][Pb2Objects.F_XHI],

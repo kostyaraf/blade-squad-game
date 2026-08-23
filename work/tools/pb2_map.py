@@ -76,18 +76,28 @@ class Area:
             return None
         return sx, sy
 
-    def spot_on_screen(self, cam):
-        """Somewhere in view where the hero can be dropped and just stand."""
-        best = None
+    def spots_on_screen(self, cam):
+        """Every place in view where the hero could be dropped and just stand,
+        the middle of the screen first, so that there is room around him.
+
+        One spot is not enough: an area may have a hazard or a waking enemy
+        right where the middle of the screen falls, and there the hero is hurt
+        while he stands, which makes the area look unplayable when it is only
+        the spot that is bad.  The caller walks this list until one holds.
+        """
+        out = []
         for px, py in self.standing_spots(0, self.h * 8):
             pos = self.on_screen(px, py, cam)
             if pos is None:
                 continue
-            # the middle of the screen, so that there is room around him
-            d = abs(pos[0] - 128) + abs(pos[1] - 96)
-            if best is None or d < best[0]:
-                best = (d, pos)
-        return None if best is None else best[1]
+            out.append((abs(pos[0] - 128) + abs(pos[1] - 96), pos))
+        out.sort(key=lambda it: it[0])
+        return [pos for _, pos in out]
+
+    def spot_on_screen(self, cam):
+        """Somewhere in view where the hero can be dropped and just stand."""
+        all_of_them = self.spots_on_screen(cam)
+        return all_of_them[0] if all_of_them else None
 
     def picture(self, y0=0, y1=None):
         y1 = self.h * 8 if y1 is None else y1
