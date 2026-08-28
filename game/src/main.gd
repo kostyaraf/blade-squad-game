@@ -24,6 +24,8 @@ func _ready() -> void:
 	var replay := ""
 	var spawns := ""
 	var weapon := ""
+	var oam := ""
+	var demo := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -37,6 +39,8 @@ func _ready() -> void:
 		elif a.begins_with("--replay="): replay = a.substr(9)
 		elif a.begins_with("--spawns="): spawns = a.substr(9)
 		elif a.begins_with("--weapon="): weapon = a.substr(9)
+		elif a.begins_with("--oam="): oam = a.substr(6)
+		elif a.begins_with("--demo="): demo = a.substr(7)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -49,12 +53,26 @@ func _ready() -> void:
 		_run_weapon(weapon)
 		get_tree().quit()
 		return
+	if oam != "":
+		_run_oam(oam)
+		get_tree().quit()
+		return
 	if shots != "":
 		await _run_shots(shots)
 		get_tree().quit()
 		return
+	if demo != "":
+		await _run_demo(demo, stage, area)
+		get_tree().quit()
+		return
 	pads = [Pad.player_one(), Pad.player_two()]
-	_load(game, stage, area)
+	# The bar is drawn by this node itself, and a node draws under its own
+	# children unless it is told otherwise.
+	bg.z_index = -1
+	if game == "pb2":
+		_start_play(stage, area)
+	else:
+		_load(game, stage, area)
 	_apply()
 
 
@@ -156,17 +174,27 @@ func _apply() -> void:
 	if level_pb2 != null:
 		img = level_pb2.map_image
 		size = Vector2(level_pb2.width_tiles, level_pb2.height_tiles)
-		banks = level_pb2.banks
+		# Eight banks go to the shader, not four: the four the background is
+		# drawn out of and the four the sprites are, because a sprite whose
+		# tile number is even comes out of the background's half of the tile
+		# memory and must be able to reach it.
+		banks = level_pb2.banks + level_pb2.spr_banks
 	else:
 		img = level_sol.map_image
 		size = Vector2(level_sol.width_tiles, level_sol.height_tiles)
-		banks = level_sol.banks
+		# Solbrain draws no sprites here yet, so its own four are padded out.
+		banks = level_sol.banks + [0, 0, 0, 0]
 	m.set_shader_parameter("sheet", Nes.sheet(game))
 	m.set_shader_parameter("map", ImageTexture.create_from_image(img))
 	m.set_shader_parameter("palette", pal_tex)
 	m.set_shader_parameter("map_size", size)
 	m.set_shader_parameter("sheet_size", Nes.sheet(game).get_size())
 	m.set_shader_parameter("banks", PackedInt32Array(banks))
+	m.set_shader_parameter("sprites_on", false)
+	if world != null:
+		# The hero's own bank and the sprite table are settled a picture at a
+		# time, so the last word on both is his, not the level's.
+		_show()
 	m.set_shader_parameter("scroll", Vector2(scroll - origin))
 	m.set_shader_parameter("view_top", float(origin.y))
 	m.set_shader_parameter("view_bottom", float(origin.y + view_h))
@@ -179,13 +207,23 @@ func _process(dt: float) -> void:
 	for _i in range(clock.tick(dt)):
 		_step()
 	bg.material.set_shader_parameter("scroll", Vector2(scroll - origin))
+	if world != null:
+		_show()
+		queue_redraw()
 
 
-## Until the players exist (Э2) this just walks the camera, so that scrolling
-## and the clock can be watched working.
 func _step() -> void:
 	for p in pads:
 		p.poll()
+	if world == null:
+		_walk_camera()
+		return
+	_step_pb2()
+
+
+## Э1 left this here so that scrolling and the clock could be watched working,
+## and Solbrain still has nothing else.
+func _walk_camera() -> void:
 	var d := Vector2i.ZERO
 	if pads[0].held & Pad.RIGHT: d.x += 2
 	if pads[0].held & Pad.LEFT: d.x -= 2
@@ -504,6 +542,15 @@ func _run_weapon(path: String) -> void:
 				for k in range(1, 4):
 					var s: PackedByteArray = things.slots[k]
 					var w: Array = tbl[k]
+					# An empty place is not a throw.  The cartridge leaves the
+					# fields of a place it has taken away as they were and goes
+					# on writing in some of them for its own reasons -- $04DF
+					# of a dead place slides a quarter of a pixel a picture in
+					# several areas -- and none of it is ever read: the birth
+					# of the next throw fills the place in.  So an empty place
+					# is judged empty and no further.
+					if s[Pb2Objects.F_TYPE] == 0 and int(w[Pb2Objects.F_TYPE]) == 0:
+						continue
 					for fl in range(Pb2Objects.FIELDS):
 						if fl == Pb2Objects.F_REC:
 							continue
@@ -548,3 +595,230 @@ func _run_weapon(path: String) -> void:
 			view.decide(((p.y if level_pb2.vertical else p.x) >> 8) & 0xFF)
 		out.append("%d %s" % [p.charge, " ".join(bad) if bad.size() else "-"])
 	print("\n".join(out))
+
+
+## Build the table the console draws from, once a picture, out of the table of
+## things -- and nothing else.  The things themselves are told, because what is
+## on trial here is $8038 and the little pictures it reads, not the minds.
+func _run_oam(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var was := PackedByteArray()
+	for v in cfg["seed"]:
+		was.append(int(v))
+	var out := PackedStringArray()
+	for f in cfg["frames"]:
+		var slots: Array = []
+		for row in f["slots"]:
+			var s := PackedByteArray()
+			for v in row:
+				s.append(int(v))
+			slots.append(s)
+		was = Pb2Sprites.build(slots, int(f["rot"]), was)
+		out.append(was.hex_encode())
+	print("\n".join(out))
+
+
+# --------------------------------------------------------- Э3.9: playing it
+
+## The hero, the view and the table of things, all of them the engine's own.
+var world: Pb2Objects = null
+var hero: Pb2Player = null
+var view: Pb2Camera = null
+## $28 -- where in the console's sprite table this picture starts writing.
+var rot := 0
+## The console's own sprite table, kept from one picture to the next: what the
+## drawing does not touch keeps what it said last time.
+var oam := PackedByteArray()
+var oam_tex: ImageTexture
+## $94 of the picture before: the scan reads last picture's slide, not this
+## one's ($CF0E runs before $CF11).
+var slid := 0
+var starts: Dictionary = {}
+
+
+## Open an area and put a hero in it.
+func _start_play(st: int, ar: int) -> void:
+	_load("pb2", st, ar)
+	Pb2Sprites.load_data()
+	if starts.is_empty():
+		var text := FileAccess.get_file_as_string(Nes.DATA + "/pb2/starts.json")
+		starts = JSON.parse_string(text) if text != "" else {}
+	view = Pb2Camera.new(level_pb2)
+	world = Pb2Objects.new(level_pb2)
+	hero = Pb2Player.new(level_pb2)
+	hero.world = world
+	var key := "%d:%d" % [st, ar]
+	var spot: Dictionary = starts.get(key, {})
+	if spot.has("cam"):
+		view.place(int(spot["cam"]) >> 8, int(spot["cam"]) & 0xFF, 0, 0)
+	hero.place(int(spot.get("x", 128)), int(spot.get("y", 128)), view.pos)
+	# $04C6 of his own place is the health bar; the cartridge gives him this
+	# much at the start of a life ($E1B4).
+	world.slots[0][Pb2Objects.F_LIFE] = 0x10
+	world.slots[0][Pb2Objects.F_TYPE] = 0x01
+	# The area has just opened, so everything already on the screen comes out
+	# at once rather than waiting for the view to move ($E3F3 reads $2C).
+	world.fill = 1
+	oam = PackedByteArray()
+	oam.resize(Pb2Sprites.OAM)
+	oam.fill(Pb2Sprites.HIDDEN)
+	var img := Image.create(Pb2Sprites.SPRITES, 1, false, Image.FORMAT_RGBA8)
+	oam_tex = ImageTexture.create_from_image(img)
+	bg.material.set_shader_parameter("oam", oam_tex)
+	_mirror_hero()
+
+
+## One step of the game, in the cartridge's own order ($CEF0).
+func _step_pb2() -> void:
+	var pad: Pad = pads[0]
+	# Э3.1 has still to bring over the walk from one area to the next, so
+	# until it does the areas are picked by hand: SELECT for the next one,
+	# START to begin this one again.
+	if pad.pressed & Pad.SELECT:
+		var keys: Array = starts.keys()
+		keys.sort()
+		var here := "%d:%d" % [level_pb2.stage, level_pb2.area]
+		var i: int = keys.find(here)
+		var next: Array = str(keys[(i + 1) % keys.size()]).split(":")
+		_start_play(int(next[0]), int(next[1]))
+		_apply()
+		return
+	if pad.pressed & Pad.START:
+		_start_play(level_pb2.stage, level_pb2.area)
+		_apply()
+		return
+	world.frame = (world.frame + 1) & 0xFF          # $0110
+	# $CF00 -- how long the button has been down.
+	hero.step_charge(world.frame)
+	# $CF08 -- what touches what.
+	world.contact()
+	# $CF0E -- what the view has uncovered since the last step.
+	world.scan(view.pos, slid)
+	# $CF11 -- the view follows him.
+	view.drive()
+	slid = view.shift
+	world.cam = view.pos
+	# $CF14 -- the view slid, so everything standing on it slid back.
+	world.shift(view.shift)
+	# $CF1C -- every thing gets its turn.
+	world.turns()
+	# $8E26 -- what is already in the air moves first, and only then does
+	# $8E29 let go of the next one; $8E2C moves him after both.
+	world.shots_turn()
+	hero.shift = view.shift
+	hero.held = world.held
+	hero.suit = world.suit
+	hero.step(pad.held, pad.pressed, view.pos,
+			hero_shots_out(), world.extra)
+	view.decide(((hero.y if level_pb2.vertical else hero.x) >> 8) & 0xFF)
+	_mirror_hero()
+	if world.slots[0][Pb2Objects.F_LIFE] == 0:
+		_start_play(level_pb2.stage, level_pb2.area)
+		return
+	# $8038 -- and then the picture of it all.
+	oam = Pb2Sprites.build(world.slots, rot, oam)
+	rot = (rot + Pb2Sprites.ROTATE) & 0xFF
+
+
+## How many of his throws are still in the air ($A1C2 counts them).
+func hero_shots_out() -> int:
+	var n := 0
+	for k in range(1, Pb2Objects.FIRST_LIVE):
+		if world.slots[k][Pb2Objects.F_TYPE] != 0:
+			n += 1
+	return n
+
+
+## His own place in the table is his picture and where he stands; the rest of
+## that row -- his health, his forty pictures of grace, which way a blow threw
+## him -- belongs to the sweep and is left alone.
+func _mirror_hero() -> void:
+	var s: PackedByteArray = world.slots[0]
+	s[Pb2Objects.F_KIND] = hero.pose
+	s[Pb2Objects.F_BITS] = (s[Pb2Objects.F_BITS] & ~0x40) \
+			| (0x40 if hero.face_left else 0)
+	s[Pb2Objects.F_X] = (hero.x >> 8) & 0xFF
+	s[Pb2Objects.F_XHI] = (hero.x >> 16) & 0xFF
+	s[Pb2Objects.F_Y] = (hero.y >> 8) & 0xFF
+	s[Pb2Objects.F_YHI] = (hero.y >> 16) & 0xFF
+	# $0416 bits three and four -- crouching and sliding make his box smaller.
+	var m: int = s[Pb2Objects.F_MARK] & ~0x18
+	if hero.sub == Pb2Player.SUB_CROUCH:
+		m |= 0x08
+	elif hero.sub == Pb2Player.SUB_SLIDE:
+		m |= 0x10
+	s[Pb2Objects.F_MARK] = m
+
+
+## Hand the picture to the shader: where the view stands, which tile banks the
+## sprites come out of, and the console's sprite table.
+func _show() -> void:
+	var m: ShaderMaterial = bg.material
+	var w: int = world._world(view.pos)
+	scroll = Vector2i(0, w) if level_pb2.vertical else Vector2i(w, 0)
+	m.set_shader_parameter("scroll", Vector2(scroll - origin))
+	m.set_shader_parameter("banks", PackedInt32Array(level_pb2.banks
+			+ Pb2Sprites.banks_for(level_pb2, hero.pose, world.suit)))
+	m.set_shader_parameter("sprites_on", true)
+	var img := Image.create(Pb2Sprites.SPRITES, 1, false, Image.FORMAT_RGBA8)
+	for i in range(Pb2Sprites.SPRITES):
+		img.set_pixel(i, 0, Color8(oam[i * 4], oam[i * 4 + 1],
+				oam[i * 4 + 2], oam[i * 4 + 3]))
+	oam_tex.update(img)
+
+
+## A picture of the game playing itself, so that what it looks like can be
+## argued with from a script.  `spec` is buttons:frames:...,path -- the buttons
+## are the names Pad knows, or a dash.
+func _run_demo(spec: String, st: int, ar: int) -> void:
+	var parts := spec.split(",")
+	pads = [Pad.player_one(), Pad.player_two()]
+	_start_play(st, ar)
+	var bits := {"A": Pad.A, "B": Pad.B, "UP": Pad.UP, "DOWN": Pad.DOWN,
+			"LEFT": Pad.LEFT, "RIGHT": Pad.RIGHT, "START": Pad.START}
+	for i in range(parts.size() - 1):
+		var f := parts[i].split(":")
+		var down := 0
+		for name in f[0].split("+"):
+			if bits.has(name):
+				down |= int(bits[name])
+		for _n in range(int(f[1])):
+			pads[0].pressed = down & ~pads[0].held
+			pads[0].held = down
+			_step_pb2()
+	for n in range(Pb2Objects.SLOTS):
+		var s: PackedByteArray = world.slots[n]
+		if s[Pb2Objects.F_KIND] != 0 or s[Pb2Objects.F_TYPE] != 0:
+			print("slot %d type %d kind %d bits %02X x %d.%d y %d.%d" % [n,
+					s[Pb2Objects.F_TYPE], s[Pb2Objects.F_KIND],
+					s[Pb2Objects.F_BITS], s[Pb2Objects.F_XHI],
+					s[Pb2Objects.F_X], s[Pb2Objects.F_YHI], s[Pb2Objects.F_Y]])
+	print("hero x %d y %d pose %d state %02X sub %d charge %d  view %d" % [
+			hero.x >> 8, hero.y >> 8, hero.pose, hero.state, hero.sub,
+			hero.charge, view.pos])
+	_apply()
+	bg.z_index = -1
+	queue_redraw()
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(parts[-1])
+
+
+## The smallest status bar that tells the player what the engine knows: how
+## much life he has left ($049A of his own place, sixteen at the full) and how
+## far the blade has charged ($54, up to the ceiling the blade's power sets).
+##
+## The cartridge draws its own bar out of the background, in the sixty-four
+## lines below the level, and that belongs to Э3.7.  This is a stand-in.
+func _draw() -> void:
+	if world == null:
+		return
+	var life: int = world.slots[0][Pb2Objects.F_LIFE]
+	var cap: int = int(world.hold_cap[world.power])
+	_bar(Vector2(16, 192), 16, life, Color8(0xD8, 0x28, 0x00))
+	_bar(Vector2(16, 208), cap, hero.charge, Color8(0x3C, 0xBC, 0xFC))
+
+
+func _bar(at: Vector2, cells: int, on: int, tint: Color) -> void:
+	for i in range(cells):
+		var box := Rect2(at + Vector2(i * 7, 0), Vector2(6, 8))
+		draw_rect(box, tint if i < on else Color8(0x30, 0x30, 0x30))

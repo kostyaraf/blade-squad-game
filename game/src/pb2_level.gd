@@ -19,6 +19,10 @@ var map_image: Image                # R = tile number, G = palette
 var palette: PackedByteArray
 var banks: Array                    # the four 1 KB CHR banks of the background
 var bank_phases: Array              # the sets the animated half cycles through
+## The other four, $1000-$1FFF, out of which the sprites are drawn.  The first
+## of them is the hero's own and changes with his picture, and the second with
+## whether he has a suit on, so both are only a starting point here.
+var spr_banks: Array
 var terrain: PackedByteArray        # what each tile number does underfoot
 var terrain_class: PackedByteArray  # the two bits the physics actually reads
 var class_bytes := PackedByteArray([0x00, 0x01, 0x80, 0x02])
@@ -50,6 +54,7 @@ func _init(stage_index: int, area_index: int) -> void:
 	vertical = int(a["vertical"]) != 0
 	palette = PackedByteArray(a["palette"])
 	banks = (a["chr"] as Array).slice(0, 4)
+	spr_banks = (a["chr"] as Array).slice(4, 8)
 	bank_phases = a["chr_bg_phases"]
 	terrain = PackedByteArray(a["terrain"])
 	terrain_class = PackedByteArray(a["terrain_class"])
