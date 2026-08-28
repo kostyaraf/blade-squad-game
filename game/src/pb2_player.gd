@@ -663,6 +663,13 @@ func try_throw() -> void:
 		# fills it in again before $A1C2 is reached, so what the table of
 		# things last saw is always nought: the live one is his.
 		world.slots[0][Pb2Objects.F_HOLD] = scale
+		# And his place is his own too.  $A4FD reads $0508 and $04C6 as they
+		# stand at that instant, and out of the crouch ($8F8C) he has already
+		# been moved -- $A036 down and $A06D along -- before $8FA2 asks for
+		# the throw.  A table of things written down at the top of the frame
+		# is a picture of where he was, not of where he is.
+		world.slots[0][Pb2Objects.F_X] = (x >> 8) & 0xFF
+		world.slots[0][Pb2Objects.F_Y] = (y >> 8) & 0xFF
 		world.fire(k, aim[0], weapon, world.charge_tier(charge))
 	charge = 0                              # $A25A
 

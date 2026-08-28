@@ -55,6 +55,13 @@ SCRIPTS = [
     ('throw-jump-side',
                       [(2, '-'), (20, 'LEFT,A'), (26, 'LEFT,DOWN,B'),
                        (34, 'LEFT'), (60, '-')]),
+    # Out of the crouch he is moved before he is asked to throw ($8F8C:
+    # $A036 down, $A06D along, and only then $8FA2), so a crouch taken while
+    # he still has speed left in him is the one script that tells a throw
+    # thrown from where he was from a throw thrown from where he is.
+    ('throw-crouch-moving',
+                      [(2, '-'), (10, 'LEFT'), (30, 'LEFT,DOWN'),
+                       (31, 'LEFT,DOWN,B'), (34, 'LEFT,DOWN'), (60, '-')]),
     ('throw-fast',    [(2, '-'), (10, 'B'), (12, '-'), (14, 'B'), (16, '-'),
                        (18, 'B'), (20, '-'), (40, 'B'), (42, '-')]),
     ('throw-turn',    [(2, '-'), (10, 'LEFT'), (20, 'RIGHT,B'), (24, 'RIGHT'),
