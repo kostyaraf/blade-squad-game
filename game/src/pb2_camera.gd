@@ -19,6 +19,11 @@ var limit_page := 0          ## $59
 var limit_low := 0           ## $5A
 var auto := 0                ## $2E -- the area carries the view along itself
 var wait := 0                ## $5E -- and holds it still this long first
+## $21 -- the hold the view takes on the level while it is being played.
+## $D934 writes $FF into it every frame of ordinary play, and the water of a
+## kind eight area waits for it to be nought before it will rise ($D193), so
+## in ordinary play that water never rises at all.
+var grip := 0
 var clock := 0               ## $1C -- one up every step; the count it goes by
 
 # $D404 and $D406: the band on the screen he is kept in.  Sideways first,
@@ -59,6 +64,10 @@ func place(page: int, low: int, still_to_go: int, count: int) -> void:
 func drive() -> void:
 	shift = 0
 	clock = (clock + 1) & 0xFF
+	# $D932 -- and the hold goes on before anything else is decided.  The
+	# cartridge lets it go while a scripted pan is running ($27 not three) or
+	# while the level is between areas ($79); neither is the engine's yet.
+	grip = 0xFF
 	if auto == 0:
 		_slide()
 		return

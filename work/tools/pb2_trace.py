@@ -47,6 +47,17 @@ WATCH = {
     'held_b': 0x54, 'power': 0x55, 'second': 0xA2, 'wear': 0x9A,
     'hold': 0x0668,          # see HOLD below; here only to widen the window
     'px': 0x063C, 'py': 0x0652,
+    # $29 -- the line the water or the lava has climbed to, and the four bytes
+    # the little routines under $CEE0 move it by: $20 which way it is going,
+    # $21 the hold the view takes on it, $5E how long the area holds still
+    # before anything moves at all, $2E whether the area carries the view along
+    # by itself, and $FC how far down the level the screen has been drawn.
+    'w_line': 0x29, 'w_flow': 0x20, 'w_grip': 0x21, 'w_still': 0x5E,
+    'w_auto': 0x2E, 'w_draw': 0xFC, 'w_kind': 0x87,
+    # $1A -- which step the level itself is on ($CDCE picks the frame's work
+    # out of a table by it).  Five is the level being played; the water only
+    # moves then, because $CED2 is the fifth entry of that table.
+    'w_live': 0x1A,
 }
 SHOT_SLOTS = (0x0401, 0x0402, 0x0403)
 # $AC5C: the objects that are solid to him keep a box each -- left, right,

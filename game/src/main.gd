@@ -24,6 +24,7 @@ func _ready() -> void:
 	var replay := ""
 	var spawns := ""
 	var weapon := ""
+	var water := ""
 	var oam := ""
 	var demo := ""
 	var stage := 0
@@ -39,6 +40,7 @@ func _ready() -> void:
 		elif a.begins_with("--replay="): replay = a.substr(9)
 		elif a.begins_with("--spawns="): spawns = a.substr(9)
 		elif a.begins_with("--weapon="): weapon = a.substr(9)
+		elif a.begins_with("--water="): water = a.substr(8)
 		elif a.begins_with("--oam="): oam = a.substr(6)
 		elif a.begins_with("--demo="): demo = a.substr(7)
 	if replay != "":
@@ -51,6 +53,10 @@ func _ready() -> void:
 		return
 	if weapon != "":
 		_run_weapon(weapon)
+		get_tree().quit()
+		return
+	if water != "":
+		_run_water(water)
 		get_tree().quit()
 		return
 	if oam != "":
@@ -611,6 +617,35 @@ func _run_weapon(path: String) -> void:
 					int(f["shots"]), int(f["lim"]))
 			view.decide(((p.y if level_pb2.vertical else p.x) >> 8) & 0xFF)
 		out.append("%d %s" % [p.charge, " ".join(bad) if bad.size() else "-"])
+	print("\n".join(out))
+
+
+## Э3.2i: the water and the lava that rise.
+##
+## Nothing here is told but the two the level itself decides -- the picture
+## count $1C and whether the level is being played -- and the engine must
+## answer with the line the water has climbed to, the screen's drawing point
+## and which way the two are going.
+func _run_water(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_load("pb2", int(cfg["stage"]), int(cfg["area"]))
+	var things := Pb2Objects.new(level_pb2)
+	var view := Pb2Camera.new(level_pb2)
+	things.water = int(cfg["water"])
+	things.flow = int(cfg["flow"])
+	things.draw = int(cfg["draw"])
+	view.wait = int(cfg["still"])
+	view.grip = int(cfg["grip"])
+	var out := PackedStringArray()
+	for f in cfg["frames"]:
+		things.frame = int(f["clock"])
+		things.playing = int(f["mode"])
+		things.live = int(f["live"])
+		things.water_turn(view)
+		# $D924 -- and then the view takes its hold and counts the same wait
+		# down a second time.
+		view.drive()
+		out.append("%d %d %d" % [things.water, things.draw, things.flow])
 	print("\n".join(out))
 
 

@@ -144,6 +144,10 @@ var clock := 0
 var frame := 0
 ## $27 -- three while a level is being played.
 var playing := 3
+## $1A -- which step the level itself is on.  $CDCE picks the frame's work out
+## of a table by it, and five is the step that plays the level: the water that
+## rises is the fifth entry's own work and moves in no other step.
+var live := 5
 ## $5F -- which step a big thing is on; its box changes with it.
 var boss_step := 0
 ## $4A -- the switches of the level; $B5B7 reads bit three of it.
@@ -167,6 +171,9 @@ var suit := 0
 ## little routines under $CEE0 move it after that, and they run at the head of
 ## the level's frame, before anything else.
 var water := 0
+## $20 -- which way it is going: nought down, anything else up.  Each of the
+## four routines reads it its own way round.
+var flow := 0
 ## What the last stirring of the seed left in the carry.
 var rng_carry := false
 ## $2A -- while it is set the level stands still.
@@ -1541,6 +1548,97 @@ func _next_step(s: PackedByteArray, which: int) -> int:
 	return s[F_KIND]
 
 
+## $CED2 -- the water and the lava that rise, at the head of the level's frame
+## and before anything else in it.
+##
+## Four little routines, one for each sort of area that has such water, and all
+## four behind the same two gates: the level must be being played ($27 is
+## three) and the area's own wait must have run out ($5E, the same count the
+## view holds still for).  The view is handed over because that count is its
+## own and it counts it down again itself a moment later ($D93A), so keeping a
+## second copy here would count it twice.
+func water_turn(view) -> void:
+	if live != 5 or playing != 3:                      # $CDCE, $CED2
+		return
+	if view.wait != 0:                                 # $CED8
+		view.wait -= 1
+		if view.wait != 0:
+			return
+	_water_up_down(view)                               # $D13B
+	_water_swing()                                     # $D1CD
+	_water_lava()                                      # $D1AD
+	_water_climb(view)                                 # $D18D
+
+
+## $D13B -- kind four: the piece of the level that is turned about.  The line
+## and the screen's own drawing point move against each other a step every
+## fourth picture, and each turns the water round at its own end: the drawing
+## point counts backwards from $EF to $E1 going up and forwards from nought to
+## $38 coming down.
+func _water_up_down(_view) -> void:
+	if lvl.kind != 0x04 or (frame & 0x03) != 0:
+		return
+	# The drawing point is the screen's own and the harness may not have said
+	# what it is; without it the line cannot be moved either, for the two turn
+	# each other round.
+	if draw < 0:
+		return
+	if flow != 0:
+		water = (water + 1) & 0xFF
+		draw = (draw - 1) & 0xFF
+		if draw == 0xFF:                               # $D151
+			draw = 0xEF
+		elif draw == 0xE1:                             # $D157
+			flow = 0
+	else:
+		water = (water - 1) & 0xFF
+		draw = (draw + 1) & 0xFF
+		if draw == 0xF0:                               # $D177
+			draw = 0x00
+		elif draw == 0x38:                             # $D17D
+			flow = 1
+
+
+## $D18D -- kind eight: the water climbs to $44 and stops there.  It waits for
+## the view to let go of the level ($21), which in ordinary play it never
+## does, so in ordinary play this water stands still.
+func _water_climb(view) -> void:
+	if lvl.kind != 0x08 or view.grip != 0 or water == 0x44:
+		return
+	flow = 1
+	water = (water + 1) & 0xFF
+
+
+## $D1AD -- kind ten: the lava sinks a line every sixty-fourth picture until it
+## reaches $40, and then stops for good.
+func _water_lava() -> void:
+	if lvl.kind != 0x0A or water == 0x40 or (frame & 0x3F) != 0:
+		return
+	water = (water - 1) & 0xFF
+
+
+## $D1CD -- kinds six and nine: the water swings between $3F and $8F for ever,
+## kind six every fourth picture and kind nine every eighth.
+func _water_swing() -> void:
+	var mask: int
+	if lvl.kind == 0x06:
+		mask = 0x03
+	elif lvl.kind == 0x09:
+		mask = 0x07
+	else:
+		return
+	if (frame & mask) != 0:
+		return
+	if flow != 0:
+		water = (water - 1) & 0xFF
+		if water == 0x3F:                              # $D201
+			flow = 0
+	else:
+		water = (water + 1) & 0xFF
+		if water == 0x8F:                              # $D232
+			flow = 1
+
+
 # --- What a thing sees under it ----------------------------------------
 
 
@@ -1587,13 +1685,25 @@ func ground(s: PackedByteArray, side_off: int, down_off: int,
 			var far: int = _ground_far(xhi, xlo, yhi, ylo)
 			return 0x80 if far == 0x03 else far
 		return _ground_near(xlo, ylo) if ylo < 0x90 else 0x80
-	if lvl.kind == 4 or lvl.kind == 10:
-		# $F40D and $F3E3 both bend the question around $29, which is not a
-		# constant: it is the line the lava or the water has risen to, and the
-		# engine does not keep it yet.  One area apiece uses these, and until
-		# $29 is kept they are answered as any other area would be, which is
-		# right everywhere the water is not.
-		pass
+	if lvl.kind == 10:
+		# $F3E3 -- the strip between the line the water has climbed to and the
+		# hundred and fifty second answers as one row, $9C, whatever row was
+		# really asked: the rising water carries its own floor with it.
+		if off:
+			return _ground_far(xhi, xlo, yhi, ylo)
+		if ylo < 0x98 and ylo >= water:
+			return _ground_near(xlo, 0x9C)
+	elif lvl.kind == 4:
+		# $F40D -- the area with the turned-about piece.  Below the line the
+		# water has climbed to and above the hundred and twenty eighth row
+		# there is nothing at all; everything above the line is asked with the
+		# row moved down by $80 - $29.
+		if off:
+			return _ground_far(xhi, xlo, yhi, ylo)
+		if ylo < 0x80:
+			if ylo >= water:
+				return 0x00
+			return _ground_near(xlo, (ylo - water + 0x80) & 0xFF)
 	# $F3FC
 	if off or ylo >= 0xB0:
 		return _ground_far(xhi, xlo, yhi, ylo)
