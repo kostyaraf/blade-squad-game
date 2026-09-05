@@ -971,6 +971,12 @@ func _ceiling_class(pose_index: int, row: int) -> int:
 	if held & 0x80:                         # $ADAC
 		return 0x81
 	var desc: Array = _desc(pose_index)
+	# $ADCF: over the top of the world there is nothing to read, and the
+	# cartridge does not try -- it answers $82, a ceiling, and stops him there.
+	# The check is on the whole sixteen-bit line, before the map is asked at
+	# all, so it holds for an area of any height.
+	if (y >> 8) + row < 0:
+		return 0x82
 	if _class_byte((x >> 8) + desc[1], (y >> 8) + row) & 0x80 \
 			or _class_byte((x >> 8) + desc[2], (y >> 8) + row) & 0x80:
 		return 0x01

@@ -133,6 +133,17 @@ def cfg_for(rows):
                            suits=r['suits'], waters=r['waters'],
                            helds=r['helds'], draws=r['draws'],
                            cams=r['cams'],
+                           # His own fall speed as the sweep reads it, not as
+                           # the table shows it: a throw aimed down rides him
+                           # down, and between the writing down of the table
+                           # and the sweep his speed is changed once ($B294)
+                           # and after the sweep once more ($91EF).
+                           fall=[r['fall_hi'], r['fall_lo']],
+                           # Where he stands as the sweep reads him: a
+                           # boomerang steers by his place ($A764), and he has
+                           # already been moved this frame by the time the
+                           # sweep runs.
+                           aim=[r['aim_y'], r['aim_x']],
                            power=r['power'], second=r['second']))
     cfg['frames'] = frames
     return cfg

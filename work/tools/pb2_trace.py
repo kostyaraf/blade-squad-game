@@ -132,7 +132,23 @@ PLACED = range(0x0E, 0x16)
 # where the view should go.  A watch would only say what was written; what is
 # wanted is what was read, and only at that one instruction: a step of the game
 # can fall in either frame of a pair, so guessing from the frames is guessing.
-SEEN = {'D3CA': ('see_x', 0x0508), 'D3D2': ('see_y', 0x04C6)}
+# $A563 -- the sweep that moves what he has thrown.  A throw aimed down rides
+# him down ($A671 reads his own fall speed), and his fall speed at that moment
+# is not the one the table shows: $D34D writes the table down before the step
+# of the game begins, and by the time the sweep runs his speed has been changed
+# twice over -- once at $B294 and once more at $91EF, after the sweep.  So it
+# is read where it is read from, at the sweep's own first two instructions.
+#
+# $A568 and $A56D -- and where he himself stands when the sweep looks at him.
+# A boomerang steers by his place ($A764), and by the time the sweep runs he
+# has already been moved this frame, so the table written down at $D34D is one
+# step behind.  Read at the sweep's own head, before it has touched a thing.
+#
+# Each is named with the bank it belongs to: the same address in another bank
+# is somebody else's code and would answer for a frame that never asked.
+SEEN = {'D3CA': ('see_x', 0x0508, '14'), 'D3D2': ('see_y', 0x04C6, '14'),
+        'A563': ('fall_hi', 0x0534, '9'), 'A565': ('fall_lo', 0x054A, '9'),
+        'A568': ('aim_y', 0x04C6, '9'), 'A56D': ('aim_x', 0x0508, '9')}
 # $8075 in bank 10 -- reached only when the check at $8134 has said that the
 # thing has gone far enough past the edge to be thrown away.  Which place is
 # about to go lives only in X, so it is X that has to be asked; and only in
@@ -240,7 +256,7 @@ def _trace(d, state, script, first, frames):
 
     last = first + frames
     sample = ['-sample', '%s=X' % CULL_PC]
-    for pc, (_name, addr) in SEEN.items():
+    for pc, (_name, addr, _bank) in SEEN.items():
         sample += ['-sample', '%s=%04X' % (pc, addr)]
     subprocess.run(P.emu('-loadstate', state, '-input', inp,
                     '-frames', str(last + 1),
@@ -258,7 +274,9 @@ def _trace(d, state, script, first, frames):
                 if bank == CULL_BANK:
                     culled.setdefault(int(fr), []).append(int(val, 16))
                 continue
-            name = SEEN[pc][0]
+            name, _addr, want = SEEN[pc]
+            if bank != want:
+                continue
             seen.setdefault(int(fr), {}).setdefault(name, int(val, 16))
             continue
         if not ln.startswith('WATCH'):
@@ -382,7 +400,7 @@ def _trace(d, state, script, first, frames):
         row['shift'] = shift
         # A slot is always wiped before it is filled, so a birth cancels the
         # death the same frame reports in the same slot.
-        for name, _a in SEEN.values():
+        for name, _a, _b in SEEN.values():
             row[name] = seen.get(fr, {}).get(name)
         row['born'] = [born[k] for k in sorted(born)]
         row['died'] = [n for n in died if n not in born]

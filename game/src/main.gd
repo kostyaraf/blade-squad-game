@@ -584,6 +584,23 @@ func _run_weapon(path: String) -> void:
 			p.held = int(f["hold"])
 			p.push_x = int(f["push"][0])
 			p.push_y = int(f["push"][1])
+			# $A671 -- a throw aimed down rides him down, and the fall speed
+			# it rides on is neither the one the table was written down with
+			# nor the one it is left holding: $B294 changes it after the table
+			# is written and $91EF changes it again after the sweep.  So it is
+			# handed over as the sweep itself read it.
+			if f.has("fall") and f["fall"][0] != null:
+				var h0: PackedByteArray = things.slots[0]
+				h0[Pb2Objects.F_VY] = int(f["fall"][0])
+				h0[Pb2Objects.F_VYFR] = int(f["fall"][1])
+			# $A764 -- and where he stands as the sweep reads him.  A
+			# boomerang steers by his place, and $8E23 has already moved
+			# him this frame: the table written down at $D34D still holds
+			# the place he had a step ago.
+			if f.has("aim") and f["aim"][0] != null:
+				var h1: PackedByteArray = things.slots[0]
+				h1[Pb2Objects.F_Y] = int(f["aim"][0])
+				h1[Pb2Objects.F_X] = int(f["aim"][1])
 			# $8E26 -- what is already in the air moves first, and only then
 			# does $8E29 let go of the next one.  He is still where the table
 			# left him: $A945 does not move him until $8E2C, after both.
@@ -741,13 +758,26 @@ func _mirror_hero() -> void:
 	s[Pb2Objects.F_XHI] = (hero.x >> 16) & 0xFF
 	s[Pb2Objects.F_Y] = (hero.y >> 8) & 0xFF
 	s[Pb2Objects.F_YHI] = (hero.y >> 16) & 0xFF
-	# $0416 bits three and four -- crouching and sliding make his box smaller.
-	var m: int = s[Pb2Objects.F_MARK] & ~0x18
-	if hero.sub == Pb2Player.SUB_CROUCH:
-		m |= 0x08
-	elif hero.sub == Pb2Player.SUB_SLIDE:
-		m |= 0x10
-	s[Pb2Objects.F_MARK] = m
+	# $0534:$054A -- how fast he is falling.  A blade thrown straight down
+	# rides down with him ($A671 reads it), so it has to be in the table.
+	#
+	# It is a picture behind what the cartridge reads there, and cannot yet be
+	# anything else: the cartridge moves him ($8E20), then sweeps what he has
+	# thrown ($8E26), then changes his fall speed again ($8E29 -> $91EF), and
+	# here his whole picture is one call.  Splitting him in two belongs with
+	# the rest of the step's order and is left for later.
+	s[Pb2Objects.F_VY] = (hero.vy >> 8) & 0xFF
+	s[Pb2Objects.F_VYFR] = hero.vy & 0xFF
+	# $0416 outright.  `Pb2Player.state` is that byte and nothing else: every
+	# place the cartridge writes it -- $9E26 with the state ($8EBE $00/$04,
+	# $8F89 $08/$05, $8FF5 $10/$07, $A000 $01/$08, $94A6 $04/$10 and the rest),
+	# $8EC1 while he swings, $A21A when a throw begins, $99C1 when it ends --
+	# has a line of its own in the hero's module.  The sweep reads it for his
+	# box ($B2C1, bits three and four), for whether something has hold of him
+	# (bits five and six), for whether he is off the ground (bit nought, which
+	# a blade thrown down rides on) and for his pose ($BA44 counts the noughts
+	# under it), so it is handed over whole rather than rebuilt bit by bit.
+	s[Pb2Objects.F_MARK] = hero.state
 
 
 ## Hand the picture to the shader: where the view stands, which tile banks the

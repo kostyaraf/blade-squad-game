@@ -194,7 +194,7 @@ def logic_frames(rows):
             merged['shift'] = out[-1]['shift']
             # The step of the game ran in one frame of the group, and only that
             # frame saw the view decided.  Whichever frame it was, keep it.
-            for k in ('see_x', 'see_y'):
+            for k in ('see_x', 'see_y', 'fall_hi', 'fall_lo', 'aim_y', 'aim_x'):
                 merged[k] = (out[-1][k] if out[-1][k] is not None else r[k])
             merged['shift_after'] = out[-1]['shift_after'] + r['shift']
             merged['born'] = out[-1]['born'] + r['born']
@@ -336,14 +336,16 @@ def main():
     for stage, area in targets:
         scripts = list(SCRIPTS) if targets == [(0, 0)] else []
         scripts += random_scripts(n_random, seed + 31 * (stage * 16 + area))
-        spot = None if targets == [(0, 0)] else spot_for(stage, area)
-        if targets != [(0, 0)]:
-            if spot is None:
-                print('%d:%-2d no place to stand' % (stage, area))
-                continue
-            if not settled(stage, area, spot):
-                print('%d:%-2d not ordinary play' % (stage, area))
-                continue
+        # The middle of the screen is not good enough on its own: in half the
+        # areas it is under a spike or beside something that wakes and hits
+        # him, and the area would be thrown out although it plays perfectly
+        # well two steps to the left.  `settled_spot` walks the spots in turn
+        # and keeps the first that holds -- the same one the other acceptances
+        # use, so they all judge the same areas.
+        spot = None if targets == [(0, 0)] else settled_spot(stage, area)
+        if targets != [(0, 0)] and spot is None:
+            print('%d:%-2d not ordinary play' % (stage, area))
+            continue
         for name, script in scripts:
             if args and name not in args:
                 continue
