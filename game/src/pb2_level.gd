@@ -39,6 +39,20 @@ var cam_start_low: int
 var cam_limit_page: int
 var cam_limit_low: int
 
+## $F04C: where the walk-on stands the hero when this area is opened -- on the
+## first step of the stage, through a door, and again after every death.
+var start_x: int
+var start_y: int
+## Which way he is turned to face: bit six of $042C, set when the place is
+## past the middle of the screen.
+var start_face: int
+
+## $8551: where on the screen the door at the end of this area is drawn open,
+## high byte first.  The door keeps them in $05FA and $0610 and walks them
+## backwards a row at a time while it opens.
+var door_hi: int
+var door_lo: int
+
 ## $2E and $5E: the areas that carry the view along by themselves.  See
 ## work/re/pb2_camera.md.
 var auto: int
@@ -67,7 +81,38 @@ func _init(stage_index: int, area_index: int) -> void:
 	cam_limit_low = int(a["cam_last_sub"])
 	auto = int(a["auto"])
 	auto_wait = int(a["auto_wait"])
+	var st: Dictionary = a["start"]
+	start_x = int(st["x"])
+	start_y = int(st["y"])
+	start_face = int(st["face"])
+	var dr: Array = a["door"]
+	door_hi = int(dr[0])
+	door_lo = int(dr[1])
 	_build(a)
+
+
+## How many areas the data holds for a stage, and how many stages there are.
+## Not the same as walk_count: the boss rooms are a stage of their own.
+static func area_count(stage_index: int) -> int:
+	var index: Dictionary = Nes._load_json("%s/pb2/levels/index.json" % Nes.DATA)
+	return int((index["stages"] as Array)[stage_index]["areas"])
+
+
+static func stage_count() -> int:
+	var index: Dictionary = Nes._load_json("%s/pb2/levels/index.json" % Nes.DATA)
+	return (index["stages"] as Array).size()
+
+
+## $D6CD -- how many areas of a stage are walked through before the boss.
+static func walk_count(stage_index: int) -> int:
+	var index: Dictionary = Nes._load_json("%s/pb2/levels/index.json" % Nes.DATA)
+	return int((index["stages"] as Array)[stage_index]["walk"])
+
+
+## $843D -- where the thing of type $03 draws the way into the boss's room.
+static func boss_door(stage_index: int) -> Array:
+	var index: Dictionary = Nes._load_json("%s/pb2/levels/index.json" % Nes.DATA)
+	return (index["stages"] as Array)[stage_index]["boss_door"]
 
 
 func _build(a: Dictionary) -> void:

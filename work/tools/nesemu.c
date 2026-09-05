@@ -302,7 +302,7 @@ static int chr_scan_arm = 0;
 typedef struct { long frame; uint16_t addr; uint8_t val; } PokeEnt;
 static PokeEnt pokes[256]; static int n_pokes = 0;
 
-typedef struct { uint16_t addr; uint8_t val; long from; } FreezeEnt;
+typedef struct { uint16_t addr; uint8_t val; long from, upto; } FreezeEnt;
 static FreezeEnt freezes[256]; static int n_freezes = 0;
 
 /* a byte of the cartridge itself, written over before the run begins.  Unlike
@@ -2260,7 +2260,7 @@ static void usage(void)
         "  -loadstate FILE   resume from a savestate; -frames is still the\n"
         "                    ABSOLUTE last frame number to run\n"
         "  -poke A=V@N       write byte V to CPU address A once at frame N (hex A/V)\n"
-        "  -freeze A=V[@N]   rewrite byte V to CPU address A every frame from N on\n"
+        "  -freeze A=V[@N[-M]] rewrite byte V to CPU address A every frame from N on\n"
         "  -rompoke O=V      write byte V at PRG file offset O before the run (hex O/V)\n"
         "  -sample P=A       log what address A held whenever PC reached P (hex);\n"
         "                    A may instead be a register: A, X, Y or P\n"
@@ -2349,6 +2349,13 @@ int main(int argc, char **argv)
             freezes[n_freezes].addr = (uint16_t)strtol(s, NULL, 16);
             freezes[n_freezes].val  = (uint8_t)strtol(eq + 1, NULL, 16);
             freezes[n_freezes].from = at ? strtol(at + 1, NULL, 10) : 0;
+            /* @N-M holds the byte only from frame N up to frame M; without the
+               dash it holds it for the rest of the run.  A pinning that has to
+               be let go of -- the hero held against one edge until a door is
+               reached and then left alone -- needs the end. */
+            freezes[n_freezes].upto = -1;
+            if (at) { char *dash = strchr(at + 1, '-');
+                      if (dash) freezes[n_freezes].upto = strtol(dash + 1, NULL, 10); }
             n_freezes++;
         }
         else if (!strcmp(o, "-sample")) {
@@ -2439,7 +2446,8 @@ int main(int argc, char **argv)
         for (int k = 0; k < n_pokes; k++)
             if (pokes[k].frame == cur_frame) poke_write(pokes[k].addr, pokes[k].val);
         for (int k = 0; k < n_freezes; k++)
-            if (cur_frame >= freezes[k].from)
+            if (cur_frame >= freezes[k].from
+                && (freezes[k].upto < 0 || cur_frame <= freezes[k].upto))
                 poke_write(freezes[k].addr, freezes[k].val);
         for (int k = 0; k < n_vramreqs; k++)
             if (vramreqs[k].frame == cur_frame) write_vramdump(vramreqs[k].path, cur_frame);

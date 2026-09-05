@@ -230,7 +230,7 @@ def objects(stage, area, spot=None, first=None, script=(), upto=None):
 
 
 def trace(script, frames, state=None, first=None, stage=None, area=None,
-          spot=None, pokes=()):
+          spot=None, pokes=(), during=()):
     """Play `script` and return a list of dicts, one per frame.
 
     Two runs are needed: the first stops at the starting frame and dumps all of
@@ -247,12 +247,12 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
                      pokes=pokes)
     d = P.scratch('trace')
     try:
-        return _trace(d, state, script, first, frames)
+        return _trace(d, state, script, first, frames, during)
     finally:
         P.sweep(d)
 
 
-def _trace(d, state, script, first, frames):
+def _trace(d, state, script, first, frames, during=()):
     ram = os.path.join(d, 'start.ram')
     inp = os.path.join(d, 'i.inp')
     log = os.path.join(d, 't.log')
@@ -269,6 +269,11 @@ def _trace(d, state, script, first, frames):
     sample = ['-sample', '%s=X' % CULL_PC]
     for pc, (_name, addr, _bank) in SEEN.items():
         sample += ['-sample', '%s=%04X' % (pc, addr)]
+    # A byte written once, in the middle of the run, counted like the script's
+    # own frames.  This is how a run is made to reach something the buttons
+    # cannot: a door at the far end of an area is opened where it stands.
+    for a, v, fr in during:
+        sample += ['-poke', '%04X=%02X@%d' % (a, v, first + fr)]
     subprocess.run(P.emu('-loadstate', state, '-input', inp,
                     '-frames', str(last + 1),
                     '-watch', '%04X-%04X' % (LO, HI), '-trace', log,

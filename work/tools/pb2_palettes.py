@@ -63,6 +63,16 @@ BG_COLOR      = 0x0F            # hard-coded colour 0 of every slot
 
 # --- bank 15 ------------------------------------------------------------------
 AREA_REC_TBL  = 0xE2BC          # 7 words -> a word slot in bank pair 6/7
+# $F04C: where the walk-on stands the hero when an area is opened.  Seven
+# tables of one byte an area -- the high nibble is the row, the low nibble the
+# column, and the eighth table is not a stage but the boss rooms ($79).
+AREA_START_TBL = 0xF0A4
+# $8551 (bank 10): six tables of two bytes an area -- where on the screen the
+# door at the end of that area is drawn open.  The seventh stage has none: it
+# is the boss rooms, and they have no doors.
+DOOR_VRAM_TBL = 0x8587
+BOSS_VRAM_TBL = 0x843D
+DOOR_PAIR     = 10
 EF3F          = 0xEF3F          # 62 bytes: player anim frame -> CHR R2
 EF3F_LEN      = 62
 AREA_PAIR     = 6               # $ECA7 is called with Y=$36 -> pair 6/7
@@ -86,6 +96,7 @@ class PB2Palettes:
         self.b15  = self.rom.bank(15)
         self.pair = self.rom.bank(AREA_PAIR) + self.rom.bank(AREA_PAIR + 1)
         self.apair = self.rom.bank(ANIM_PAIR) + self.rom.bank(ANIM_PAIR + 1)
+        self.door = self.rom.bank(DOOR_PAIR) + self.rom.bank(DOOR_PAIR + 1)
 
         self._seta = self._ptr_table(SETA_PTR)              # 47 addresses
         n = SUBPAL_HI - SUBPAL_LO                           # 136
@@ -101,6 +112,8 @@ class PB2Palettes:
     def _p(self, a):    return self.pair[a - 0x8000]
     def _wp(self, a):   return self._p(a) | (self._p(a + 1) << 8)
     def _a(self, a):    return self.apair[a - 0x8000]
+    def _d(self, a):    return self.door[a - 0x8000]
+    def _wd(self, a):   return self._d(a) | (self._d(a + 1) << 8)
     def _wa(self, a):   return self._a(a) | (self._a(a + 1) << 8)
 
     @staticmethod
@@ -162,6 +175,45 @@ class PB2Palettes:
     def area_record(self, stage, area):
         a = self.area_pointers(stage)[area]
         return [self._p(a + k) for k in range(14)]
+
+    def area_starts(self, stage):
+        """One byte an area: where the walk-on stands the hero."""
+        a = self._w15(AREA_START_TBL + stage * 2)
+        return [self._b15(a + k) for k in range(self.n_areas(stage))]
+
+    def area_start(self, stage, area):
+        """Where the hero stands when this area is opened -- $F04C.
+
+        `$04C6` (down) is the byte's high nibble with fifteen underneath it;
+        `$0508` (along) is the low nibble shifted up into a whole cell.  Which
+        way he faces is bit six of `$042C`, set when he is past the middle of
+        the screen and cleared when he is on it or before it.
+        """
+        b = self.area_starts(stage)[area]
+        x = (b << 4) & 0xF0
+        return dict(x=x, y=(b & 0xF0) | 0x0F, face=1 if x > 0x80 else 0)
+
+    def area_door(self, stage, area):
+        """Where the door of this area is drawn open -- two bytes, high first.
+
+        The cartridge keeps them in the thing's own fields ($05FA and $0610)
+        and walks them backwards a row at a time as the door opens.
+        """
+        if stage * 2 >= 12:
+            return [0, 0]
+        a = self._wd(DOOR_VRAM_TBL + stage * 2)
+        return [self._d(a + area * 2), self._d(a + area * 2 + 1)]
+
+    def boss_door(self, stage):
+        """Where the way to the boss is drawn -- two bytes, high first.
+
+        $843D in bank 10, one pair per stage, read by the thing of type $03
+        that stands at the end of a stage and opens the boss's room.
+        """
+        if stage * 2 >= 12:
+            return [0, 0]
+        return [self._d(BOSS_VRAM_TBL + stage * 2),
+                self._d(BOSS_VRAM_TBL + stage * 2 + 1)]
 
     def area_palette_ids(self, stage, area):
         r = self.area_record(stage, area)

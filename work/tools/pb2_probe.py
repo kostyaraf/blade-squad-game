@@ -61,8 +61,16 @@ FREEZE = []
 #   the hit off his health.  Made SBC #$00 it takes nothing off, leaves the
 #   carry set, and the two branches below it walk past the death.  Everything
 #   else about being hit -- the flash, the knock back -- still happens.
+#
+#   $A17A in bank 9 is the look at where he is: no health, or off the foot of
+#   the screen ($04C6 past $C7), and he is dead.  Made a jump to the RTS at its
+#   own end it never finds him dead.  It is the one that catches a hero pinned
+#   against an edge with nothing under him, which is how a view is walked.
 IMMORTAL = ((9 * 8192 + (0xB3F5 - 0xA000), 0x60),
-            (7 * 8192 + (0xB3D2 - 0xA000), 0xE9))
+            (7 * 8192 + (0xB3D2 - 0xA000), 0xE9),
+            (9 * 8192 + (0xA17A - 0xA000), 0x4C),
+            (9 * 8192 + (0xA17B - 0xA000), 0x93),
+            (9 * 8192 + (0xA17C - 0xA000), 0xA1))
 
 
 def emu(*args):
@@ -70,8 +78,13 @@ def emu(*args):
     cmd = [EMU, ROM]
     for off, val in ROMPOKE:
         cmd += ['-rompoke', '%X=%02X' % (off, val)]
-    for addr, val, since in FREEZE:
-        cmd += ['-freeze', '%04X=%02X@%d' % (addr, val, since)]
+    for ent in FREEZE:
+        addr, val, since = ent[0], ent[1], ent[2]
+        # A fourth number is the last frame it is held for: a pinning that has
+        # to be let go of again, so that what happens after it is the game's.
+        upto = ent[3] if len(ent) > 3 else None
+        cmd += ['-freeze', '%04X=%02X@%d%s'
+                % (addr, val, since, '' if upto is None else '-%d' % upto)]
     return cmd + list(args)
 
 

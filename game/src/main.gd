@@ -288,6 +288,15 @@ func _run_spawns(path: String) -> void:
 	# So the first hand-over tells everything, minds and all, and only from
 	# the second is the engine held to its own work.
 	var first_told := false
+	# How many tables have been handed over, and which of them the hero was
+	# made to touch something on.
+	var tables := 0
+	var touches := {}
+	for t in cfg.get("touch", []):
+		var k: int = int(t[0])
+		if not touches.has(k):
+			touches[k] = []
+		touches[k].append(int(t[1]))
 	var out := PackedStringArray()
 	for f in cfg["frames"]:
 		var was := {}
@@ -472,6 +481,30 @@ func _run_spawns(path: String) -> void:
 						s[k] = was_told[k]
 			first_told = true
 			gone.append_array(things.turns())
+			# $B5A5 -- the hero has touched something with a box of its own.
+			# The sweep finds these for itself; this is for the runs that
+			# reach a thing the buttons cannot, where the cartridge was made
+			# to touch it and the engine has to be told the same.  It goes in
+			# after the turn, where the cartridge's own touch goes: the sweep
+			# runs at $CF08 and the table is written down after it, at $CF14.
+			for hit in touches.get(tables, []):
+				var t: PackedByteArray = things.slots[int(hit)]
+				t[Pb2Objects.F_MARK] = 0x80
+				t[Pb2Objects.F_STATE] = 0x02
+			tables += 1
+			# $1A := 6 -- the level has been told to build itself again.  What
+			# is judged from here on is not the table any more but the flow:
+			# which area was chosen, and where it puts him and the view.
+			if things.live == 6:
+				var to_stage: int = 6 if things.boss != 0 else level_pb2.stage
+				_load("pb2", to_stage, things.area)
+				out.append("%d|%d|%d|%d|%d|%d|%d|%d" % [-1, to_stage,
+						things.area, things.boss, level_pb2.start_x,
+						level_pb2.start_y, level_pb2.start_face,
+						(level_pb2.cam_start_page << 8)
+								| level_pb2.cam_start_low])
+				print("\n".join(out))
+				return
 		# Where the view ended the step, what came alive in it, and what the
 		# sweep threw away.  The view is put out too: it drives the scan, so a
 		# scan that agrees only because the view was wrong in both would prove
@@ -685,25 +718,27 @@ var oam_tex: ImageTexture
 ## $94 of the picture before: the scan reads last picture's slide, not this
 ## one's ($CF0E runs before $CF11).
 var slid := 0
-var starts: Dictionary = {}
+## $9F -- how many more times he may be brought back.  $D090 gives him two at
+## the start of a game.
+var lives := 2
 
 
-## Open an area and put a hero in it.
+## Open an area and put a hero in it, where the area's own walk-on says.
+##
+## $E23F reads the area's record -- where the view begins -- and $F04C the one
+## byte that says where he stands in it.  Both are the cartridge's own, so an
+## area opened by itself opens exactly as it does when the door before it is
+## walked through.
 func _start_play(st: int, ar: int) -> void:
 	_load("pb2", st, ar)
 	Pb2Sprites.load_data()
-	if starts.is_empty():
-		var text := FileAccess.get_file_as_string(Nes.DATA + "/pb2/starts.json")
-		starts = JSON.parse_string(text) if text != "" else {}
 	view = Pb2Camera.new(level_pb2)
 	world = Pb2Objects.new(level_pb2)
 	hero = Pb2Player.new(level_pb2)
 	hero.world = world
-	var key := "%d:%d" % [st, ar]
-	var spot: Dictionary = starts.get(key, {})
-	if spot.has("cam"):
-		view.place(int(spot["cam"]) >> 8, int(spot["cam"]) & 0xFF, 0, 0)
-	hero.place(int(spot.get("x", 128)), int(spot.get("y", 128)), view.pos)
+	view.place(level_pb2.cam_start_page, level_pb2.cam_start_low, 0, 0)
+	hero.place(level_pb2.start_x, level_pb2.start_y, view.pos)
+	hero.face_left = level_pb2.start_face != 0
 	# $04C6 of his own place is the health bar; the cartridge gives him this
 	# much at the start of a life ($E1B4).
 	world.slots[0][Pb2Objects.F_LIFE] = 0x10
@@ -727,12 +762,12 @@ func _step_pb2() -> void:
 	# until it does the areas are picked by hand: SELECT for the next one,
 	# START to begin this one again.
 	if pad.pressed & Pad.SELECT:
-		var keys: Array = starts.keys()
-		keys.sort()
-		var here := "%d:%d" % [level_pb2.stage, level_pb2.area]
-		var i: int = keys.find(here)
-		var next: Array = str(keys[(i + 1) % keys.size()]).split(":")
-		_start_play(int(next[0]), int(next[1]))
+		var st: int = level_pb2.stage
+		var ar: int = level_pb2.area + 1
+		if ar >= Pb2Level.area_count(st):
+			st = (st + 1) % Pb2Level.stage_count()
+			ar = 0
+		_start_play(st, ar)
 		_apply()
 		return
 	if pad.pressed & Pad.START:
@@ -754,6 +789,11 @@ func _step_pb2() -> void:
 	world.shift(view.shift)
 	# $CF1C -- every thing gets its turn.
 	world.turns()
+	# $1A := 6 -- something has told the level to build itself again.  The
+	# door at the end of an area is what usually does it.
+	if world.live == 6:
+		_next_area()
+		return
 	# $8E26 -- what is already in the air moves first, and only then does
 	# $8E29 let go of the next one; $8E2C moves him after both.
 	world.shots_turn()
@@ -765,11 +805,33 @@ func _step_pb2() -> void:
 	view.decide(((hero.y if level_pb2.vertical else hero.x) >> 8) & 0xFF)
 	_mirror_hero()
 	if world.slots[0][Pb2Objects.F_LIFE] == 0:
-		_start_play(level_pb2.stage, level_pb2.area)
+		_die()
 		return
 	# $8038 -- and then the picture of it all.
 	oam = Pb2Sprites.build(world.slots, rot, oam)
 	rot = (rot + Pb2Sprites.ROTATE) & 0xFF
+
+
+## $CF3C -- the level was told to build itself again, so it does: the area the
+## door chose, or the stage's boss room, and the hero stood where that area's
+## own walk-on says.
+func _next_area() -> void:
+	var st: int = 6 if world.boss != 0 else level_pb2.stage
+	var ar: int = world.area
+	_start_play(st, ar)
+	_apply()
+
+
+## $D022 -- a life is spent and the area is opened again; when there are none
+## left the game is over and the stage begins from its first area.
+func _die() -> void:
+	if lives > 0:
+		lives -= 1
+		_start_play(level_pb2.stage, level_pb2.area)
+	else:
+		lives = 2                                   # $D090: $18 := 2
+		_start_play(level_pb2.stage, 0)
+	_apply()
 
 
 ## How many of his throws are still in the air ($A1C2 counts them).

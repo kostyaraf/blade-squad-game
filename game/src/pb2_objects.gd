@@ -134,7 +134,22 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x36: "_mind_36", 0x34: "_mind_34", 0x35: "_mind_35",
 		0x14: "_mind_14", 0x21: "_mind_21",
 		0x0F: "_mind_0f", 0x47: "_mind_47",
-		0x3F: "_mind_3f", 0x0D: "_mind_0d"}
+		0x3F: "_mind_3f", 0x0D: "_mind_0d",
+		0x04: "_mind_04", 0x03: "_mind_03"}
+
+## $BE36 -- one bit a stage, tried against $5B to tell a stage already beaten.
+const STAGE_BIT := [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40]
+
+## $9C -- which area of the stage is being played.  The door puts the next one
+## here before the level is asked to build itself again.
+var area := 0
+## $79 -- what opens next is a boss room, not another area of the stage.
+var boss := 0
+## $AD -- which half of a stage is being played: the walk, or the boss.
+var phase := 0
+## $5B -- which stages have already been beaten.  A door with a life in its
+## record is not there at all on a second walk through a beaten stage.
+var cleared := 0
 
 ## $0119 -- one up every frame; $FB81 halves it between the places.
 var clock := 0
@@ -233,6 +248,7 @@ var fill := 0
 
 func _init(level: Pb2Level) -> void:
 	lvl = level
+	area = lvl.area
 	water = lvl.line
 	for i in range(SLOTS):
 		slots.append(empty_row())
@@ -6077,6 +6093,182 @@ func _mind_0d(n: int, s: PackedByteArray) -> void:
 	if s[F_SELF] != 0:
 		return
 	switch = switch ^ MASK_36[s[F_LIFE]]               # $8B7F
+	clear(n)                                           # $C810
+
+
+# --- The door at the end of an area -----------------------------------
+#
+# Bank 10, $8542.  Fifty-two records in the game and the one type without
+# which nothing goes anywhere: it is what carries the stage from area to
+# area and, at the end, to the boss.  See work/re/pb2_level_flow.md.
+
+
+## $8542 -- six steps: stand there, wait to be touched, decide where the
+## touching leads, open, and close again behind him.
+func _mind_04(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_04(n, s)
+		1: pass                                        # $8449 -- $B5A5 wakes it
+		2: _leave_04(s)
+		3: _open_04(s)
+		4: _count_04(s)
+		5: _shut_04(n, s)
+
+
+## $8551 -- a door with a life in its record is only there while the stage is
+## unfinished; walked again after the stage is beaten, it is not there at all.
+## The rest is the box the hero has to touch and where the door is drawn.
+func _wake_04(n: int, s: PackedByteArray) -> void:
+	if s[F_LIFE] != 0 and (STAGE_BIT[lvl.stage] & cleared) != 0:
+		clear(n)                                       # $C810
+		return
+	s[F_MARK] = 0x10                                   # a box eight by eight
+	s[F_KEEP] = lvl.door_hi                            # $8587[$53][2*$9C]
+	s[F_KEEP2] = lvl.door_lo
+	s[F_STATE] += 1                                    # $C966
+
+
+## $85FD -- he has touched it.  From here the level is no longer being played:
+## it is leaving.  Three sorts of area and the first of the sixth stage have
+## no next area to make ready, and their doors go straight to the closing.
+func _leave_04(s: PackedByteArray) -> void:
+	playing = 4                                        # $27 := 4
+	slots[0][F_BITS] = slots[0][F_BITS] & 0x7F         # $042C
+	frozen = 1                                         # $2A := 1
+	if lvl.stage == 5 and area == 0:
+		s[F_KIND] = 0                                  # $863A
+		_start_shut_04(s)
+		return
+	if lvl.kind == 0x06 or lvl.kind == 0x09 or lvl.kind == 0x04:
+		_start_shut_04(s)                              # $863F
+		return
+	s[F_STATE] += 1                                    # $C966
+
+
+## $863F -- twenty-two steps of closing and nothing before them.
+func _start_shut_04(s: PackedByteArray) -> void:
+	s[F_PUSH] = 0x20
+	s[F_STATE] = 5
+
+
+## $864A -- one row of the doorway a frame in four, and the place it is drawn
+## at walks a row backwards on every second row, wrapping once from the foot of
+## one screen to the head of the next.  Eight rows in all, counted in $05E4.
+func _open_04(s: PackedByteArray) -> void:
+	s[F_PUSH] = (s[F_PUSH] + 1) & 0xFF
+	if (s[F_PUSH] & 0x03) != 0:
+		return
+	if (s[F_COUNT] & 1) != 0 and s[F_COUNT] != 7:      # $8686
+		var lo: int = s[F_KEEP2] - 0x20
+		var hi: int = s[F_KEEP] - (1 if lo < 0 else 0)
+		lo = lo & 0xFF
+		hi = hi & 0xFF
+		if hi == 0x1F and lo == 0xE0:                  # $86AD
+			hi = 0x23
+			lo = 0xA0
+		s[F_KEEP] = hi
+		s[F_KEEP2] = lo
+	s[F_COUNT] = (s[F_COUNT] + 1) & 0xFF
+	s[F_STATE] += 1                                    # $C966
+
+
+## $86D2 -- eight rows and it stops; anything less and it goes round again.
+func _count_04(s: PackedByteArray) -> void:
+	if s[F_COUNT] == 8:
+		s[F_PUSH] = 0x20
+		s[F_STATE] += 1                                # $C966
+		return
+	s[F_STATE] = 3
+
+
+## $86E7 -- thirty-two frames of closing, and then the level is told to build
+## itself again.  The next area is the one after this, unless this was the last
+## one walked: then the stage's boss room is what opens.
+func _shut_04(n: int, s: PackedByteArray) -> void:
+	s[F_PUSH] = (s[F_PUSH] - 1) & 0xFF
+	if s[F_PUSH] != 0:
+		return
+	live = 6                                           # $1A := 6
+	area += 1                                          # INC $9C
+	if area == Pb2Level.walk_count(lvl.stage):         # $C894
+		boss = 1                                       # $79 := 1
+		phase = 2                                      # $AD := 2
+		area = 0 if lvl.stage == 5 else lvl.stage
+	clear(n)                                           # $C810
+
+
+# --- The way to the boss ----------------------------------------------
+#
+# Bank 10, $840A.  One record at the end of each of the first four stages.
+# Where the door of type $04 carries the walk from area to area, this one is
+# the end of the walk: it stands the hero still, draws a way in above him and
+# hands the stage over to the boss's room.
+
+
+## $840A -- six steps, the same shape as the door: stand there, wait to be
+## touched, take hold of him, draw, count, and hand over.
+func _mind_03(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_03(n, s)
+		1: pass                                        # $8449 -- $B5A5 wakes it
+		2: _hold_03(s)
+		3: _draw_03(s)
+		4: _count_03(s)
+		5: _hand_03(n, s)
+
+
+## $8419 -- not there at all on a stage already beaten; otherwise the box he
+## has to touch and, kept in its own fields, where the way in is drawn.
+func _wake_03(n: int, s: PackedByteArray) -> void:
+	if (STAGE_BIT[lvl.stage] & cleared) != 0:          # $BE36,Y AND $56
+		clear(n)                                       # $C810
+		return
+	s[F_MARK] = 0x10                                   # a box eight by eight
+	var vram: Array = Pb2Level.boss_door(lvl.stage)    # $843D[2*$53]
+	s[F_KEEP] = int(vram[0])
+	s[F_KEEP2] = int(vram[1])
+	s[F_STATE] += 1                                    # $C966
+
+
+## $844A -- he has touched it.  The level stops being played, he is stood
+## exactly where the record stands and put into the pose he holds while the
+## way opens; the count of rows drawn starts at nought.
+func _hold_03(s: PackedByteArray) -> void:
+	playing = 4                                        # $27 := 4
+	slots[0][F_BITS] = slots[0][F_BITS] & 0x7F         # $042C
+	slots[0][F_KIND] = 0x04                            # $0442 -- the pose
+	slots[0][F_X] = s[F_X]                             # $0508 := $0508,X
+	s[F_COUNT] = 0                                     # $05E4,X
+	s[F_STATE] += 1                                    # $C966
+
+
+## $8477 -- sixteen rows of the way in, all in one frame, and then sixteen
+## frames of waiting before the next lot.
+func _draw_03(s: PackedByteArray) -> void:
+	s[F_COUNT] = (s[F_COUNT] + 1) & 0xFF               # INC $05E4,X
+	s[F_PUSH] = 0x10                                   # $0626,X
+	s[F_STATE] += 1                                    # $C966
+
+
+## $84D0 -- after the second lot he is let out of the pose again; after the
+## fourth the waiting is over.  Between them the sixteen frames run down.
+func _count_03(s: PackedByteArray) -> void:
+	if s[F_COUNT] == 2:
+		slots[0][F_KIND] = 0                           # $0442 := 0
+	if s[F_COUNT] == 4:
+		s[F_STATE] += 1                                # $C966
+		return
+	s[F_PUSH] = (s[F_PUSH] - 1) & 0xFF
+	if s[F_PUSH] == 0:
+		s[F_STATE] = 3
+
+
+## $84F1 -- the level is told to build itself again, and what it builds is the
+## boss's room: the sixth stage, six areas along from this one.
+func _hand_03(n: int, s: PackedByteArray) -> void:
+	live = 6                                           # $1A := 6
+	boss = 1                                           # $79 := 1
+	area = lvl.stage + 6                               # $9C := $53 + 6
 	clear(n)                                           # $C810
 
 

@@ -44,6 +44,12 @@ def collision_classes(coll, stage, area):
     return [coll.tile_class(stage, t, area) for t in range(256)]
 
 
+# $D6CD, read by $D6BC: for each stage, the number of areas that are walked
+# through.  When the door's own count reaches it there is no next area and the
+# stage's boss room is opened instead.
+LAST_AREA = [7, 8, 7, 7, 10, 14, 12]
+
+
 def export():
     lv = PB2Levels(ROM_PB2)
     coll = PB2Collision(ROM_PB2)
@@ -66,6 +72,12 @@ def export():
                 music=rec[1],
                 cam_screen=rec[3], cam_sub=rec[4],
                 cam_last=rec[5], cam_last_sub=rec[6],
+                # $F04C: where the walk-on stands the hero when the area is
+                # opened -- on the first step of a stage, through a door, and
+                # again every time he is brought back after a death.
+                start=pal.area_start(s, a),
+                # $8551: where the door at the end of this area is drawn open.
+                door=pal.area_door(s, a),
                 chr=pal.area_chr_full(s, a),
                 chr_bg_phases=pal.area_bg_chr_phases(s, a),
                 palette=pal.area_palette(s, a),
@@ -83,7 +95,14 @@ def export():
         )
         size = write_json(os.path.join(d, 'stage%d.json' % s), obj)
         index.append(dict(stage=s, areas=len(areas), screens=len(st['screens']),
-                          blocks=st['nblocks']))
+                          blocks=st['nblocks'],
+                          # $D6CD: how many areas are walked before the boss.
+                          # The door at the end of the last one does not open
+                          # another area, it opens the boss room.
+                          walk=LAST_AREA[s],
+                          # $843D: where the thing of type $03 draws the way
+                          # into the boss's room at the end of the stage.
+                          boss_door=pal.boss_door(s)))
         print('stage %d  %3d blocks  %2d screens  %2d areas  %6d bytes'
               % (s, st['nblocks'], len(st['screens']), len(areas), size))
     write_json(os.path.join(d, 'index.json'),
