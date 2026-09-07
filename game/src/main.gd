@@ -15,6 +15,9 @@ var scroll := Vector2i.ZERO
 var origin := Vector2i.ZERO      # where on the screen the level's top left goes
 var view_h := 240
 var pal_tex: ImageTexture
+## The map as the shader has it.  A block knocked out of the background
+## ($8AF0) changes the map, so the picture of it has to be made again.
+var map_tex: ImageTexture
 var clock := Clock.new()
 var pads: Array[Pad] = []
 
@@ -27,6 +30,8 @@ func _ready() -> void:
 	var water := ""
 	var oam := ""
 	var demo := ""
+	var play := ""
+	var give := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -43,6 +48,8 @@ func _ready() -> void:
 		elif a.begins_with("--water="): water = a.substr(8)
 		elif a.begins_with("--oam="): oam = a.substr(6)
 		elif a.begins_with("--demo="): demo = a.substr(7)
+		elif a.begins_with("--play="): play = a.substr(7)
+		elif a.begins_with("--give="): give = a.substr(7)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -65,6 +72,19 @@ func _ready() -> void:
 		return
 	if shots != "":
 		await _run_shots(shots)
+		get_tree().quit()
+		return
+	if give != "":
+		# A study aid, and nothing the game itself would ever do: the suits a
+		# player would have to find first, handed over at the door.
+		# --give=owned,energy,tanks -- owned is the bitmask $56 keeps.
+		var g := give.split(",")
+		status = Pb2Status.new()
+		status.owned = int(g[0])
+		status.energy = int(g[1]) if g.size() > 1 else 0x10
+		status.tanks = int(g[2]) if g.size() > 2 else 0
+	if play != "":
+		_run_play(play, stage, area)
 		get_tree().quit()
 		return
 	if demo != "":
@@ -194,7 +214,8 @@ func _apply() -> void:
 		# Solbrain draws no sprites here yet, so its own four are padded out.
 		banks = level_sol.banks + [0, 0, 0, 0]
 	m.set_shader_parameter("sheet", Nes.sheet(game))
-	m.set_shader_parameter("map", ImageTexture.create_from_image(img))
+	map_tex = ImageTexture.create_from_image(img)
+	m.set_shader_parameter("map", map_tex)
 	m.set_shader_parameter("palette", pal_tex)
 	m.set_shader_parameter("map_size", size)
 	m.set_shader_parameter("sheet_size", Nes.sheet(game).get_size())
@@ -724,6 +745,9 @@ var slid := 0
 ## $9F -- how many more times he may be brought back.  $D090 gives him two at
 ## the start of a game.
 var lives := 2
+## The counters that are his and not the level's -- $9A, $56, $A0, $9E and the
+## blade's three.  It outlives an area and a life both.
+var status: Pb2Status = null
 
 
 ## Open an area and put a hero in it, where the area's own walk-on says.
@@ -739,6 +763,16 @@ func _start_play(st: int, ar: int) -> void:
 	world = Pb2Objects.new(level_pb2)
 	hero = Pb2Player.new(level_pb2)
 	hero.world = world
+	# What he carries from one area to the next, and from one life to the
+	# next: the suits, the energy, the tanks, the blade.  A new game makes it
+	# ($C9E1 wipes $48..$EF); an area does not.
+	if status == null:
+		status = Pb2Status.new()
+	world.status = status
+	world.suit = status.suit
+	world.power = status.power_level
+	world.second = status.second_blade
+	world.extra = status.extra_shot
 	view.place(level_pb2.cam_start_page, level_pb2.cam_start_low, 0, 0)
 	hero.place(level_pb2.start_x, level_pb2.start_y, view.pos)
 	hero.face_left = level_pb2.start_face != 0
@@ -756,28 +790,47 @@ func _start_play(st: int, ar: int) -> void:
 	oam_tex = ImageTexture.create_from_image(img)
 	bg.material.set_shader_parameter("oam", oam_tex)
 	_mirror_hero()
+	# The area brought its own palette with it, so the suit's three colours
+	# have to be put back over sprite palette one.
+	_wear_suit()
 
 
 ## One step of the game, in the cartridge's own order ($CEF0).
 func _step_pb2() -> void:
 	var pad: Pad = pads[0]
-	# Э3.1 has still to bring over the walk from one area to the next, so
-	# until it does the areas are picked by hand: SELECT for the next one,
-	# START to begin this one again.
+	# $EE5D -- SELECT spends one spare health tank on the health bar.  It only
+	# looks like the suit menu; the suits are on START.
 	if pad.pressed & Pad.SELECT:
-		var st: int = level_pb2.stage
-		var ar: int = level_pb2.area + 1
-		if ar >= Pb2Level.area_count(st):
-			st = (st + 1) % Pb2Level.stage_count()
-			ar = 0
-		_start_play(st, ar)
-		_apply()
-		return
-	if pad.pressed & Pad.START:
-		_start_play(level_pb2.stage, level_pb2.area)
-		_apply()
+		status.life = world.slots[0][Pb2Objects.F_LIFE]
+		status.spend_life_tank()
+	# $CDBB and $CEFD -- the suits: the pause menu, and the wearing out of
+	# whichever one he has on.  While either has something to say the level
+	# itself does not run at all.
+	status.life = world.slots[0][Pb2Objects.F_LIFE]
+	status.stage = level_pb2.stage
+	# Pad already keeps the console's own order of the eight, so what it
+	# reports is what $48 would hold.
+	var play: bool = status.step(pad.pressed)
+	# $27 -- the level's things write it as well as read it: the boss's meter
+	# puts it out of play while it fills and back into play when it is full.
+	world.playing = status.mode
+	world.slots[0][Pb2Objects.F_LIFE] = status.life
+	world.suit = status.suit
+	world.power = status.power_level
+	world.second = status.second_blade
+	world.extra = status.extra_shot
+	if status.repaint:
+		status.repaint = false
+		_wear_suit()
+	if status.clear_shots:
+		# $D768 -- what he had in the air belonged to the suit he was wearing.
+		status.clear_shots = false
+		for k in range(1, Pb2Objects.FIRST_LIVE):
+			world.clear(k)
+	if not play:
 		return
 	world.frame = (world.frame + 1) & 0xFF          # $0110
+	world.status = status
 	# $CF00 -- how long the button has been down.
 	hero.step_charge(world.frame)
 	# $CF08 -- what touches what.
@@ -792,6 +845,7 @@ func _step_pb2() -> void:
 	world.shift(view.shift)
 	# $CF1C -- every thing gets its turn.
 	world.turns()
+	status.mode = world.playing
 	# $1A := 6 -- something has told the level to build itself again.  The
 	# door at the end of an area is what usually does it.
 	if world.live == 6:
@@ -813,6 +867,18 @@ func _step_pb2() -> void:
 	# $8038 -- and then the picture of it all.
 	oam = Pb2Sprites.build(world.slots, rot, oam)
 	rot = (rot + Pb2Sprites.ROTATE) & 0xFF
+
+
+## $D28E and $D8E4 -- a suit is a thousand bytes of tiles and three colours,
+## and nothing else.  The tiles are handed to the picture through the sprite
+## banks; the colours go into sprite palette one, where $8080 puts them.
+func _wear_suit() -> void:
+	var pal: PackedByteArray = level_pb2.palette
+	var c: Array = status.palette()
+	pal[20] = 0x0F                                  # $8096
+	for i in range(3):
+		pal[21 + i] = int(c[i])
+	Nes.update_palette(pal_tex, pal)
 
 
 ## $CF3C -- the level was told to build itself again, so it does: the area the
@@ -884,6 +950,9 @@ func _mirror_hero() -> void:
 ## sprites come out of, and the console's sprite table.
 func _show() -> void:
 	var m: ShaderMaterial = bg.material
+	if level_pb2 != null and level_pb2.map_dirty:
+		level_pb2.map_dirty = false
+		map_tex.update(level_pb2.map_image)
 	var w: int = world._world(view.pos)
 	scroll = Vector2i(0, w) if level_pb2.vertical else Vector2i(w, 0)
 	m.set_shader_parameter("scroll", Vector2(scroll - origin))
@@ -895,6 +964,36 @@ func _show() -> void:
 		img.set_pixel(i, 0, Color8(oam[i * 4], oam[i * 4 + 1],
 				oam[i * 4 + 2], oam[i * 4 + 3]))
 	oam_tex.update(img)
+
+
+## The game playing itself with no picture at all: the same script of buttons
+## as `--demo`, but what comes out is a line of numbers and not a screenshot.
+## Headless Godot has no renderer to wait on, so this is the one that can be
+## run from a terminal.
+func _run_play(spec: String, st: int, ar: int) -> void:
+	pads = [Pad.player_one(), Pad.player_two()]
+	_start_play(st, ar)
+	var bits := {"A": Pad.A, "B": Pad.B, "UP": Pad.UP, "DOWN": Pad.DOWN,
+			"LEFT": Pad.LEFT, "RIGHT": Pad.RIGHT, "START": Pad.START,
+			"SELECT": Pad.SELECT}
+	var n := 0
+	for part in spec.split(","):
+		var f := part.split(":")
+		var down := 0
+		for nm in f[0].split("+"):
+			if bits.has(nm):
+				down |= int(bits[nm])
+		for _i in range(int(f[1])):
+			pads[0].pressed = down & ~pads[0].held
+			pads[0].held = down
+			_step_pb2()
+			n += 1
+			print("%4d %-12s x %3d y %3d pose %02X suit %d energy %2d "
+					% [n, f[0], hero.x >> 8, hero.y >> 8, hero.pose,
+					status.suit, status.energy]
+					+ "tanks %d mode %d menu %d life %2d"
+					% [status.tanks, status.mode, status.menu,
+					world.slots[0][Pb2Objects.F_LIFE]])
 
 
 ## A picture of the game playing itself, so that what it looks like can be
@@ -944,8 +1043,18 @@ func _draw() -> void:
 		return
 	var life: int = world.slots[0][Pb2Objects.F_LIFE]
 	var cap: int = int(world.hold_cap[world.power])
-	_bar(Vector2(16, 192), 16, life, Color8(0xD8, 0x28, 0x00))
-	_bar(Vector2(16, 208), cap, hero.charge, Color8(0x3C, 0xBC, 0xFC))
+	_bar(Vector2(16, 184), 16, life, Color8(0xD8, 0x28, 0x00))
+	_bar(Vector2(16, 198), cap, hero.charge, Color8(0x3C, 0xBC, 0xFC))
+	# The suit's own bar, and beside it which suit it belongs to.  $D5C1
+	# draws a little portrait instead, and that waits for Э3.7.
+	var c: Array = status.palette()
+	var tint := Nes.colour(int(c[1]))
+	_bar(Vector2(16, 212), 16, status.energy, tint)
+	for i in range(status.tanks):
+		draw_rect(Rect2(Vector2(126 + i * 5, 212), Vector2(4, 8)), tint)
+	if status.menu != 0:
+		draw_rect(Rect2(Vector2(14, 210), Vector2(160, 12)),
+				Color8(0xFC, 0xFC, 0xFC), false)
 
 
 func _bar(at: Vector2, cells: int, on: int, tint: Color) -> void:

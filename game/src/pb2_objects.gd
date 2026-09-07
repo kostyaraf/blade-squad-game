@@ -10,6 +10,8 @@ class_name Pb2Objects
 ## one does not use the record up -- back the view goes, and there it is again.
 
 const SLOTS := 22
+## $B8D3 -- how long the boss's trail is before it starts over.
+const TRAIL := 0x0C
 ## $801A and $D36B: the sweep and the slide walk from here to the end.
 const FIRST_LIVE := 0x06
 
@@ -132,10 +134,16 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x40: "_mind_40", 0x41: "_mind_41",
 		0x43: "_mind_43",
 		0x36: "_mind_36", 0x34: "_mind_34", 0x35: "_mind_35",
+		0x0C: "_mind_0c",
 		0x14: "_mind_14", 0x21: "_mind_21",
 		0x0F: "_mind_0f", 0x47: "_mind_47",
 		0x3F: "_mind_3f", 0x0D: "_mind_0d",
-		0x04: "_mind_04", 0x03: "_mind_03"}
+		0x04: "_mind_04", 0x03: "_mind_03",
+		0x05: "_mind_05", 0x06: "_mind_06",
+		0x50: "_mind_boss", 0x51: "_mind_boss", 0x52: "_mind_boss",
+		0x53: "_mind_boss", 0x54: "_mind_boss", 0x55: "_mind_boss",
+		0x56: "_mind_boss", 0x57: "_mind_boss", 0x58: "_mind_boss",
+		0x59: "_mind_boss"}
 
 ## $BE36 -- one bit a stage, tried against $5B to tell a stage already beaten.
 const STAGE_BIT := [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40]
@@ -165,6 +173,26 @@ var playing := 3
 var live := 5
 ## $5F -- which step a big thing is on; its box changes with it.
 var boss_step := 0
+## $0184, $0190, $019C and $01A8 -- twelve places, twelve heights, twelve
+## pictures and twelve ways of looking, which one boss writes as it goes and
+## the two pieces of its tail read a dozen ticks behind it, so that they walk
+## the road it walked.  It is level memory, not the boss's own, so it is here.
+var trail_x := PackedByteArray()
+var trail_y := PackedByteArray()
+var trail_pic := PackedByteArray()
+var trail_bits := PackedByteArray()
+## $016A -- how full the boss's meter goes.  Nothing sets the boss's own
+## health: the meter is filled four at a time up to this, and the filling is
+## the giving.
+var boss_bar := 0
+## $4E -- a boss is on the floor.  While it is set the level is not the
+## hero's own any more: the suit menu will not open ($D0A6) and the meter
+## stands at the top of the screen.
+var boss_here := 0
+## data/pb2/bosses.json -- who the two triggers put out, and how it dies.
+var cfg_boss: Dictionary = {}
+## The ten minds themselves, which live in a file of their own.
+var bosses := Pb2Bosses.new()
 ## $4A -- the switches of the level; $B5B7 reads bit three of it.
 var switch := 0
 ## $0160:$0161 -- where the thing the hero rides stood when it last looked.
@@ -181,6 +209,10 @@ var hero_told := false
 var seed := 0
 ## $9A -- which suit he has on; nought is none.
 var suit := 0
+## Who keeps the counters that are his and not the level's -- the suits, the
+## energy, the spare tanks.  A harness that plays without them leaves it empty
+## and the pickups then only vanish.
+var status = null
 ## $29 -- the line the water or the lava has climbed to.  The area is entered
 ## with the line its record names ($87 says what sort of area it is); four
 ## little routines under $CEE0 move it after that, and they run at the head of
@@ -209,6 +241,10 @@ var draw := -1
 var slide := 0
 ## $2B:$2C -- the sixteen collectables taken for good.
 var got := 0
+## $3B -- which of the eight blocks of this area have been knocked out.  It is
+## wiped whenever an area is set up ($E3E8, $DFE4), so a new one of these is
+## a new eight.
+var broken := 0
 ## $0172, $0171 long -- what this visit of the area has given out.
 var done: Array = []
 ## Э3.3 -- what he throws.  $55 is how far the blade has been raised, $A2
@@ -317,6 +353,12 @@ func _init(level: Pb2Level) -> void:
 		beam_life.append(_words(r))
 	for r in w["hold_mark"]:
 		hold_mark.append(_words(r))
+	trail_x.resize(TRAIL)
+	trail_y.resize(TRAIL)
+	trail_pic.resize(TRAIL)
+	trail_bits.resize(TRAIL)
+	var bf := FileAccess.open("res://data/pb2/bosses.json", FileAccess.READ)
+	cfg_boss = JSON.parse_string(bf.get_as_text())
 	for r in t["anims"]:
 		var run := {"last": int(r["last"]), "hold": int(r["hold"]),
 				"first": int(r["first"])}
@@ -643,7 +685,7 @@ func _touch(n: int) -> void:
 	var s: PackedByteArray = slots[n]
 	var hero: PackedByteArray = slots[0]
 	if s[F_TYPE] == 0x0C:
-		return                                  # the door is never touched
+		return                                  # a breakable block is scenery
 	if hero[F_LIFE] == 0:
 		return
 	if hero[F_STUN] != 0:
@@ -722,10 +764,17 @@ func _wound_hero(n: int) -> void:
 ## is remembered for the whole game ($E580).
 ##
 ## What each one gives him -- $B4CD and the eight little routines after it --
-## is his own counters, not the table, and waits for the head-up display.
+## is his own counters and not the table's, so it is handed to whoever keeps
+## them.  A harness that keeps none says so by leaving `status` empty.
 func _pick_up(n: int) -> void:
 	var s: PackedByteArray = slots[n]
 	var what: int = s[F_TYPE]
+	if status != null:
+		status.life = slots[0][F_LIFE]
+		status.take(s[F_LIFE])              # $B4CD
+		power = status.power_level
+		second = status.second_blade
+		extra = status.extra_shot
 	if what == 0x02:
 		var f: int = s[F_LIFE]
 		var bit: int = pickup_bit[(f >> 4) & 0x0F]
@@ -793,7 +842,7 @@ func _hit(n: int, y: int, size: int) -> void:
 	if (s[F_MARK] & 0x20) != 0:
 		s[F_STUN] = 0x08                        # armour: it only rings
 		return
-	# $B688 -- the door opens instead of dying.
+	# $B688 -- a breakable block has no health to take off: one hit does it.
 	if s[F_TYPE] == 0x0C:
 		s[F_STATE] = 0x02
 		s[F_MARK] = 0x80
@@ -2402,6 +2451,300 @@ func mover(n: int, s: PackedByteArray, which: int) -> void:
 
 
 # --- The minds ---------------------------------------------------------
+
+
+## $8728 and $87B2 (bank 10) -- the two things a boss room holds.
+##
+## A boss room is an area of the seventh table, and there is one record in it
+## and nothing else.  Type $05 stands in the six rooms in the middle of a
+## stage and puts out the boss $50 + the room; type $06 stands in the four at
+## the end and puts out $56 + the stage.  Past their first state the two are
+## the same code, and both of them do the same three things: make the boss,
+## wait for the hero to be drawn, and then fill the meter.
+func _mind_05(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _call_05(s)
+		1: _hold_boss(s)
+		2: _fill_boss(n, s)
+
+
+func _mind_06(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _call_06(s)
+		1: _hold_boss(s)
+		2: _fill_boss(n, s)
+
+
+## $8731 -- the one in the middle of a stage, chosen by which room it is.
+func _call_05(s: PackedByteArray) -> void:
+	s[F_MARK] = 0x80                                   # $C9AB -> $FD86
+	var i: int = area
+	var b: PackedByteArray = slots[int(cfg_boss["slot"])]
+	b[F_TYPE] = int(cfg_boss["mid_first"]) + i
+	b[F_X] = int(cfg_boss["mid_x"][i])
+	b[F_Y] = int(cfg_boss["mid_y"][i])
+	b[F_KIND] = int(cfg_boss["mid_pic"][i])
+	boss_bar = int(cfg_boss["mid_life"][i])
+	boss_here = 1                                      # $4E
+	s[F_STATE] += 1                                    # $C966
+
+
+## $87BB -- the one at the end of a stage, chosen by which stage it is.  Only
+## the place and the meter come out of a table; the picture is one number for
+## all four of them.
+func _call_06(s: PackedByteArray) -> void:
+	s[F_MARK] = 0x80                                   # $C9AB -> $FD86
+	var i: int = lvl.stage
+	var b: PackedByteArray = slots[int(cfg_boss["slot"])]
+	b[F_KIND] = int(cfg_boss["end_pic"])
+	b[F_TYPE] = int(cfg_boss["end_first"]) + i
+	b[F_X] = int(cfg_boss["end_x"][i])
+	b[F_Y] = int(cfg_boss["end_y"][i])
+	boss_bar = int(cfg_boss["end_life"][i])
+	boss_here = 1
+	s[F_STATE] += 1
+
+
+## $875D -- nothing happens until the hero has a picture of his own, which is
+## to say until the level has finished opening and he is being drawn.
+func _hold_boss(s: PackedByteArray) -> void:
+	if slots[0][F_KIND] == 0:
+		return
+	playing = 4                                        # $27 -- out of play
+	s[F_STATE] += 1
+
+
+## $876A -- the meter, four every four pictures, with a sound each time; when
+## it is full the boss has the health it shows and the game is played again.
+func _fill_boss(n: int, s: PackedByteArray) -> void:
+	if (frame & (int(cfg_boss["bar_every"]) - 1)) != 0:
+		return
+	var b: PackedByteArray = slots[int(cfg_boss["slot"])]
+	b[F_LIFE] = (b[F_LIFE] + int(cfg_boss["bar_step"])) & 0xFF
+	if b[F_LIFE] != boss_bar:
+		return
+	playing = 3                                        # $27 -- played again
+	boss_here = 0
+	boss_bar = 0
+	boss_step = 0                                      # $5F
+	clear(n)                                           # $C810 -> $D6D4
+
+
+## $BDE9 and $BDBD (bank 11) -- the shell all ten bosses wear.
+##
+## The six in the middle of a stage keep three states of their own and the
+## four at the end keep six; past those the states are the same for all ten,
+## and they are the death.  A boss's own mind is not a state at all: it is
+## reached through the last of the states the shell keeps, and it drives
+## itself on a step of its own ($05CE) from there on.
+func _mind_boss(n: int, s: PackedByteArray) -> void:
+	var own: int = int(cfg_boss["mid_states"]) if s[F_TYPE] < int(
+			cfg_boss["end_first"]) else int(cfg_boss["end_states"])
+	var st: int = s[F_STATE]
+	if st >= own:
+		match st - own:
+			0: _die_shake_start(s)
+			1: _die_shake(s)
+			2: _die_rest(s)
+			3: _die_life(n, s)
+			4: _die_energy(s)
+			5: _die_done(n, s)
+		return
+	if s[F_TYPE] >= int(cfg_boss["end_first"]):
+		# $BDBD -- the four at the end are let go at once and keep their own
+		# six states; the shell only clears the step their box is read by.
+		boss_step = 0
+		bosses.turn(self, n, s)
+		return
+	# $BDFE and $BE0F -- the six in the middle stand still for a while first.
+	match st:
+		0:
+			if playing != 3:
+				return
+			s[F_MARK] = 0x01                           # $C99F -> $FD76
+			s[F_COUNT] = int(cfg_boss["wake_wait"])
+			s[F_STATE] += 1
+		1:
+			if playing != 3:
+				return
+			s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+			if s[F_COUNT] == 0:
+				s[F_STATE] += 1
+		2:
+			boss_step = 0                              # $BE1B
+			bosses.turn(self, n, s)
+
+
+## $87F7 -- the death begins.  The meter goes back up, the picture starts on
+## the burst, and the thing is shaken through seven places.
+func _die_shake_start(s: PackedByteArray) -> void:
+	boss_here = 1                                      # $4E
+	start_anim(s, 0x01)                                # $C83A
+	s[F_COUNT] = int(cfg_boss["die_shake"])
+	s[F_KEEP] = 0
+	s[F_STATE] += 1
+
+
+## $882D -- one shake every so many pictures, seven of them, and then on.
+func _die_shake(s: PackedByteArray) -> void:
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] != 0:
+		step_anim(s)                                   # $C837
+		return
+	s[F_COUNT] = int(cfg_boss["die_shake"])
+	start_anim(s, 0x01)
+	var off: Array = cfg_boss["shake"][s[F_KEEP]]
+	var x: int = (((s[F_XHI] << 8) | s[F_X]) + int(off[0])) & 0xFFFF
+	s[F_X] = x & 0xFF
+	s[F_XHI] = x >> 8
+	var y: int = (((s[F_YHI] << 8) | s[F_Y]) + int(off[1])) & 0xFFFF
+	s[F_Y] = y & 0xFF
+	s[F_YHI] = y >> 8
+	s[F_KEEP] += 1
+	if s[F_KEEP] == cfg_boss["shake"].size():
+		s[F_KEEP] = 0
+		s[F_STATE] += 1
+
+
+## $8871 -- the burst is over: the hero stops blinking, his health is given
+## back, and the boss is not drawn any more.
+func _die_rest(s: PackedByteArray) -> void:
+	slots[0][F_BITS] &= 0x7F
+	if status != null:
+		status.refill_life = int(cfg_boss["refill_life"])   # $2F
+	playing = 5                                        # $27 -- health back
+	s[F_KIND] = 0
+	s[F_KEEP] = int(cfg_boss["after_wait"])
+	s[F_STATE] += 1
+
+
+## $8895 -- wait out the health, then either the suit's energy (the last
+## stage) or an extra life (every other).
+func _die_life(n: int, s: PackedByteArray) -> void:
+	if playing == 5:
+		return
+	playing = 4
+	s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF
+	if s[F_KEEP] != 0:
+		return
+	if lvl.stage == 5:
+		if status != null:
+			status.refill_energy = int(cfg_boss["refill_energy"])   # $30
+		playing = 6
+		s[F_KEEP] = int(cfg_boss["after_wait"])
+		s[F_STATE] += 1
+		return
+	if status != null:
+		status.lives = (status.lives + 1) & 0xFF       # $9F
+	s[F_STATE] += 2
+
+
+## $88D8 -- and the same wait again after the energy.
+func _die_energy(s: PackedByteArray) -> void:
+	if playing == 6:
+		return
+	playing = 4
+	s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF
+	if s[F_KEEP] != 0:
+		return
+	s[F_STATE] += 1
+
+
+## $88EB -- the room is over.  What the cartridge does next is the whole game's
+## business ($18, $19, $1A) and belongs to the level's own flow; what the
+## table knows is that this area is finished and the stage goes on.
+func _die_done(n: int, s: PackedByteArray) -> void:
+	playing = 3
+	boss = 0                                           # $79
+	phase = 0                                          # $AD
+	boss_here = 0
+	live = 6                                           # $1A -- build again
+	clear(n)
+
+
+## $8A5D (bank 10) -- the block that can be knocked out of the background.
+##
+## It is not drawn and it is not solid: the wall the player sees and stands on
+## is the level's own map, and this is a hitbox sitting on one sixteen by
+## sixteen cell of it.  One hit and the cell is gone ($8AF0), a puff of smoke
+## is shown, and the bit it was given is set in `broken` so that the same cell
+## is not put back when the view brings it round again.
+##
+## Six states: nought arms it, one is the wait, two is the destruction, three
+## the puff, and four and five are what happens after the view has carried it
+## off the screen and back.
+func _mind_0c(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _arm_0c(s)
+		1: pass                                        # $8A96
+		2: _smash_0c(s)
+		3: _puff_0c(s)
+		4: _again_0c(n, s)
+		5: _park_0c(s)
+
+
+## $8A6C -- it is hittable, it stands at the middle of its cell rather than at
+## its left edge, and a cell already broken this visit is never armed at all.
+func _arm_0c(s: PackedByteArray) -> void:
+	s[F_MARK] = 0x01                                   # $C99F -> $FD76
+	var x: int = (((s[F_XHI] << 8) | s[F_X]) + 8) & 0xFFFF
+	s[F_X] = x & 0xFF
+	s[F_XHI] = x >> 8
+	if (broken & (1 << (s[F_LIFE] & 0x07))) == 0:
+		s[F_STATE] += 1                                # $C966
+		return
+	s[F_STATE] = 0x04
+	s[F_MARK] = 0x80                                   # $C9AB -> $FD86
+
+
+## $8A97 -- the destruction.
+func _smash_0c(s: PackedByteArray) -> void:
+	broken ^= 1 << (s[F_LIFE] & 0x07)                  # $3B
+	start_anim(s, 0x01)                                # $C83A
+	_open_cell(s)                                      # $8AF0
+	s[F_SELF] = 0x10
+	s[F_STATE] += 1
+
+
+## $8AB7 -- the smoke, for as long as the count lasts.
+func _puff_0c(s: PackedByteArray) -> void:
+	step_anim(s)                                       # $C837
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+	if s[F_SELF] != 0:
+		return
+	s[F_STATE] = 0x05
+	s[F_KIND] = 0x00
+
+
+## $8ACA -- the view has brought it back, so the cell is opened again.  Down a
+## level it waits until the cell is on the screen and then goes on waiting;
+## along one there is nothing to wait for and the place is given up.
+func _again_0c(n: int, s: PackedByteArray) -> void:
+	if not lvl.vertical:
+		_open_cell(s)
+		clear(n)                                       # $C810
+		return
+	if s[F_Y] >= 0xB8:
+		return
+	_open_cell(s)
+	s[F_STATE] += 1
+
+
+## $8AE2 -- off the foot of the screen, and it is ready to be opened again.
+func _park_0c(s: PackedByteArray) -> void:
+	if s[F_Y] >= 0xB8:
+		s[F_STATE] = 0x04
+
+
+## $8AF0 -- the cell itself: its left edge is eight to the left of where the
+## thing stands, and its top is where the thing stands.
+func _open_cell(s: PackedByteArray) -> void:
+	var sx: int = (s[F_X] - 8) & 0xFF
+	if lvl.vertical:
+		lvl.break_cell(sx, Pb2Level.map_row(_drawn_view(), s[F_Y]))
+	else:
+		lvl.break_cell(cam + sx, s[F_Y] - VIEW_TOP)
+
 
 
 ## $83EA -- a collectable.  It does nothing at all: on its first turn it says

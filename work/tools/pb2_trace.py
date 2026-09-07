@@ -288,12 +288,23 @@ def _trace(d, state, script, first, frames, during=()):
     seized = set()
     seen = {}
     culled = {}
+    # Which frame's copy of the table the sweep now running was reading.
+    #
+    # A step of the game is not a frame of the console: down here it can take
+    # two of them, and the count the emulator stamps a line with is the frame
+    # the console was showing when the line ran.  So the copy taken at $D34D
+    # and the sweep at $8134 that reads it can be stamped a frame apart, and a
+    # thing swept off the screen would then be told against the copy of the
+    # *next* step -- a copy in which it has already moved.  The log is written
+    # in the order it happened, so what settles it is the order: a sweep
+    # belongs to the last copy taken before it.
+    table_fr = None
     for ln in open(log):
         if ln.startswith('SAMPLE'):
             fr, pc, bank, what, val = ln[7:].strip().split(',')
             if pc == CULL_PC:
-                if bank == CULL_BANK:
-                    culled.setdefault(int(fr), []).append(int(val, 16))
+                if bank == CULL_BANK and table_fr is not None:
+                    culled.setdefault(table_fr, []).append(int(val, 16))
                 continue
             name, _addr, want = SEEN[pc]
             if bank != want:
@@ -303,6 +314,8 @@ def _trace(d, state, script, first, frames, during=()):
         if not ln.startswith('WATCH'):
             continue
         fr, pc, bank, addr, val = ln[6:].strip().split(',')
+        if pc in SHIFT_PC:
+            table_fr = int(fr)
         if int(addr, 16) in SEIZE and bank not in OWN_BANKS:
             seized.add(int(fr))
         changes.setdefault(int(fr), []).append((int(addr, 16), int(val, 16), pc))

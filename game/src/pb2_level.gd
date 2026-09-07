@@ -165,6 +165,36 @@ func _build(a: Dictionary) -> void:
 		tiles[i] = buf[i * 4]
 
 
+## Set when a cell has been knocked out of the map, so that whoever holds the
+## picture of it knows to look again.
+var map_dirty := false
+
+
+## $8AF0 -- knock one sixteen by sixteen cell out of the background.
+##
+## The cartridge does it in two halves, because on the console the map and the
+## thing the physics reads are two different stores: $DF21 opens the cell in
+## the class cache at $0680, and two queued writes blank the cell's four tiles
+## in the nametable.  Here they are one store -- the physics reads the tile
+## numbers straight -- so blanking the four tiles does both at once.
+##
+## `px` is the left of the cell and `py` its top, as $8AF3 and $8AF0 hand them
+## over.
+func break_cell(px: int, py: int) -> void:
+	var tx: int = (px >> 3) & ~1
+	var ty: int = (py >> 3) & ~1
+	for r in range(2):
+		for c in range(2):
+			var x: int = tx + c
+			var y: int = ty + r
+			if x < 0 or y < 0 or x >= width_tiles or y >= height_tiles:
+				continue
+			tiles[y * width_tiles + x] = 0x00
+			map_image.set_pixel(x, y, Color8(0x00, map_image.get_pixel(x, y).g8,
+					0, 255))
+	map_dirty = true
+
+
 ## Which line of the map a line of the screen shows, when the view slides down.
 ##
 ## The console keeps the level in a ring of sixteen rows of cells and finds the

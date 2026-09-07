@@ -42,6 +42,13 @@ static func sheet(game: String) -> ImageTexture:
 	return tex
 
 
+## One of the console's sixty-four colours, for a thing drawn outside the
+## picture -- a stand-in bar, and nothing the cartridge itself draws.
+static func colour(n: int) -> Color:
+	load_palette_table()
+	return nes_rgb[n & 0x3F]
+
+
 ## A 32-entry console palette, as a 32x1 texture.
 static func palette_texture(entries: PackedByteArray) -> ImageTexture:
 	load_palette_table()
