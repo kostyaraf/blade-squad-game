@@ -2721,6 +2721,18 @@ func _mind_0c(n: int, s: PackedByteArray) -> void:
 		5: _park_0c(s)
 
 
+## $CF1C, but only the blocks -- for the stand that judges what he throws.
+## There the whole table is told from the cartridge and nothing has a mind of
+## its own, yet a block knocked out of the wall opens the cell it sat on, and
+## a throw flies through the hole afterwards.  The block's own state is the
+## cartridge's; giving it its turn opens the cell on the very step the
+## cartridge opened it, and nothing else in the table is touched.
+func blocks_turn() -> void:
+	for n in range(FIRST_LIVE, SLOTS):
+		if slots[n][F_TYPE] == 0x0C:
+			_mind_0c(n, slots[n])
+
+
 ## $8A6C -- it is hittable, it stands at the middle of its cell rather than at
 ## its left edge, and a cell already broken this visit is never armed at all.
 func _arm_0c(s: PackedByteArray) -> void:

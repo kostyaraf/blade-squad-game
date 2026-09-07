@@ -606,16 +606,19 @@ func _run_weapon(path: String) -> void:
 	for f in cfg["frames"]:
 		var bad := PackedStringArray()
 		var wholes: Array = f["whole"]
-		for i in range(wholes.size()):
+		# A step with no table of its own still ran on the cartridge, and what
+		# he threw moved in it: it is taken blind -- nothing judged, nothing
+		# told -- so that the next table finds the throw where it should be.
+		for i in range(maxi(wholes.size(), 1)):
 			things.power = int(f["power"])
 			things.second = int(f["second"])
 			things.extra = int(f["lim"])
 			# $CF00 -- how long the button has been down, counted once every
 			# fourth picture and never past the blade's own ceiling.
 			p.step_charge(int(f["clocks"][i]))
-			var tbl: Array = wholes[i]
+			var tbl: Array = wholes[i] if i < wholes.size() else []
 			# $CF14 -- the cartridge's own answer for this picture.
-			if told:
+			if told and not tbl.is_empty():
 				for k in range(1, 4):
 					var s: PackedByteArray = things.slots[k]
 					var w: Array = tbl[k]
@@ -637,12 +640,12 @@ func _run_weapon(path: String) -> void:
 			# Judged, then told: a step that went wrong is reported once and
 			# does not go on to spoil every step after it, so every line put
 			# out is one step of the throw's flight and nothing else.
-			for n in range(Pb2Objects.SLOTS):
+			for n in range(Pb2Objects.SLOTS if not tbl.is_empty() else 0):
 				var s2: PackedByteArray = things.slots[n]
 				var w2: Array = tbl[n]
 				for fl in range(Pb2Objects.FIELDS):
 					s2[fl] = int(w2[fl])
-			told = true
+			told = told or not tbl.is_empty()
 			if i != 0:
 				continue
 			# $8E15 -- the step of the game, which runs in the first picture
@@ -678,6 +681,11 @@ func _run_weapon(path: String) -> void:
 				var h1: PackedByteArray = things.slots[0]
 				h1[Pb2Objects.F_Y] = int(f["aim"][0])
 				h1[Pb2Objects.F_X] = int(f["aim"][1])
+			# $CF1C -- the turn of the things, of which only the blocks are
+			# driven here: one knocked out of the wall opens the cell it sat
+			# on, and a throw that would have died on that cell flies on.  It
+			# goes before the throws move, where the cartridge has it.
+			things.blocks_turn()
 			# $8E26 -- what is already in the air moves first, and only then
 			# does $8E29 let go of the next one.  He is still where the table
 			# left him: $A945 does not move him until $8E2C, after both.

@@ -126,13 +126,26 @@ def cfg_for(rows):
     cfg = V.replay(rows)
     cfg['charge'] = rows[0]['held_b']
     frames = []
+    last = None
     for line, r in zip(cfg['frames'], rows[1:]):
+        per = [r['ticks'], r['turns'], r['seeds'], r['suits'], r['waters'],
+               r['helds'], r['draws'], r['cams']]
+        # A step the recording never wrote down.  $D34D puts the table where
+        # it can be read, and a frame in which it did not run leaves the step
+        # with no table at all -- but the step itself ran, and what he threw
+        # moved in it.  Nothing can be judged over such a step and nothing
+        # told, so the two counts are carried on by one and the rest kept as
+        # they were, and the engine takes the step blind.
+        if not r['whole'] and last is not None:
+            per = [[(last[0] + 1) & 0xFF], [(last[1] + 1) & 0xFF]] \
+                + [[v] for v in last[2:]]
+        last = [c[-1] for c in per] if per[0] else last
         frames.append(dict(line,
-                           whole=r['whole'], clocks=r['ticks'],
-                           turns=r['turns'], seeds=r['seeds'],
-                           suits=r['suits'], waters=r['waters'],
-                           helds=r['helds'], draws=r['draws'],
-                           cams=r['cams'],
+                           whole=r['whole'], clocks=per[0],
+                           turns=per[1], seeds=per[2],
+                           suits=per[3], waters=per[4],
+                           helds=per[5], draws=per[6],
+                           cams=per[7],
                            # His own fall speed as the sweep reads it, not as
                            # the table shows it: a throw aimed down rides him
                            # down, and between the writing down of the table
