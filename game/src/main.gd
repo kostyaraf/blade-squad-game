@@ -207,6 +207,78 @@ func _load(g: String, stage: int, area: int) -> void:
 		view_h = 224
 
 
+# --- the bar along the bottom ----------------------------------------
+
+## What the bar reads: the numbers the game keeps, each from the place the
+## cartridge keeps it.
+func _bar_feed() -> void:
+	bar.boss = world.boss
+	bar.stage = came
+	bar.area = world.area
+	bar.health_tanks = status.life_tanks
+	bar.suit_tanks = status.tanks
+	bar.lives = lives
+	bar.health = world.slots[0][Pb2Objects.F_LIFE]
+	bar.fuel = status.energy
+	bar.charge = hero.charge
+	bar.boss_life = world.slots[Pb2Objects.NOISE_SLOT][Pb2Objects.F_LIFE]
+	bar.suit = status.suit
+
+
+## The pieces and the numbers each of them is drawn from.
+func _bar_pieces() -> Dictionary:
+	return {
+		"stage_area": [bar.boss, bar.stage, bar.area],
+		"boss_bar": [bar.boss, bar.boss_life],
+		"score": [bar.score_hi, bar.score_lo],
+		"right_1": [bar.health_tanks],
+		"right_2": [bar.suit_tanks],
+		"right_3": [bar.lives],
+		"health_bar": [bar.health],
+		"suit_bar": [bar.fuel],
+		"charge_bar": [bar.charge],
+		"face": [bar.suit],
+	}
+
+
+func _bar_remember() -> void:
+	var now := _bar_pieces()
+	for name in now:
+		_bar_was[name] = now[name]
+
+
+## $D252, $D05D, $D30F and the ten other places that redraw one piece of the
+## bar when its number has moved.  The cartridge has a call at each of them;
+## here the numbers themselves are watched, which comes to the same thing --
+## a piece whose number has not moved is not drawn again.
+func _bar_step() -> void:
+	if bar == null or world == null:
+		return
+	_bar_feed()
+	var now := _bar_pieces()
+	for name in now:
+		if _bar_was.get(name) == now[name]:
+			continue
+		_bar_was[name] = now[name]
+		match name:
+			"stage_area": bar.stage_area()
+			"boss_bar":
+				if bar.boss != 0:
+					bar.boss_bar()
+			"score": bar.score()
+			"right_1": bar.number(int(bar.cfg["numbers"]["right_1"]["addr"]),
+					bar.health_tanks)
+			"right_2": bar.number(int(bar.cfg["numbers"]["right_2"]["addr"]),
+					bar.suit_tanks)
+			"right_3": bar.number(int(bar.cfg["numbers"]["right_3"]["addr"]),
+					bar.lives)
+			"health_bar": bar.health_bar()
+			"suit_bar": bar.suit_bar()
+			"charge_bar": bar.charge_bar()
+			"face": bar.face()
+	bar.flush()
+
+
 func _apply() -> void:
 	var m: ShaderMaterial = bg.material
 	var img: Image
@@ -233,6 +305,7 @@ func _apply() -> void:
 	m.set_shader_parameter("sheet_size", Nes.sheet(game).get_size())
 	m.set_shader_parameter("banks", PackedInt32Array(banks))
 	m.set_shader_parameter("sprites_on", false)
+	_bar_show(m)
 	if world != null:
 		# The hero's own bank and the sprite table are settled a picture at a
 		# time, so the last word on both is his, not the level's.
@@ -248,6 +321,7 @@ func _process(dt: float) -> void:
 	# The logic runs on the console's clock, not the monitor's.
 	for _i in range(clock.tick(dt)):
 		_step()
+	_bar_show(bg.material)
 	bg.material.set_shader_parameter("scroll", Vector2(scroll - origin))
 	if world != null:
 		_show()
@@ -261,6 +335,7 @@ func _step() -> void:
 		_walk_camera()
 		return
 	_step_pb2()
+	_bar_step()
 
 
 ## Э1 left this here so that scrolling and the clock could be watched working,
@@ -854,6 +929,12 @@ var lives := 2
 ## The counters that are his and not the level's -- $9A, $56, $A0, $9E and the
 ## blade's three.  It outlives an area and a life both.
 var status: Pb2Status = null
+## The bar along the bottom of the screen, and what it last drew.  The
+## cartridge builds it whole in four pictures when a level opens and afterwards
+## touches only the piece whose number moved; that is what `_bar_step` does.
+var bar: Pb2Hud = null
+var bar_tex: ImageTexture
+var _bar_was := {}
 ## $53 -- the stage in the game's own count.  A boss room is built out of the
 ## seventh table, so `level_pb2.stage` is six there and this is not: it holds
 ## the stage the hero walked in from, which is what the room reads.
@@ -896,6 +977,18 @@ func _start_play(st: int, ar: int) -> void:
 	# much at the start of a life ($E1B4).
 	world.slots[0][Pb2Objects.F_LIFE] = 0x10
 	world.slots[0][Pb2Objects.F_TYPE] = 0x01
+	# $CE11 -- the level's first turn is the bar's: four pictures, a quarter
+	# of it in each, and then it stands until a number moves.
+	bar = Pb2Hud.new()
+	_bar_was.clear()
+	_bar_feed()
+	while not bar.schedule():
+		bar.flush()
+	bar.flush()
+	if bar.boss != 0:
+		bar.boss_bar()
+		bar.flush()
+	_bar_remember()
 	# The area has just opened, so everything already on the screen comes out
 	# at once rather than waiting for the view to move ($E3F3 reads $2C).
 	world.fill = 1
@@ -1131,6 +1224,7 @@ func _run_demo(spec: String, st: int, ar: int) -> void:
 			pads[0].pressed = down & ~pads[0].held
 			pads[0].held = down
 			_step_pb2()
+			_bar_step()
 	for n in range(Pb2Objects.SLOTS):
 		var s: PackedByteArray = world.slots[n]
 		if s[Pb2Objects.F_KIND] != 0 or s[Pb2Objects.F_TYPE] != 0:
@@ -1148,32 +1242,23 @@ func _run_demo(spec: String, st: int, ar: int) -> void:
 	get_viewport().get_texture().get_image().save_png(parts[-1])
 
 
-## The smallest status bar that tells the player what the engine knows: how
-## much life he has left ($049A of his own place, sixteen at the full) and how
-## far the blade has charged ($54, up to the ceiling the blade's power sets).
-##
-## The cartridge draws its own bar out of the background, in the sixty-four
-## lines below the level, and that belongs to Э3.7.  This is a stand-in.
+## The pause menu, and nothing else: the bar itself is drawn where the
+## cartridge draws it, in the eight rows below the level (Э3.7).
 func _draw() -> void:
-	if world == null:
+	if world == null or status.menu == 0:
 		return
-	var life: int = world.slots[0][Pb2Objects.F_LIFE]
-	var cap: int = int(world.hold_cap[world.power])
-	_bar(Vector2(16, 184), 16, life, Color8(0xD8, 0x28, 0x00))
-	_bar(Vector2(16, 198), cap, hero.charge, Color8(0x3C, 0xBC, 0xFC))
-	# The suit's own bar, and beside it which suit it belongs to.  $D5C1
-	# draws a little portrait instead, and that waits for Э3.7.
-	var c: Array = status.palette()
-	var tint := Nes.colour(int(c[1]))
-	_bar(Vector2(16, 212), 16, status.energy, tint)
-	for i in range(status.tanks):
-		draw_rect(Rect2(Vector2(126 + i * 5, 212), Vector2(4, 8)), tint)
-	if status.menu != 0:
-		draw_rect(Rect2(Vector2(14, 210), Vector2(160, 12)),
-				Color8(0xFC, 0xFC, 0xFC), false)
+	draw_rect(Rect2(Vector2(14, 210), Vector2(160, 12)),
+			Color8(0xFC, 0xFC, 0xFC), false)
 
 
-func _bar(at: Vector2, cells: int, on: int, tint: Color) -> void:
-	for i in range(cells):
-		var box := Rect2(at + Vector2(i * 7, 0), Vector2(6, 8))
-		draw_rect(box, tint if i < on else Color8(0x30, 0x30, 0x30))
+
+## Hand the bar to the shader: its own little map of eight rows, and the four
+## thousand-byte banks the interrupt draws it out of.
+func _bar_show(m: ShaderMaterial) -> void:
+	if bar == null:
+		m.set_shader_parameter("bar_on", false)
+		return
+	bar_tex = ImageTexture.create_from_image(bar.bar_image())
+	m.set_shader_parameter("bar", bar_tex)
+	m.set_shader_parameter("bar_banks", PackedInt32Array(bar.bar_banks()))
+	m.set_shader_parameter("bar_on", true)

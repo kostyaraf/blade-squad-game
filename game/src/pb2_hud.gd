@@ -336,3 +336,40 @@ func _fold(a: int) -> int:
 		2: return v & 0x3FF
 		3: return 0x400 | (v & 0x3FF)
 	return v & 0x7FF
+
+
+# --- and the eight rows the picture unit is told to show --------------
+
+## The bar as a map the shader can read: one pixel a cell, red the tile and
+## green which of the four palettes it is drawn in.
+##
+## The interrupt ($E640) hands the bottom of the screen to $2680 with the
+## scroll at nought, so the eight rows below the level are the eight rows of
+## the name table that begin there, and their colours are the four squares of
+## its own attribute table.
+func bar_image() -> Image:
+	var img := Image.create(32, 8, false, Image.FORMAT_RGBA8)
+	var base: int = int(cfg["split"]["addr"])
+	# $23C0 of whichever name table it is: the last sixty-four bytes.
+	var attr: int = (base & 0x2C00) | 0x3C0
+	var top: int = (base & 0x3FF) >> 5
+	for row in range(8):
+		for col in range(32):
+			var r: int = top + row
+			var tile: int = screen[_fold(base + row * 32 + col)]
+			var b: int = screen[_fold(attr + (r >> 2) * 8 + (col >> 2))]
+			var pal: int = (b >> (((r & 2) << 1) | (col & 2))) & 3
+			img.set_pixel(col, row, Color8(tile, pal, 0, 255))
+	return img
+
+
+## The four thousand-byte banks the bar is drawn out of.  The interrupt hands
+## the cartridge's tile switch six numbers: the first two are two thousand
+## bytes each and the rest one, and which half of the tile memory the
+## background comes out of is the fifth bit of what it puts in $2000.
+func bar_banks() -> Array:
+	var r: Array = cfg["split"]["banks"]
+	var low := [int(r[0]) & 0xFE, (int(r[0]) & 0xFE) + 1,
+			int(r[1]) & 0xFE, (int(r[1]) & 0xFE) + 1]
+	var high := [int(r[2]), int(r[3]), int(r[4]), int(r[5])]
+	return high if (int(cfg["split"]["ctrl"]) & 0x10) != 0 else low

@@ -30,6 +30,13 @@ uniform float view_top = 0.0;      // the lines the level owns
 uniform float view_bottom = 240.0;
 uniform bool sprites_on = false;
 
+// Below the level is the status bar, which the console shows by handing the
+// picture unit a different address in the middle of the frame.  It is its own
+// little map -- thirty-two by eight -- drawn out of its own four banks.
+uniform sampler2D bar : filter_nearest;        // R = tile, G = palette
+uniform bool bar_on = false;
+uniform int bar_banks[4];
+
 int tile_colour(int bank, int index, int px, int py) {
     int idx = bank * 64 + index;
     vec2 sp = vec2(float(idx % int(sheet_tiles_w)) * 8.0 + float(px),
@@ -45,6 +52,18 @@ void fragment() {
     int bg_c = 0;
     if (outside) {
         COLOR = vec4(0.0, 0.0, 0.0, 1.0);
+        if (bar_on && FRAGCOORD.y >= view_bottom) {
+            ivec2 c = ivec2(int(FRAGCOORD.x) / 8,
+                            (int(FRAGCOORD.y) - int(view_bottom)) / 8);
+            if (c.y < 8) {
+                vec4 m = texelFetch(bar, c, 0);
+                int tile = int(m.r * 255.0 + 0.5);
+                int pal = int(m.g * 255.0 + 0.5);
+                int cc = tile_colour(bar_banks[tile / 64], tile % 64,
+                        int(FRAGCOORD.x) % 8, (int(FRAGCOORD.y)) % 8);
+                COLOR = texelFetch(palette, ivec2(cc == 0 ? 0 : pal * 4 + cc, 0), 0);
+            }
+        }
     } else if (cell.x < 0.0 || cell.y < 0.0 || cell.x >= map_size.x || cell.y >= map_size.y) {
         COLOR = texelFetch(palette, ivec2(0, 0), 0);   // outside the level: backdrop
     } else {

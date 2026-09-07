@@ -15,6 +15,57 @@ from common import ROM_PB2, outdir, write_json                   # noqa: E402
 BANK = 0x2000
 
 
+def read_split(img):
+    """The interrupt's own routine that hands the screen to the bar.
+
+    It is not looked up by hand: the routines are read as they run -- a very
+    small machine that knows how to load a register and how to store it -- and
+    the one that writes an address into $2006 twice is the bar's.  What comes
+    out of it is that address, the byte it puts in $2000, and the six numbers
+    it hands the cartridge's tile switch ($8000/$8001).
+    """
+    for i in range(len(img) - 10):
+        if img[i:i + 2] != bytes((0xA9, 0x26)):
+            continue
+        a = x = y = 0
+        addr = []
+        ctrl = None
+        regs = {}
+        sel = 0
+        j, ok = i, True
+        while j < len(img) and ok:
+            op = img[j]
+            if op == 0xA9:                     # LDA #imm
+                a, j = img[j + 1], j + 2
+            elif op == 0xA2:                   # LDX #imm
+                x, j = img[j + 1], j + 2
+            elif op == 0xA0:                   # LDY #imm
+                y, j = img[j + 1], j + 2
+            elif op == 0xC8:                   # INY
+                y, j = (y + 1) & 0xFF, j + 1
+            elif op in (0x8D, 0x8E, 0x8C):     # STA/STX/STY abs
+                v = {0x8D: a, 0x8E: x, 0x8C: y}[op]
+                t = img[j + 1] | (img[j + 2] << 8)
+                if t == 0x2006:
+                    addr.append(v)
+                elif t == 0x2000:
+                    ctrl = v
+                elif t == 0x8000:
+                    sel = v
+                elif t == 0x8001:
+                    regs[sel & 7] = v
+                j += 3
+            elif op == 0x4C:                   # JMP -- the routine is over
+                break
+            else:
+                ok = False
+        if not ok or ctrl is None or len(addr) != 2:
+            continue
+        return dict(addr=(addr[0] << 8) | addr[1], ctrl=ctrl,
+                    banks=[regs[k] for k in sorted(regs)])
+    raise SystemExit('no split routine found')
+
+
 def export():
     rom = open(ROM_PB2, 'rb').read()
     # $C000..$DFFF is bank fourteen, and it never moves.
@@ -122,6 +173,15 @@ def export():
     face_ptr = [word(0xD619 + i * 2) for i in range(5)]
     faces = {'%04X' % p: at(p, 9) for p in sorted(set(face_ptr))}
 
+    # --- where the picture unit is told to show it -----------------------
+    # The level owns the top of the screen and the bar the bottom, and the
+    # cartridge changes from one to the other in the middle of the picture,
+    # on the counter the cartridge keeps ($E640, the interrupt).  Whichever of
+    # its little routines writes an address into $2006 is the one that begins
+    # the bar; it also says which thousand bytes of tiles the bar is drawn
+    # from, and which way round the name tables are.
+    split = read_split(rom[16 + 15 * BANK: 16 + 16 * BANK])
+
     # --- the schedule ($D650) --------------------------------------------
     # Four turns, one a frame, counted by $1B; the last of them puts $1B back
     # to nought and lets the level's own count ($1A) move on.
@@ -140,6 +200,7 @@ def export():
         face_index=['%04X' % p for p in face_ptr],
         faces=faces,
         schedule=['%04X' % p for p in schedule],
+        split=split,
     )
     d = outdir('pb2')
     size = write_json(os.path.join(d, 'hud.json'), out)
