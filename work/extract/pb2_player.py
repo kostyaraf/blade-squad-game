@@ -26,6 +26,28 @@ def s16(v):
     return v - 0x10000 if v & 0x8000 else v
 
 
+def inline(img, addr, base=0x8000):
+    """A limit and a step out of the four bytes after a JSR $B23A / $B294.
+
+    $B139 reads them high byte first: limit high, limit low, step high, step
+    low.  Every place in the hero's code that wants "walk this number towards
+    that one" writes them there, so this is how they are read back.
+    """
+    o = addr - base
+    return [s16(img[o] * 256 + img[o + 1]), s16(img[o + 2] * 256 + img[o + 3])]
+
+
+def record(img, addr, base=0x8000):
+    """The same pair out of a table, where it is kept low byte first.
+
+    $9BE0 and $9C89 copy four bytes down into $02..$05, so the record reads
+    limit low, limit high, step low, step high -- the other way round from the
+    bytes written after a JSR.
+    """
+    o = addr - base
+    return [s16(img[o + 1] * 256 + img[o]), s16(img[o + 3] * 256 + img[o + 2])]
+
+
 def export():
     rom = open(ROM_PB2, 'rb').read()
     b8, b9 = bank(rom, 8), bank(rom, 9)
@@ -157,6 +179,24 @@ def export():
               s16(a9(0xB48B)[0] * 256 + a9(0xB48C)[0]),
               s16(a9(0xB491)[0] * 256 + a9(0xB492)[0]),
               s16(a9(0xB49D)[0] * 256 + a9(0xB49E)[0])],
+        # --- suit three, which flies ($9B0A) -------------------------
+        # $9CA7: six ways to push him along, $9CBF: eight to push him up or
+        # down.  Which one is picked is the buttons and which way he is
+        # already going; the record is a limit and a step towards it.
+        fly_along=[record(b8, 0x9CA7 + k * 4) for k in range(6)],
+        fly_down=[record(b8, 0x9CBF + k * 4) for k in range(8)],
+        # $9C99: with nothing held he sinks by this much a frame
+        fly_sink=a8(0x9C9A)[0],
+        # $9C79: and never falls faster than this
+        fly_fall_max=a8(0x9C7A)[0] * 256,
+        # $9B9B: the engine is heard every this many steps
+        fly_beat=a8(0x9B9C)[0],
+        # --- suit two, which swims ($9CEB) ---------------------------
+        # $9D26 and $9D35 along, $9D55/$9D5F towards a stop, $9D69 up and
+        # $9D73 down.
+        swim_along=[inline(b8, 0x9D29), inline(b8, 0x9D38)],
+        swim_slow=[inline(b8, 0x9D58), inline(b8, 0x9D62)],
+        swim_vert=[inline(b8, 0x9D6C), inline(b8, 0x9D76)],
         # $B462: what he sinks into swallows him a fraction of a pixel a frame
         sink=s16(a9(0xB465)[0] * 256 + a9(0xB466)[0]),
         drown_y=a9(0xB46B)[0],

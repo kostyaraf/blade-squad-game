@@ -128,6 +128,9 @@ func _run_replay(path: String) -> void:
 	for f in cfg["frames"]:
 		p.solids = f["solids"]
 		p.held = int(f["hold"])
+		# $9A -- which suit he has on.  The recording says it; putting it on is
+		# the pause menu's business and not this hero's.
+		p.suit = int(f["suit"])
 		p.push_x = int(f["push"][0])
 		p.push_y = int(f["push"][1])
 		# One step of the game slides the view once, moves him once and decides

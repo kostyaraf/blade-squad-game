@@ -238,7 +238,7 @@ def replay(rows):
         sub=start['sub'],
         pose=start['pose'], face_left=bool(start['face'] & 0x40),
         fall=start['fall'], tick=start['tick'],
-        frames=[dict(pad=r['pad'], hit=r['hit'],
+        frames=[dict(pad=r['pad'], hit=r['hit'], suit=r['wear'],
                      shots=r['shots'], lim=r['lim'],
                      solids=r['solids'] or [], hold=r['hold'] or 0,
                      push=[r['push'][0] or 0, r['push'][1] or 0],
@@ -270,11 +270,11 @@ def ordinary(rows):
 SETTLE = 8
 
 
-def check(name, script, stage, area, tmp, spot=None):
+def check(name, script, stage, area, tmp, spot=None, pokes=()):
     """Play one script on the cartridge and in the engine.  Returns the frames
     compared, or a description of the first frame that disagreed."""
     rows = logic_frames(ordinary(pb2_trace.trace(
-        script, FRAMES, stage=stage, area=area, spot=spot)))
+        script, FRAMES, stage=stage, area=area, spot=spot, pokes=pokes)))
     # The recording stops at a frame, not at a step, and the step the last frame
     # was in the middle of has only half happened in it -- the game's own count
     # already moved on while the hero had not.  That half a step is thrown away.
@@ -319,6 +319,7 @@ def main():
     n_random = 0
     targets = [(0, 0)]
     seed = 7
+    suits = [0]
     for a in sys.argv[1:]:
         if a.startswith('--random='):
             n_random = int(a.split('=')[1])
@@ -328,38 +329,44 @@ def main():
             targets = areas_from_index()
         elif a == '--flat-areas':
             targets = areas_from_index(flat_only=True)
+        elif a.startswith('--suits='):
+            suits = [int(x) for x in a.split('=')[1].split(',')]
         elif a.startswith('--areas='):
             targets = [tuple(int(x) for x in p.split(':'))
                        for p in a.split('=')[1].split(',')]
     tmp = pb2_trace.P.scratch('verify')
     ran = bad = covered = 0
-    for stage, area in targets:
-        scripts = list(SCRIPTS) if targets == [(0, 0)] else []
-        scripts += random_scripts(n_random, seed + 31 * (stage * 16 + area))
-        # The middle of the screen is not good enough on its own: in half the
-        # areas it is under a spike or beside something that wakes and hits
-        # him, and the area would be thrown out although it plays perfectly
-        # well two steps to the left.  `settled_spot` walks the spots in turn
-        # and keeps the first that holds -- the same one the other acceptances
-        # use, so they all judge the same areas.
-        spot = None if targets == [(0, 0)] else settled_spot(stage, area)
-        if targets != [(0, 0)] and spot is None:
-            print('%d:%-2d not ordinary play' % (stage, area))
-            continue
-        for name, script in scripts:
-            if args and name not in args:
+    for suit in suits:
+        # A suit is put on behind the game's back: $9A says which and $56 that
+        # it is owned, because $D259 refuses a suit that was never found.
+        pokes = () if suit == 0 else ((0x9A, suit), (0x56, 0x0F))
+        for stage, area in targets:
+            scripts = list(SCRIPTS) if targets == [(0, 0)] else []
+            scripts += random_scripts(n_random, seed + 31 * (stage * 16 + area))
+            # The middle of the screen is not good enough on its own: in half
+            # the areas it is under a spike or beside something that wakes and
+            # hits him, and the area would be thrown out although it plays
+            # perfectly well two steps to the left.  `settled_spot` walks the
+            # spots in turn and keeps the first that holds -- the same one the
+            # other acceptances use, so they all judge the same areas.
+            spot = None if targets == [(0, 0)] else settled_spot(stage, area)
+            if targets != [(0, 0)] and spot is None:
+                print('%d:%-2d not ordinary play' % (stage, area))
                 continue
-            ran += 1
-            n, diff = check(name, script, stage, area, tmp, spot)
-            label = '%d:%-2d %-14s' % (stage, area, name)
-            if diff is None:
-                covered += n
-                print('%s ok   %d frames' % (label, n))
-            else:
-                bad += 1
-                print('%s DIFF at frame %d' % (label, diff[0]))
-                show(diff[1], diff[2])
-            sys.stdout.flush()
+            for name, script in scripts:
+                if args and name not in args:
+                    continue
+                ran += 1
+                n, diff = check(name, script, stage, area, tmp, spot, pokes)
+                label = 'suit%d %d:%-2d %-14s' % (suit, stage, area, name)
+                if diff is None:
+                    covered += n
+                    print('%s ok   %d frames' % (label, n))
+                else:
+                    bad += 1
+                    print('%s DIFF at frame %d' % (label, diff[0]))
+                    show(diff[1], diff[2])
+                sys.stdout.flush()
     pb2_trace.P.sweep(tmp)
     print('%d of %d scripts differ, %d frames matched' % (bad, ran, covered))
     return 1 if bad else 0

@@ -20,6 +20,8 @@ const SUB_CROUCH := 5
 const SUB_SLIDE := 7
 const SUB_AIR := 8
 const SUB_LANDED := 9
+const SUB_FLY := 12
+const SUB_SWIM := 14
 const SUB_LADDER := 16
 const SUB_LADDER_ON := 17
 const SUB_LADDER_OFF := 18
@@ -155,6 +157,8 @@ func step(buttons: int, pressed: int, camera: int,
 		SUB_CROUCH: _crouch()
 		SUB_SLIDE: _slide()
 		SUB_LANDED: _landed()
+		SUB_FLY: _fly()
+		SUB_SWIM: _paddle()
 		SUB_LADDER: _ladder()
 		SUB_LADDER_ON: _ladder_on()
 		SUB_LADDER_OFF: _ladder_off()
@@ -224,6 +228,8 @@ func _air() -> void:
 		x += 0x100
 	_gravity()
 	if dy < 0:
+		if _suit_air(true):
+			return
 		if _ceiling_hit(3):
 			vy = 0
 			y &= ~0xFF                     # $92BD: the fraction is dropped
@@ -234,6 +240,8 @@ func _air() -> void:
 		_land()
 		return
 	else:
+		if _suit_air(false):
+			return
 		_set_pose(POSE_RISE if dy < 2 * 256 else POSE_FALL)
 	# $93B9: up, in mid air, with a ladder level with his chest -- he catches
 	# hold of it where he is, and the movement he had begun is never made.
@@ -357,6 +365,306 @@ func _landed() -> void:
 	fall = (fall & ~0xFF) | ((fall - 1) & 0xFF)
 	if (fall & 0xFF) == 0:
 		_crouch_start()
+
+
+# --------------------------------------------------------------- the suits
+#
+# Three of the four Power Suits have a way of being in the air that is not his
+# own: two swims, three flies, one takes hold of walls.  The air step asks for
+# them at $927A (going up) and $9315 (coming down), and what they turn into is
+# a handler number of its own, dispatched from the same table at $8E66.
+
+## $927A and $9315 -- what the suit he has on does in mid air.
+##
+## True when it has taken the frame over: either he has gone into a state of
+## its own, or there was ground close under him after all and he was simply
+## moved down onto it and left there ($941F).
+func _suit_air(rising: bool) -> bool:
+	if state & 0x80:
+		return false                    # $9271 and $9306: not mid swing
+	if (y >> 8) < 0x28:
+		return false                    # $9273 and $930E: not near the top
+	if suit == 1 and (pad & A):
+		# $927F and $931A: suit one reaches for the wall.  Not built yet, so
+		# he falls the ordinary way until it is.
+		return false
+	if rising or (scale & 0x40):
+		# $929E and $9348: swimming, and only in water
+		if suit != 2 or not (scale & 0x40):
+			return false
+	elif scale != 0:
+		return false                    # $9346: mud is nobody's suit
+	elif (dy >> 8) == 0 or suit != 3:
+		return false                    # $935E: suit three, once he is falling
+	else:
+		# $9369: unless there is ground right under him, he takes off
+		if _floor_solid(0x0D):
+			_move_y()                   # $941F
+			return true
+		_shove_side()
+		_shove_down()
+		# $9AF6
+		fall &= ~0xFFFF
+		_anim_start(6)
+		state = 0x01
+		sub = SUB_FLY
+		return true
+	# $92A9 and $9351: into the water, unless there is ground right under him
+	if _floor_solid(0x0D):
+		_move_y()
+		return true
+	_shove_side()
+	_shove_down()
+	# $9CDF
+	_anim_start(10)
+	state = 0x01
+	sub = SUB_SWIM
+	return true
+
+
+## $9E4D -- before he changes into something wider he is pushed out of a wall.
+##
+## The map first, for both sides of him, and then the things standing in the
+## level; the map moves him to the near line of the cell he is caught in, a
+## thing to its own edge.
+func _shove_side() -> void:
+	var px: int = x >> 8
+	var head: int = ((y >> 8) - 0x10) & 0xFF
+	if _class_byte(px + 5, head) & 0x80:
+		x += int(cfg["snap_right"][_grid_x((px + 5) & 0xFF)]) << 8
+		return
+	if _class_byte(px - 6, head) & 0x80:
+		x += int(cfg["snap_left"][_grid_x((px - 6) & 0xFF)]) << 8
+		return
+	var n: int = _object_at(px + 5, head)
+	if n >= 0:
+		x += _byte(int(solids[n][0]) - (px + 5)) << 8
+		return
+	n = _object_at(px - 6, head)
+	if n >= 0:
+		x += _byte(int(solids[n][1]) - (px - 6)) << 8
+
+
+## $9E8C -- and out of a ceiling, the same way.
+func _shove_down() -> void:
+	var px: int = x >> 8
+	var head: int = ((y >> 8) - 0x1C) & 0xFF
+	if (_class_byte(px + 5, head) & 0x80) or (_class_byte(px - 6, head) & 0x80):
+		y += int(cfg["snap_stand"][_grid_y(head)]) << 8
+		return
+	var n: int = _object_at(px + 5, head)
+	if n < 0:
+		n = _object_at(px - 6, head)
+	if n >= 0:
+		y += _byte(int(solids[n][3]) - head) << 8
+
+
+## $9B24 and $9D9F -- his feet are set on what stopped them, and he stands up.
+func _settle(kind: int) -> void:
+	var px: int = y >> 8
+	if kind == 0x01:
+		px += int(cfg["snap_down"][_grid_y(px)])
+	elif kind == 0x80 and floor_obj < solids.size():
+		px = int(solids[floor_obj][2]) - 1
+	y = px << 8
+	vy = 0                              # $B2FA
+	_stand()
+
+
+# --------------------------------------------------------- three, which flies
+
+## $9B0A -- flying.
+##
+## A is the engine: held, it holds him up, and with left or right it drives him
+## along.  Let go, he sinks eight two-hundred-and-fifty-sixths of a pixel a
+## frame more each frame.  Anything under his feet ends it.
+func _fly() -> void:
+	_carry(0x2B)
+	# $9B0F: the flying body is wide, and it is the whole of it that lands
+	if _floor_solid(0x17):
+		_settle(floor_kind)
+		return
+	if suit != 3 or scale != 0:
+		_step_off()                     # $9B36 and $9B3E
+		return
+	if not (state & 0x80):
+		_fly_face()
+		# $9B70: still, forwards, or backwards
+		var id: int = 6
+		var hi: int = (vx >> 8) & 0xFF
+		if hi != 0x00 and hi != 0xFF:
+			id = 7 if (vx < 0) == face_left else 8
+		_anim_step(id)
+	_a1c2()
+	# $9B95: the engine is heard every twentieth step
+	var beat: int = ((fall >> 8) & 0xFF) + 1
+	if beat >= int(cfg["fly_beat"]):
+		beat = 0
+	fall = (fall & ~0xFF00) | ((beat & 0xFF) << 8)
+	_fly_along()
+	body_x = 0x2A
+	_move_x(body_x)
+	_fly_down()
+	# $9C6B: however hard he is pushed he never drops faster than this
+	if vy >= int(cfg["fly_fall_max"]):
+		vy = int(cfg["fly_fall_max"])
+	dy += vy
+	_apply_vertical(0x15)
+
+
+## $9B46 -- which way he is looking.
+##
+## With B held he simply looks the way he is asked to; without it the direction
+## keys only turn him the way he is already going, so that a turn in the air
+## costs him the speed first.
+func _fly_face() -> void:
+	if pad & B:
+		if pad & RIGHT:
+			face_left = false
+		elif pad & LEFT:
+			face_left = true
+		return
+	if pad & RIGHT:
+		if vx >= 0:
+			face_left = false
+	elif pad & LEFT:
+		if vx < 0:
+			face_left = true
+
+
+## $9BA9 -- the push along, out of the six records at $9CA7.
+func _fly_along() -> void:
+	var k: int = -1
+	if pad & A:
+		if pad & RIGHT:
+			k = 0 if vx >= 0 else 4
+		elif pad & LEFT:
+			k = 1 if vx < 0 else 5
+	if k < 0:
+		# $9BB6: with nothing asked of him he is only trimmed towards a drift
+		if vx < 0:
+			k = 3
+		elif vx != 0:
+			k = 2
+		else:
+			return                      # $9BC0: standing still, nothing to do
+	var rec: Array = cfg["fly_along"][k]
+	vx = _toward(vx, int(rec[0]), int(rec[1]))
+	dx += vx
+
+
+## $9BF4 -- the push up or down, out of the eight records at $9CBF.
+##
+## Two of the paths take the record and the sinking both; the hovering ones
+## take the record alone, and holding nothing takes only the sinking.
+func _fly_down() -> void:
+	var k: int = -1
+	var sink: bool = false
+	if not (pad & A):
+		if pad & DOWN:
+			k = 0                       # $9BFF
+			sink = true
+		else:
+			sink = true                 # $9C68
+	elif pad & B:
+		k = _fly_hover()                # $9C11
+	elif pad & UP:
+		k = 6 if (vy >= 0 and (vy >> 8) >= 2) else 7
+		sink = true                     # $9C4E
+	elif pad & DOWN:
+		k = 5                           # $9C4A
+		sink = true
+	else:
+		k = _fly_hover()
+	if k >= 0:
+		var rec: Array = cfg["fly_down"][k]
+		vy = _toward(vy, int(rec[0]), int(rec[1]))
+	if sink:
+		vy += int(cfg["fly_sink"])      # $9C95
+
+
+## $9C11 -- hovering: the record that answers whichever way he is drifting.
+##
+## Drifting slowly, one way or the other, he is only nudged on every eighth
+## frame -- which is what makes him bob.
+func _fly_hover() -> int:
+	var hi: int = (vy >> 8) & 0xFF
+	if vy >= 0:
+		if hi != 0:
+			return 1
+		fall = (fall & ~0xFF) | ((fall + 1) & 0xFF)
+		return 2 if (fall & 0x0F) == 8 else -1
+	if hi != 0xFF:
+		return 3
+	fall = (fall & ~0xFF) | ((fall + 1) & 0xFF)
+	return 4 if (fall & 0x0F) == 8 else -1
+
+
+# ---------------------------------------------------------- two, which swims
+
+## $9CEB -- swimming.
+func _paddle() -> void:
+	_carry(0x2B)
+	if suit != 2:
+		_step_off()                     # $9CF6
+		return
+	if not (scale & 0x40):
+		_jump()                         # $9CFE: out of the water and up
+		return
+	_a1c2()
+	if state & 0x80:
+		body_x = 1
+		_friction()                     # $9D09
+		_paddle_vert(-1)
+		return
+	if pad & RIGHT:
+		face_left = false
+		_paddle_along(0)
+	elif pad & LEFT:
+		face_left = true
+		_paddle_along(1)
+	else:
+		body_x = 1
+		_friction()                     # $9D19
+	# $9D44
+	if pad & UP:
+		_paddle_vert(0)
+	elif pad & DOWN:
+		_paddle_vert(1)
+	else:
+		_paddle_vert(-1)
+
+
+func _paddle_along(k: int) -> void:
+	var rec: Array = cfg["swim_along"][k]
+	vx = _toward(vx, int(rec[0]), int(rec[1]))
+	dx += vx
+	body_x = 0x2A
+	_move_x(body_x)
+
+
+## $9D50 -- up, down, or towards a stop, and then the movement itself.
+func _paddle_vert(way: int) -> void:
+	var rec: Array
+	if way == 0:
+		rec = cfg["swim_vert"][0]
+	elif way == 1:
+		rec = cfg["swim_vert"][1]
+	else:
+		rec = cfg["swim_slow"][0 if vy >= 0 else 1]
+	vy = _toward(vy, int(rec[0]), int(rec[1]))
+	dy += vy                            # $B21A
+	if dy < 0:
+		_apply_vertical(0x15)           # $9D82
+	elif _floor_hit(8):
+		_settle(floor_kind)             # $9D8F
+		return
+	else:
+		_move_y()                       # $9DAB
+	# $9DAE: the picture is turned over whatever the water says
+	if not (state & 0x80):
+		var hi: int = (vx >> 8) & 0xFF
+		_anim_step(10 if (hi == 0x00 or hi == 0xFF) else 9, false)
 
 
 # ------------------------------------------------------------- the pieces
@@ -616,8 +924,10 @@ func _slide_start() -> void:
 	_set_pose(POSE_SLIDE)
 	state = 0x10
 	sub = SUB_SLIDE
-	fall = int(cfg["slide_distance"][0])
-	vx = int(cfg["slide_start"][1 if face_left else 0])
+	# $8FFF: a suit slides further and faster, whichever suit it is
+	var suited: int = 0 if suit == 0 else 1
+	fall = int(cfg["slide_distance"][suited])
+	vx = int(cfg["slide_start"][suited * 2 + (1 if face_left else 0)])
 
 
 ## $A1C2 -- keep an attack going, or start one when B is pressed.
@@ -919,6 +1229,11 @@ func _move_y() -> void:
 	y += _scaled(dy)
 
 
+static func _byte(v: int) -> int:
+	v &= 0xFF
+	return v - 0x100 if v >= 0x80 else v
+
+
 func _desc(i: int) -> Array:
 	return body[body_index[i]]
 
@@ -1156,6 +1471,13 @@ func _feel(ox: int, oy: int) -> int:
 ## cells are the map's and the map has slid past him, so the camera goes in too.
 func _grid_y(v: int) -> int:
 	if lvl.vertical:
+		v += cam & 0xFF
+	return v & 0x0F
+
+
+## $AFCC -- where in its sixteen pixel cell a column of the screen falls.
+func _grid_x(v: int) -> int:
+	if not lvl.vertical:
 		v += cam & 0xFF
 	return v & 0x0F
 
