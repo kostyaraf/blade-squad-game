@@ -35,6 +35,68 @@ import verify_player as V                                    # noqa: E402
 # he has left the picture and stops running the level at all ($D0BB sees $4E
 # set and returns before the view is ever driven).  $C0 is as far down as it
 # takes him and still plays.
+
+# --- the boss rooms -------------------------------------------------------
+#
+# The ten of them are a table of their own, the last one the extractor found,
+# and `V.settled_spot` throws every one of them out: it asks that the game be
+# in play mode ($27 = 3) for the whole minute it watches, and a boss room
+# begins with the meter filling ($27 = 4).  So the same question is asked here
+# with the looser answer the cartridge itself uses -- $8003 runs the level's
+# frame for anything under five -- and the hero is allowed to be hurt, which
+# in a boss room is the point.
+
+
+def boss_stage():
+    """Which table holds the boss rooms: the last one, and nothing walks it."""
+    path = os.path.join(ROOT, 'game', 'data', 'pb2', 'levels', 'index.json')
+    return json.load(open(path))['stages'][-1]['stage']
+
+
+# A room opened behind the game's back does not put the hero in it: five of
+# the six rooms in the middle hand slot zero over already dead ($049A nought,
+# $058C at $22 -- the fall of a man who has lost), and all four at the end
+# leave the game in mode 2, where the level runs but the hero is not driven.
+# Both are the same thing: the cartridge only ever walks into these rooms out
+# of the area before them, and the walking-on is what sets the hero up.
+#
+# So the four bytes that walk-on would have written are written here instead --
+# the mode, his health, his stance and his mark -- three frames before the run
+# takes control.  Nothing else is touched; what is being compared is the
+# things, and the hero is only there to be somewhere for them to aim at.
+BOSS_POKES = ((0x27, 0x03),                          # $27 -- ordinary play
+              (pb2_trace.P.field(7), 0x10),          # $049A -- a full bar
+              (pb2_trace.P.field(18), 0x04),         # $058C -- on his feet
+              (pb2_trace.P.field(1), 0x00))          # $0416 -- nothing owed
+
+
+def _boss_settled(stage, area, spot):
+    rows = pb2_trace.trace([(2, '-')], 60, stage=stage, area=area, spot=spot,
+                           pokes=BOSS_POKES)
+    if any(r['mode'] >= 5 for r in rows):            # $8003 -- CMP #$05 / BCS
+        return False
+    if rows[0]['alive'] == 0:
+        return False
+    return all(r['sub'] == 4 and r['state'] == 0 for r in rows[-20:])
+
+
+_BOSS_SPOTS = {}
+
+
+def boss_spot(stage, area, tries=16):
+    key = (stage, area)
+    if key not in _BOSS_SPOTS:
+        cam = pb2_trace.trace([(2, '-')], 2, stage=stage, area=area,
+                              pokes=BOSS_POKES)[0]['cam']
+        found = None
+        for spot in V.Area(stage, area).spots_on_screen(cam)[:tries]:
+            if _boss_settled(stage, area, spot):
+                found = spot
+                break
+        _BOSS_SPOTS[key] = found
+    return _BOSS_SPOTS[key]
+
+
 DRAG = 2400
 PIN_ALONG = (0x0508, 0xE0, 0x00)   # $0508 -- his place across the screen
 PIN_DOWN = (0x04C6, 0xC0, 0x20)    # $04C6 -- and down it
@@ -70,7 +132,7 @@ def run_engine(cfg, path):
     return out
 
 
-def script_for(rows, stage, area, spot, script):
+def script_for(rows, stage, area, spot, script, pokes=()):
     """What the engine is told: where the things already are, and one line per
     step -- the hero's place on the screen, which the view follows, and the
     slots the cartridge emptied."""
@@ -119,7 +181,7 @@ def script_for(rows, stage, area, spot, script):
         shift_before=start['shift'],
         # Read where the comparison begins, not where the run does.
         slots=pb2_trace.objects(stage, area, spot, script=script,
-                                upto=start['frame']),
+                                upto=start['frame'], pokes=pokes),
         frames=frames,
     )
 
@@ -154,7 +216,7 @@ GATES = ([(0x2B, 0xFF, 0), (0x2C, 0xFF, 0), (0x0171, NDONE, 0)]
 
 
 def check(name, script, stage, area, tmp, spot, frames, drag=False,
-          gates=False):
+          gates=False, pokes=()):
     P = pb2_trace.P
     P.ROMPOKE = list(P.IMMORTAL) if drag else []
     if drag:
@@ -166,20 +228,20 @@ def check(name, script, stage, area, tmp, spot, frames, drag=False,
     if gates:
         P.FREEZE = P.FREEZE + GATES
     try:
-        return _check(script, stage, area, tmp, spot, frames)
+        return _check(script, stage, area, tmp, spot, frames, pokes)
     finally:
         P.ROMPOKE = []
         P.FREEZE = []
 
 
-def _check(script, stage, area, tmp, spot, frames):
+def _check(script, stage, area, tmp, spot, frames, pokes=()):
     rows = V.logic_frames(V.ordinary(pb2_trace.trace(
-        script, frames, stage=stage, area=area, spot=spot)))
+        script, frames, stage=stage, area=area, spot=spot, pokes=pokes)))
     rows = rows[:-1][V.SETTLE:]
     if len(rows) < 2:
         return 0, 0, None
     w = want(rows)
-    got = run_engine(script_for(rows, stage, area, spot, script),
+    got = run_engine(script_for(rows, stage, area, spot, script, pokes),
                      os.path.join(tmp, 's.json'))
     agree = [0, 0, 0]
     for i, expect in enumerate(w):
@@ -210,11 +272,13 @@ def main():
         elif a.startswith('--areas='):
             targets = [tuple(int(x) for x in p.split(':'))
                        for p in a.split('=')[1].split(',')]
+    boss = boss_stage()
     tmp = pb2_trace.P.scratch('spawnverify')
     ran = bad = steps = births = culls = 0
     same = seen = mine = 0
     for stage, area in targets:
-        spot = V.settled_spot(stage, area)
+        spot = (boss_spot(stage, area) if stage == boss
+                else V.settled_spot(stage, area))
         if spot is None:
             continue
         # The scan is a walk of the level's list, so what tests it is the view
@@ -228,7 +292,8 @@ def main():
         for name, script, frames, drag, gates in scripts:
             ran += 1
             n, b, diff = check(name, script, stage, area, tmp, spot, frames,
-                               drag, gates)
+                               drag, gates,
+                               BOSS_POKES if stage == boss else ())
             label = '%d:%-2d %-12s' % (stage, area, name)
             if diff is None:
                 steps += n

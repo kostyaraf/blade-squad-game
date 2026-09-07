@@ -198,7 +198,8 @@ def state_for(first, stage, area, spot, pokes=()):
     return path
 
 
-def objects(stage, area, spot=None, first=None, script=(), upto=None):
+def objects(stage, area, spot=None, first=None, script=(), upto=None,
+            pokes=()):
     """The table of live things as a run of this area would find it.
 
     A watch log only says what changed, so the six bytes the spawner writes are
@@ -211,7 +212,7 @@ def objects(stage, area, spot=None, first=None, script=(), upto=None):
     read where the comparison begins, with the same buttons pressed on the way.
     """
     first = P.IN_LEVEL if first is None else first
-    state = state_for(first, stage, area, spot)
+    state = state_for(first, stage, area, spot, pokes)
     d = P.scratch('objects')
     try:
         ram = os.path.join(d, 'r.ram')

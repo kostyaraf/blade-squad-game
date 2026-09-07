@@ -65,6 +65,10 @@ const F_REC_BYTE := 27   ## $0652 -- where a type keeps the record's own byte
 const F_GROUND := 28     ## $0668 -- nought in the air, $81 standing, $82 in
                          ##          the water that has risen
 
+## $0677 -- the spare byte of the fifteenth place, which is where a boss
+## stands.  $F163 reads it every frame as a request for a noise.
+const NOISE_SLOT := 15
+
 
 var lvl: Pb2Level
 ## Twenty-two rows of twenty-nine bytes.
@@ -143,7 +147,10 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x50: "_mind_boss", 0x51: "_mind_boss", 0x52: "_mind_boss",
 		0x53: "_mind_boss", 0x54: "_mind_boss", 0x55: "_mind_boss",
 		0x56: "_mind_boss", 0x57: "_mind_boss", 0x58: "_mind_boss",
-		0x59: "_mind_boss"}
+		0x59: "_mind_boss",
+		0x25: "_mind_25", 0x26: "_mind_26", 0x44: "_mind_44",
+		0x4B: "_mind_4b", 0x4C: "_mind_4c", 0x4D: "_mind_4d",
+		0x4F: "_mind_4f"}
 
 ## $BE36 -- one bit a stage, tried against $5B to tell a stage already beaten.
 const STAGE_BIT := [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40]
@@ -1159,6 +1166,16 @@ func turns() -> Array:
 		var mind = MINDS.get(s[F_TYPE])
 		if mind != null:
 			call(mind, n, s)
+	# $F163 -- once the turns are over the frame's own code reads the spare
+	# byte of the fifteenth place, which is where a boss stands, and makes a
+	# noise by it: one asks for the noise once, two asks for it over and over.
+	# The once is taken back in the same step it was asked for; the over and
+	# over is left standing.  There is no sound in the engine, so the taking
+	# back is the whole of what is left of it -- but it is what the cartridge
+	# shows in that byte, and the boss that fades ($55) is read against it.
+	var noisy: PackedByteArray = slots[NOISE_SLOT]
+	if noisy[F_GROUND] == 0x01:                       # $F172
+		noisy[F_GROUND] = 0x00
 	return gone
 
 
@@ -7068,3 +7085,229 @@ func _beam_step(k: int) -> void:
 	s[F_HOLD] = (s[F_HOLD] - 1) & 0xFF                 # $A84C
 	if s[F_HOLD] == 0:
 		clear(k)                                       # $A852
+
+
+
+# ------------------------------------------------------- what bosses throw
+#
+# Six little minds that only ever come out of a boss's room.  They are
+# ordinary things of the level's own table and not part of the boss's shell,
+# so they live here with the rest of the minds.
+
+
+## $932E (bank 10) -- what the boss that flies drops.  It falls, and where it
+## lands it turns into the crawl of type $26 -- unless it is in a boss's room,
+## and it always is, and then $B4D0 has it burst instead.
+func _mind_25(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_MARK] = 0x02                               # $C9A2
+		s[F_KIND] = 0x4E                               # $BE6E 4E
+		set_speed_down(s, 0x01, 0x00)                  # $BEB9 00 01
+		s[F_STATE] += 1                                # $C966
+		return
+	if ground_turn_clear(n, s, 0x00, 0x04) >= 0x80:    # $BECB 04 00
+		if boss != 0:                                  # $79
+			_splash_boss(s)                            # $B4D0
+			return
+		snap_down(s)                                   # $C981
+		s[F_TYPE] = 0x26                               # $936C
+		s[F_LIFE] = 0xFF                               # $BE5A FF
+		s[F_MARK] = 0x01
+		start_anim(s, 0x16)                            # $BEAD 16
+		s[F_SELF] = 0x80                               # $BE75 80
+		s[F_STATE] = 1                                 # $C96F
+		return
+	add_speed_down(s, 0x24)                            # $C90C
+	if s[F_VY] == 0x04:                                # $934E
+		set_speed_down(s, 0x04, 0x00)                  # $BEB9 00 04
+	step_down(s)                                       # $C8F4
+
+
+## $B4D0 (bank 11) -- a thing that ends its life in a boss's room wears type
+## $33 for as long as it takes to start the crawl and then becomes $3F, which
+## is the burst; the type it wore in between is what picks the pictures.
+func _splash_boss(s: PackedByteArray) -> void:
+	s[F_TYPE] = 0x33
+	_start_crawl(s)                                    # $8279
+	s[F_TYPE] = 0x3F
+	s[F_MARK] = 0x80                                   # $C9AB
+	s[F_STATE] = 2                                     # $C972
+
+
+## $BC89 (bank 11) -- what the four bosses at the end of a stage throw.  It
+## looks the way it flies, and once it has come to rest it creeps six steps
+## down the wall it settled against before it is done with.
+func _mind_44(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_MARK] = 0x02                               # $C9A2
+		start_anim(s, 0x33)                            # $BEAD 33
+		face_by_speed(s)                               # $C993
+		s[F_STATE] += 1                                # $C966
+		return
+	step_anim(s)                                       # $C837
+	if (s[F_VY] | s[F_VYFR]) == 0 and s[F_SELF] < 0x06:    # $BCA1
+		s[F_SELF] = (s[F_SELF] + 1) & 0xFF
+		nudge_down(s, 0x00, 0x01)                      # $C930
+	ground_or_die(n, s)                                # $C8EB
+
+
+## $9B6A (bank 10) -- the one shot the boss that fades throws.  Below a
+## certain line it tells the boss that it has him, which is what the boss
+## waits for before it opens the fan.
+func _mind_4b(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_LIFE] = 0xFF                               # $BE5A FF
+		s[F_MARK] = 0x01
+		s[F_KIND] = 0xF2                               # $BE6E F2
+		s[F_STATE] += 1                                # $C966
+		return
+	step_both(s)                                       # $C8F1
+	if s[F_Y] < 0x96:                                  # $9B80
+		return
+	slots[int(cfg_boss["slot"])][F_GROUND] = 0x02      # $0677
+	clear(n)                                           # $C810
+
+
+## $9B8D (bank 10) -- and the six of the fan, which only fly until they meet
+## something solid.
+func _mind_4c(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_MARK] = 0x02                               # $C9A2
+		start_anim(s, 0x3E)                            # $BEAD 3E
+		s[F_STATE] += 1                                # $C966
+		return
+	step_anim(s)                                       # $C837
+	ground_or_die(n, s)                                # $C8EB
+
+
+## $AC2D (bank 11) -- the two arms of the boss the hero stands on.  Each
+## keeps to its own half of the room -- which half is the number its maker
+## put in $05CE -- walking back and forth, and every so often it stops and
+## lets something go.
+func _mind_4d(_n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:                                  # $C97E
+		0:
+			s[F_LIFE] = 0x08                           # $BE5A 08
+			s[F_MARK] = 0x01
+			s[F_Y] = 0x26                              # $AC3A
+			s[F_X] = 0x55 if s[F_SELF] == 0 else 0xAD
+			_walk_4d(s)                                # $ACAF
+			s[F_STATE] += 1                            # $C966
+		1:
+			s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+			if s[F_COUNT] == 0:
+				s[F_COUNT] = 0x30                      # $BE7C 30
+				s[F_STATE] += 1                        # $C966
+				return
+			step_side(s)                               # $C8F7
+			# $AC59 -- the near arm turns at $18 and $78, the far one at
+			# $88 and $E8, so that the two never cross.
+			var turn := false
+			if s[F_SELF] == 0:
+				if s[F_VX] >= 0x80:
+					turn = s[F_X] < 0x18               # $AC6B
+				else:
+					turn = s[F_X] >= 0x78              # $AC66
+			else:
+				if s[F_VX] < 0x80:
+					turn = s[F_X] >= 0xE8              # $AC7D
+				else:
+					turn = s[F_X] < 0x88               # $AC78
+			if turn:
+				flip_speed_side(s)                     # $C91E
+		2:
+			s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+			if s[F_COUNT] == 0:
+				s[F_STATE] -= 1                        # $C969
+				_walk_4d(s)                            # $ACAF
+				return
+			if s[F_COUNT] == 0x14:                     # $AC94
+				make_child(s, 0x02, 0x06, 0x21)        # $C8DF
+			step_anim(s)                               # $C837
+
+
+## $ACAF -- a fresh walk: how long it lasts is nine to sixteen sixteens of a
+## frame, and which way it starts is the die again.
+func _walk_4d(s: PackedByteArray) -> void:
+	start_anim(s, 0x3D)                                # $BEAD 3D
+	var r: int = random()                              # $C939
+	s[F_COUNT] = (((r & 0x07) + 0x09
+			+ (1 if rng_carry else 0)) << 4) & 0xFF
+	set_speed_side_facing(s, 0xFF, 0x80)               # $BEC5 80 FF
+	if (random() & 0x01) != 0:                         # $ACC6
+		flip_speed_side(s)                             # $C91E
+
+
+## $9AB2 (bank 10) -- the two arms of the first boss, which do not walk at
+## all: they go round it.  Each frame the angle is put on by $0880 -- the low
+## half in $05E4 and the high half in $05CE, which is the angle itself -- and
+## the place is read off the ellipse $F245 draws round wherever the boss is.
+##
+## They go out with the boss: when place fifteen is no longer its type, or it
+## has begun to die, or its meter has fallen below the line.
+func _mind_4f(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_LIFE] = 0x7F                               # $BE5A 7F
+		s[F_MARK] = 0x01
+		start_anim(s, 0x35)                            # $BEAD 35
+		s[F_STATE] += 1                                # $C966
+	var b: PackedByteArray = slots[int(cfg_boss["slot"])]
+	if b[F_TYPE] != 0x50 or b[F_STATE] >= 0x03 \
+			or s[F_LIFE] < 0x6F:                       # $9AC2
+		make_burst(n)                                  # $C9C0
+		return
+	if s[F_STUN] == 0 and (s[F_YHI] | s[F_XHI]) == 0:
+		_crush_4f(n, s)                                # $9AE4
+	# $9B2B -- the angle, sixteen bits of it, put on by $0880 a frame.
+	var t: int = s[F_COUNT] + 0x80
+	s[F_COUNT] = t & 0xFF
+	s[F_SELF] = (s[F_SELF] + 0x08 + (t >> 8)) & 0xFF
+	var off: Array = around(s[F_SELF], 0x00, 0xEC)     # $C88B
+	var x: int = ((b[F_XHI] << 8) | b[F_X]) + _signed(off[0])
+	s[F_X] = x & 0xFF
+	s[F_XHI] = (x >> 8) & 0xFF
+	var y: int = ((b[F_YHI] << 8) | b[F_Y]) + _signed(off[1])
+	s[F_Y] = y & 0xFF
+	s[F_YHI] = (y >> 8) & 0xFF
+
+
+## $9AE4 -- and on the way round they sweep the first three places clear of
+## anything small enough to be crushed.
+func _crush_4f(_n: int, s: PackedByteArray) -> void:
+	for k in range(1, 4):                              # $9AF0
+		var o: PackedByteArray = slots[k]
+		if o[F_TYPE] == 0 or o[F_TYPE] >= 0x04:        # $9AF7
+			continue
+		if abs(o[F_X] - s[F_X]) >= 0x15:               # $9B06
+			continue
+		if abs(o[F_Y] - s[F_Y]) >= 0x15:               # $9B15
+			continue
+		clear(k)                                       # $C810
+
+
+## $9383 (bank 10) -- and what it turns into: a crawl along the ground that
+## holds its pose until the pictures reach the last of them, and then counts
+## itself out.
+func _mind_26(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:                                  # $C97E
+		0:
+			# $936A -- the same frame $25 ends on, kept because the table
+			# reaches it as a state of its own.
+			s[F_TYPE] = 0x26
+			s[F_LIFE] = 0xFF                           # $BE5A FF
+			s[F_MARK] = 0x01
+			start_anim(s, 0x16)                        # $BEAD 16
+			s[F_SELF] = 0x80                           # $BE75 80
+			s[F_STATE] = 1                             # $C96F
+		1:
+			if s[F_KIND] != 0x51:                      # $938F
+				step_anim(s)                           # $C837
+				return
+			start_anim(s, 0x17)                        # $BEAD 17
+			s[F_STATE] += 1                            # $C966
+		2:
+			s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+			if s[F_SELF] == 0:
+				clear(n)                               # $C810
+				return
+			step_anim(s)                               # $C837
