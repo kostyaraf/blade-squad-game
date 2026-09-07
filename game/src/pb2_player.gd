@@ -22,9 +22,17 @@ const SUB_AIR := 8
 const SUB_LANDED := 9
 const SUB_FLY := 12
 const SUB_SWIM := 14
+const SUB_WALL := 20
+const SUB_ROOF := 22
+const SUB_ROOF_ON := 24
+const SUB_HANG := 25
+const SUB_ROOF_OVER := 26
+const SUB_HAUL := 27
+const SUB_HAUL_CARRIED := 28
 const SUB_LADDER := 16
 const SUB_LADDER_ON := 17
 const SUB_LADDER_OFF := 18
+const SUB_LADDER_MID := 19
 
 const POSE_STAND := 0x11
 const POSE_IDLE := 0x12
@@ -107,6 +115,17 @@ var shift := 0
 ## $063C and $0652 -- how far a moving floor is carrying him this frame.
 var push_x := 0
 var push_y := 0
+## $0116 -- he has hold of something and the level is told not to move him.
+var cling := 0
+## $0C..$0F -- what the two side probes of $9720 last answered, and which
+## thing standing in the level each of them found.
+var hold_a := 0
+var hold_a_n := 0
+var hold_b := 0
+var hold_b_n := 0
+## What $9A29 answered when it was asked and did not take hold: $01 nothing
+## was tried, $80 there is floor under his feet, $00 there was nothing to take.
+var grab_kind := 0
 
 
 func _init(level: Pb2Level) -> void:
@@ -162,6 +181,14 @@ func step(buttons: int, pressed: int, camera: int,
 		SUB_LADDER: _ladder()
 		SUB_LADDER_ON: _ladder_on()
 		SUB_LADDER_OFF: _ladder_off()
+		SUB_LADDER_MID: _ladder_mid()
+		SUB_WALL: _climb()
+		SUB_ROOF: _roof()
+		SUB_ROOF_ON: _roof_on()
+		SUB_HANG: _hang()
+		SUB_ROOF_OVER: _roof_over()
+		SUB_HAUL: _haul(false)
+		SUB_HAUL_CARRIED: _haul(true)
 		_: _ground()
 
 
@@ -196,13 +223,28 @@ func _ground() -> void:
 
 ## $8F2D -- the ground's four ways out: a ladder, a ledge, a jump, a crouch.
 func _ground_exits() -> void:
-	if not _floor_solid(8):
+	# $8F33: up, under something, is neither a jump nor a crouch -- he stays
+	# where he is, or falls if the ground has gone.
+	if (pad & UP) and _head_kind(0) != 0:
+		if not _floor_solid(8):
+			_step_off()
+		return
+	# $8F43: suit one reaches behind him for a lip to hang from
+	if _ledge_grab():
+		return
+	if grab_kind == 0x00:
 		_step_off()
 		return
-	if pad & UP:
-		return                             # $8F33 -- climbing up is not his
+	if grab_kind == 0x01 and not _floor_solid(8):
+		_step_off()
+		return
 	if state & 0x80:
 		return                             # $8F5A -- no jumping while swinging
+	if pad & UP:
+		# $8F62: with up held the jump is all that is left
+		if hit & A:
+			_jump()
+		return
 	if _jump_wanted():
 		_jump()
 	elif pad & DOWN:
@@ -316,10 +358,18 @@ func _slide() -> void:
 			vy = -vy                    # $B303
 			face_left = about
 	dx += vx
-	if _move_x(4) and not roof:
+	# $90D3: the wall check and the movement are one call here, as they are
+	# at $A056; which body the ground is then read with depends on it.
+	var stopped: bool = _move_x(4)
+	if stopped and not roof:
 		_slide_end()
 		return
-	if not _floor_solid(5):
+	# $90E2 and $90F7: suit one grabs a wall in front of him, or a lip behind
+	if _slide_reach():
+		return
+	if _ledge_grab():
+		return
+	if not _floor_solid(8 if stopped else 5):
 		_slide_off()
 
 
@@ -345,6 +395,10 @@ func _slide_off() -> void:
 
 ## $912E -- the slide is over: he sheds most of his speed and crouches.
 func _slide_end() -> void:
+	if _slide_reach():
+		return
+	if _ledge_grab():
+		return
 	if not _floor_solid(5):
 		_step_off()
 		return
@@ -385,9 +439,36 @@ func _suit_air(rising: bool) -> bool:
 	if (y >> 8) < 0x28:
 		return false                    # $9273 and $930E: not near the top
 	if suit == 1 and (pad & A):
-		# $927F and $931A: suit one reaches for the wall.  Not built yet, so
-		# he falls the ordinary way until it is.
-		return false
+		# $927F and $931A: suit one reaches for whatever is around him
+		if rising:
+			_set_pose(POSE_RISE)
+		if _floor_solid(0x0D):
+			_move_y()                   # $941F
+			return true
+		var over: int = _head_kind(0x0C)
+		if over == 0x00:
+			if not rising:
+				# $9332: only now is the falling picture of him chosen
+				_set_pose(POSE_RISE if (dy >> 8) < 2 else POSE_FALL)
+			_air_grab()                 # $938D
+			return true
+		if over < 0x81:
+			# $92D3: a ceiling within reach, and he takes hold of it
+			if over == 0x01:
+				_snap_head(0xE0)
+			else:
+				_snap_head_obj(0xE0)
+			_shove_side()
+			_roof_start()
+			return true
+		if not rising:
+			_move_y()                   # $932F
+			return true
+		# $92BD: coming up under the edge of the world he only bumps his head
+		vy = 0
+		y &= ~0xFF
+		_set_pose(POSE_RISE)
+		return true
 	if rising or (scale & 0x40):
 		# $929E and $9348: swimming, and only in water
 		if suit != 2 or not (scale & 0x40):
@@ -420,6 +501,21 @@ func _suit_air(rising: bool) -> bool:
 	state = 0x01
 	sub = SUB_SWIM
 	return true
+
+
+## $938D -- a ladder at his chest, or a wall at his side, or neither.
+func _air_grab() -> void:
+	if _class_byte(x >> 8, (y >> 8) + int(cfg["ladder_air"])) == 0x01:
+		if pad & UP:
+			_ladder_hold()              # $9491
+			return
+		_move_y()
+		return
+	# $93A1: a wall, but not one he is too near the foot of the screen for
+	if (pad & (LEFT | RIGHT)) and (y >> 8) < 0xC8 and _grab_wall():
+		_wall_start()                   # $9417
+		return
+	_move_y()
 
 
 ## $9E4D -- before he changes into something wider he is pushed out of a wall.
@@ -667,6 +763,634 @@ func _paddle_vert(way: int) -> void:
 		_anim_step(10 if (hi == 0x00 or hi == 0xFF) else 9, false)
 
 
+# ------------------------------------------------- one, which holds on
+
+## $9FBD -- suit one with the button held, which is the whole of its reach.
+func _reach() -> bool:
+	return suit == 1 and (pad & A) != 0
+
+
+## $9720 -- what is beside him at his shoulder and at his hip.
+##
+## Both answers are kept, and which thing standing in the level each of them
+## found, because everything suit one does is settled between the two.
+func _hold_probe() -> void:
+	hold_a = _wall_class(0, 0x10, face_left)
+	hold_a_n = floor_obj
+	hold_b = _wall_class(0, 0x11, face_left)
+	hold_b_n = floor_obj
+
+
+## $974B -- is there a wall here worth taking hold of?
+##
+## Both points have to find something, and neither may be what the level itself
+## holds him against; then he is pulled square up to it.
+func _grab_wall() -> bool:
+	_hold_probe()
+	if hold_b == 0 or hold_b >= 0x81:
+		return false
+	if hold_a == 0 or hold_a >= 0x81:
+		return false
+	if hold_a == 0x80:
+		floor_obj = hold_a_n
+		_snap_side_obj(0x05, face_left)
+	elif hold_b == 0x80:
+		floor_obj = hold_b_n
+		_snap_side_obj(0x05, face_left)
+	else:
+		_snap_side(0x05, face_left, true)
+	return true
+
+
+## $9EE6, $9EF0 and the four little routines that pick between them.
+##
+## He is pushed to one edge of the sixteen pixel cell his side has gone into.
+## `to_left` is which edge, and `far` which pair of tables: the pair that puts
+## him just clear of the cell, or the pair that puts him hard against it.
+func _snap_side(a: int, to_left: bool, far: bool) -> void:
+	var d: int = _byte((~a) & 0xFF) if to_left else _byte(a)
+	var t: Array
+	if far:
+		t = cfg["snap_left"] if to_left else cfg["snap_right"]
+	else:
+		t = cfg["snap_up"] if to_left else cfg["snap_stand"]
+	x += int(t[_grid_x(((x >> 8) + d) & 0xFF)]) << 8
+
+
+## $9F4A and $9F5C -- the same, against the edge of a thing.
+func _snap_side_obj(a: int, to_left: bool) -> void:
+	if floor_obj >= solids.size():
+		return
+	var d: int = _byte((~a) & 0xFF) if to_left else _byte(a)
+	var edge: int = int(solids[floor_obj][1 if to_left else 0])
+	x += _byte(edge - (((x >> 8) + d) & 0xFF)) << 8
+
+
+## $9F23 -- his head is set on the line of the cell it went into.
+func _snap_head(a: int) -> void:
+	y += int(cfg["snap_stand"][_grid_y(((y >> 8) + _byte(a)) & 0xFF)]) << 8
+
+
+## $9EBE -- the same, by the other table, which the turn over a top uses.
+func _snap_head_far(a: int) -> void:
+	y += int(cfg["snap_left"][_grid_y(((y >> 8) + _byte(a)) & 0xFF)]) << 8
+
+
+## $9F8A -- or just under the thing it went into.
+func _snap_head_obj(a: int) -> void:
+	if floor_obj >= solids.size():
+		return
+	y += _byte(int(solids[floor_obj][3]) - (((y >> 8) + _byte(a)) & 0xFF)) << 8
+
+
+## $9EC8 -- his feet, on the line the cell gives them.
+func _snap_feet(a: int) -> void:
+	y += int(cfg["snap_down"][_grid_y(((y >> 8) + _byte(a)) & 0xFF)]) << 8
+
+
+## $9F74 -- or on top of the thing under them.
+func _snap_feet_obj(a: int) -> void:
+	if floor_obj >= solids.size():
+		return
+	y += _byte(int(solids[floor_obj][2]) - (((y >> 8) + _byte(a)) & 0xFF)) << 8
+
+
+## $9A29 -- from the ground he reaches behind him for a lip to hang from.
+##
+## True when he has taken hold; otherwise `grab_kind` says why not, because the
+## three places that ask go on differently for each answer.
+func _ledge_grab() -> bool:
+	grab_kind = 0x01
+	if not _reach():
+		return false
+	if _floor_solid(8):
+		grab_kind = 0x80
+		return false
+	grab_kind = 0x00
+	if _floor_solid(0x25):
+		return false
+	# $9A3C: the hand goes out behind him, not in front
+	var c: int = _wall_class(0, 0x13, not face_left)
+	if c != 0x01 and c != 0x80:
+		return false
+	y += 16 << 8
+	face_left = not face_left
+	if c == 0x80:
+		_snap_side_obj(0x05, face_left)
+	else:
+		_snap_side(0x05, face_left, true)
+	vx = 0
+	vy = 0
+	pose = 0x3D
+	cling = 1
+	fall = (fall & ~0xFF) | 0x0C
+	state = 0x20
+	sub = SUB_HANG
+	return true
+
+
+## $915A -- and out of a slide, where it is a wall in front of him he catches.
+##
+## True when it took him, in which case the slide never finishes its frame:
+## the cartridge throws the return address away and jumps straight into the
+## climbing handler.
+func _slide_reach() -> bool:
+	if pad & DOWN:
+		return false
+	if not _reach():
+		return false
+	if _floor_solid(0x0D):
+		return false
+	if _head_kind(0x0B) != 0:
+		return false
+	face_left = not face_left
+	y += 10 << 8
+	if _grab_wall():
+		_wall_start()
+		return true
+	face_left = not face_left
+	y -= 10 << 8
+	return false
+
+
+## $9A97 -- hanging where he caught the lip, for twelve frames.
+func _hang() -> void:
+	_pushed()
+	cling = 1
+	var px: int = x >> 8
+	if _class_byte(px + 5, y >> 8) & 0x80:
+		x += int(cfg["snap_right"][_grid_x((px + 5) & 0xFF)]) << 8
+	elif _class_byte(px - 6, y >> 8) & 0x80:
+		x += int(cfg["snap_left"][_grid_x((px - 6) & 0xFF)]) << 8
+	if _floor_solid(8):
+		_settle(floor_kind)             # $9AC5
+		return
+	fall = (fall & ~0xFF) | ((fall - 1) & 0xFF)
+	if (fall & 0xFF) != 0:
+		return
+	# $9ADE: he swings his feet down onto the wall, unless there is floor there
+	y += 22 << 8
+	if _floor_solid(8):
+		y -= 22 << 8
+		_step_off()
+		return
+	_wall_start()
+
+
+## $977F -- onto the wall, facing it.
+func _wall_start() -> void:
+	_anim_start(3)
+	pose = 0x2F
+	vx = 0
+	vy = 0
+	state = 0x20
+	sub = SUB_WALL
+
+
+## $9797 -- up and down a wall.
+##
+## The two probes settle it: both hands on it and he climbs either way, only
+## his hip and he can go down, only his shoulder and he is at the top and can
+## go up over it.
+func _climb() -> void:
+	_carry(0x26)
+	if suit != 1:
+		_step_off()
+		return
+	if (y >> 8) >= 0xD8:
+		_step_off()                     # $97AA
+		return
+	_hold_probe()
+	var way: int = 0
+	if hold_b != 0 and hold_a != 0:
+		# $9815: both of them -- up or down as he asks
+		_a1c2()
+		if state & 0x80:
+			_wall_tail()
+			return
+		if not (pad & (UP | DOWN)):
+			_wall_idle()
+			return
+		way = 1 if (pad & DOWN) else -1
+	elif hold_b != 0:
+		# $97B5: only his hip, which is the foot of the wall
+		if (y >> 8) >= 0x40:
+			_ledge_haul()
+			return
+		_a1c2()
+		if state & 0x80:
+			_wall_tail()
+			return
+		if not (pad & DOWN):
+			_wall_idle()
+			return
+		way = 1
+	else:
+		if hold_a == 0:
+			_step_off()                 # $97D7
+			return
+		# $97DA: only his shoulder, which is the top of it
+		var reach: bool = false
+		if hold_a >= 0x80:
+			reach = _wall_class(0, 0x2E, face_left) != 0
+		if not reach:
+			reach = _wall_class(0, 0x0F, face_left) != 0
+		if not reach:
+			_wall_over()                # $98F2
+			return
+		_a1c2()
+		if state & 0x80:
+			_wall_tail()
+			return
+		if not (pad & UP):
+			_wall_idle()
+			return
+		way = -1
+	# $9832: a pixel a frame, up or down
+	dy += way << 8
+	if dy >= 0:
+		if _floor_class(0x27, ((dy + (y & 0xFF)) >> 8) + _desc(0x27)[0]) != 0:
+			_step_off()
+			return
+		_wall_climb()
+		return
+	var v: int = _head_kind(0x28)
+	if v == 0x00:
+		if (y >> 8) >= 0x2C:
+			_wall_climb()
+			return
+		_wall_hold()
+		return
+	if v == 0x82:
+		_wall_hold()
+		return
+	if v == 0x01:
+		_snap_head(0xE0)
+	elif v == 0x80:
+		_snap_head_obj(0xE0)
+	# $9875: his head is under a ceiling, and he goes onto it
+	_roof_start()
+	face_left = not face_left
+	pose = 0x25
+	anim_t = 0x10
+	anim_i = 4
+
+
+## $9862 -- still on the wall, and nothing has changed about him.
+func _wall_hold() -> void:
+	_anim_start(3)
+	pose = 0x2F
+	_wall_tail()
+
+
+## $988B -- the climb itself.
+func _wall_climb() -> void:
+	_move_y()
+	# $988E: the picture of him is kept inside its eight frames
+	if anim_t >= 9:
+		anim_t -= 8
+	_anim_step(3)
+	_wall_tail()
+
+
+## $98A2 -- hanging on it with nothing asked of him.
+func _wall_idle() -> void:
+	anim_t = (anim_t - 1) & 0xFF
+	if anim_t == 0 or anim_t >= 0x80:
+		_anim_start(3)
+		pose = 0x2F
+		anim_t = 2
+	else:
+		_apply_vertical(0)
+	_wall_tail()
+
+
+## $98B4 -- and the ways off it: the ground under him, or the button.
+func _wall_tail() -> void:
+	if _floor_solid(0x29):
+		_step_off()
+		return
+	if state & 0x80:
+		return
+	if not (hit & A):
+		return
+	if pad & (LEFT | RIGHT):
+		# $98C8: pressed into the wall he is holding, he holds on
+		if (pad & 3) == (2 if face_left else 1):
+			return
+	face_left = not face_left
+	if (pad & UP) and _jump_wanted():
+		_jump()
+	else:
+		_step_off()
+
+
+## $98F2 -- over the top of the wall.
+func _wall_over() -> void:
+	face_left = not face_left
+	if hold_a == 0x80:
+		floor_obj = hold_a_n
+		_snap_side_obj(0xFC, not face_left)
+	else:
+		_snap_side(0xFC, not face_left, false)
+	y += 4 << 8
+	vx = 0
+	vy = 0
+	_anim_start(5)
+	state = 0x40
+	sub = SUB_ROOF_OVER
+
+
+## $9921 -- from the foot of the wall straight into the pull up.
+func _ledge_haul() -> void:
+	y -= 20 << 8
+	if hold_a == 0x80:
+		_haul_start(true)
+		return
+	_snap_feet(0xF0)
+	_haul_start(false)
+
+
+## $99A4 and $99A8 -- he has the lip and begins to pull himself over it.
+func _haul_start(carried: bool) -> void:
+	sub = SUB_HAUL_CARRIED if carried else SUB_HAUL
+	pose = 0x3D
+	cling = 1
+	fall = (fall & ~0xFF) | 0x0C
+	state &= 0x7F
+
+
+## $99C5 and $99C8 -- twelve frames of pulling, and then he is over.
+func _haul(carried: bool) -> void:
+	if carried:
+		_pushed()
+	cling = 1
+	fall = (fall & ~0xFF) | ((fall - 1) & 0xFF)
+	if (fall & 0xFF) != 0:
+		return
+	# $99D2: no room to stand up where he is coming out means he comes out
+	# sliding instead
+	var blocked: bool = _wall_class(0, 0x12, face_left) != 0
+	_haul_step()
+	if blocked:
+		_slide_start()
+		return
+	_set_pose(POSE_CROUCH)
+	fall = (fall & ~0xFF) | 0x0C
+	state = 0x08
+	sub = SUB_LANDED
+
+
+## $99FE -- and the step that puts him on top of what he was hanging from.
+func _haul_step() -> void:
+	x += (-16 if face_left else 16) << 8
+	y -= 12 << 8
+	if _floor_hit(8):
+		if floor_kind == 0x01:
+			y += int(cfg["snap_down"][_grid_y(y >> 8)]) << 8
+		elif floor_kind == 0x80:
+			_snap_feet_obj(0x01)
+
+
+## $9523 -- onto a ceiling, hanging under it.
+func _roof_start() -> void:
+	vx = 0
+	vy = 0
+	_anim_start(0)
+	anim_t = 10
+	state = 0x40
+	sub = SUB_ROOF
+
+
+## $9537 -- hand over hand along a ceiling.
+func _roof() -> void:
+	_carry(0x1E)
+	if suit != 1:
+		_step_off()
+		return
+	if not lvl.vertical:
+		cling = 1                       # $9545
+	var v: int = _roof_kind(0x0C)
+	if v == 0x82:
+		_roof_drop()                    # $9704
+		return
+	if v == 0x00:
+		_roof_end()
+		return
+	# $95B0
+	_a1c2()
+	if state & 0x80:
+		_roof_tail()
+		return
+	if pad & RIGHT:
+		face_left = false               # $A111
+	elif pad & LEFT:
+		face_left = true
+	if pad & (LEFT | RIGHT):
+		_roof_along()
+	else:
+		_roof_still()
+
+
+## $955E -- the ceiling has run out over his head.
+func _roof_end() -> void:
+	# $955E: a ladder there instead, and he steps onto it
+	if _class_byte(x >> 8, (y >> 8) + int(cfg["ladder_air"])) == 0x01:
+		sub = SUB_LADDER_MID
+		_set_pose(POSE_RISE)
+		return
+	var c: int = _wall_class(0, 0x10, face_left)
+	if c == 0x00:
+		_roof_drop()
+		return
+	if c == 0x80:
+		_snap_side_obj(0x00, not face_left)
+	elif c == 0x01:
+		_snap_side(0x00, not face_left, false)
+	# $9592: he swings up onto the end of it
+	y -= 8 << 8
+	vx = 0
+	vy = 0
+	_anim_start(4)
+	state = 0x20
+	sub = SUB_ROOF_ON
+
+
+## $95C4 -- hanging under it with nothing asked of him.
+func _roof_still() -> void:
+	if scale != 0 and (ticks & 1) != 0:
+		_roof_slide()
+		return
+	if pose == 0x26:
+		anim_t = 10
+		_roof_slide()
+		return
+	anim_t = (anim_t - 1) & 0xFF
+	if anim_t != 0:
+		_roof_slide()
+		return
+	# $95DB: the shuffle is over, and the frame it ended on settles the next
+	var frame: int = anim_i
+	_anim_start(0)
+	var step_px: int = _cling_step(frame + 7)
+	anim_t = 10
+	if step_px == 0:
+		_roof_slide()
+		return
+	# $95F1: and it goes on the way he is facing, whatever is held
+	_roof_turn(step_px, true)
+
+
+## $9605 -- and with left or right held, the shuffle itself.
+func _roof_along() -> void:
+	if scale != 0 and (ticks & 1) == 0:
+		_roof_tail()
+		return
+	_anim_step(0, false)
+	var t: int = anim_t
+	var step_px: int = 0
+	if t == 7:
+		anim_t -= 1
+		step_px = 1
+	elif t == 6:
+		step_px = _cling_step(anim_i - 1)
+	if step_px == 0:
+		# $9634: one pixel, if there is room for it
+		_roof_bump(_wall_class(-1 if face_left else 1, 0x0E, face_left))
+		return
+	_roof_turn(step_px, false)
+
+
+## $9649 -- the shuffle is made in whichever direction is asked for.
+func _roof_turn(step_px: int, by_face: bool) -> void:
+	var left: bool = face_left if by_face else (pad & RIGHT) == 0
+	if left:
+		step_px = -step_px
+		face_left = true
+	else:
+		face_left = false
+	dx += step_px << 8
+	_roof_bump(_step_kind(0x0E))
+
+
+## $966B -- and what it ran into.
+func _roof_bump(c: int) -> void:
+	if c == 0x00:
+		x += _scaled(dx)                # $96EF
+		_roof_tail()
+		return
+	if c == 0x01:
+		_snap_side(0x05, face_left, false)
+	elif c == 0x80:
+		_snap_side_obj(0x05, face_left)
+	# $9685
+	if pad & UP:
+		_roof_frame()
+		return
+	_hold_probe()
+	if hold_b != 0:
+		if hold_b == 0x82 or hold_a == 0 or hold_a == 0x82:
+			_roof_frame()
+			return
+		_wall_start()                   # $977F
+		return
+	# $969F: down, and there is a lip under him to swing onto
+	if not (pad & DOWN) or not _reach():
+		_roof_frame()
+		return
+	if _wall_class(0, 0x24, face_left) != 0:
+		_roof_frame()
+		return
+	var c2: int = _wall_class(0, 0x14, face_left)
+	if c2 == 0x00 or c2 == 0x82:
+		_roof_frame()
+		return
+	if c2 == 0x80:
+		_snap_feet_obj(0xF0)
+		_haul_start(true)
+	else:
+		_snap_feet(0xF0)
+		_haul_start(false)
+
+
+## $96D8 -- which picture of him goes with where the shuffle stopped.
+func _roof_frame() -> void:
+	if pose == 0x25:
+		anim_i = 2
+	elif pose == 0x27:
+		anim_i = 6
+	_roof_tail()
+
+
+## $95FD -- the movement, when nothing has interrupted it.
+func _roof_slide() -> void:
+	_move_x(0x0E)
+	_roof_tail()
+
+
+## $96F2 -- ground under him, or the button, and he lets go.
+func _roof_tail() -> void:
+	if _floor_solid(0x29):
+		_roof_drop()
+		return
+	if state & 0x80:
+		return
+	if hit & A:
+		_roof_drop()
+
+
+## $9704 -- letting go of a ceiling drops him a pixel a frame, not fifty.
+func _roof_drop() -> void:
+	y += 4 << 8
+	_step_off(0x0100)
+
+
+## $9710 -- how far one shuffle along a ceiling carries him.
+##
+## The cartridge reads the sixteen bytes at two different offsets, so they are
+## kept whole and the offset is given here.
+func _cling_step(i: int) -> int:
+	var t: Array = cfg["cling_step"]
+	if i < 0 or i >= t.size():
+		return 0
+	return int(t[i])
+
+
+## $9937 -- the turn off the end of a ceiling onto the wall under it.
+func _roof_on() -> void:
+	_pushed()
+	if not _anim_step(4):
+		return
+	anim_t = 0x10
+	anim_i = 4
+	face_left = not face_left
+	_grab_wall()
+	# $9782
+	vx = 0
+	vy = 0
+	state = 0x20
+	sub = SUB_WALL
+
+
+## $9955 -- and the turn off the top of a wall onto the ceiling over it.
+func _roof_over() -> void:
+	_pushed()
+	if not _anim_step(5):
+		return
+	face_left = not face_left
+	x += (-6 if face_left else 6) << 8
+	y -= 8 << 8
+	var v: int = _head_kind(0x0C)
+	if v == 0x01:
+		_snap_head_far(0xE1)
+	elif v == 0x80:
+		_snap_head_obj(0xE1)
+	_roof_start()
+	pose = 0x25
+	anim_t = 0x10
+	anim_i = 4
+
+
 # ------------------------------------------------------------- the pieces
 
 # ------------------------------------------------------------- the ladder
@@ -704,14 +1428,24 @@ func _ladder_hold() -> void:
 ##
 ## Every frame on a ladder he is drawn a pixel towards the centre line of the
 ## sixteen pixel cell, and once he is on it he stays.
-func _ladder_centre() -> void:
+## True while he is still being drawn towards it.
+func _ladder_centre() -> bool:
 	var v: int = (x >> 8) & 0xFF
 	if not lvl.vertical:
 		v = (v + (cam & 0xFF)) & 0xFF
 	v &= 0x0F
 	if v == 8:
-		return
+		return false
 	x += 0x100 if v < 8 else -0x100
+	return true
+
+
+## $948B -- stepping onto a ladder from the side, which suit one does off a
+## ceiling: he is walked to the middle of it and only then takes hold.
+func _ladder_mid() -> void:
+	if _ladder_centre():
+		return
+	_ladder_hold()
 
 
 ## $945F -- taking hold of the ladder: eight frames, then one step down it.
@@ -848,12 +1582,35 @@ func _gravity() -> void:
 	fall += vy
 
 
+## $9FCB
 func _jump_wanted() -> bool:
 	if state & 0x80:
 		return false
 	if not (hit & A):
 		return false
 	return _ceiling_free(0)
+
+
+## $AD8D -- what is over him at this body, with nothing added for the frame.
+func _head_kind(pose_index: int) -> int:
+	return _ceiling_class(pose_index, _desc(pose_index)[0])
+
+
+## $AD9E -- and the same with the frame's movement added in.
+func _roof_kind(pose_index: int) -> int:
+	var desc: Array = _desc(pose_index)
+	return _ceiling_class(pose_index, ((dy + (y & 0xFF)) >> 8) + desc[0])
+
+
+## $ACBA -- what is in the way of the sideways movement this frame asks for.
+func _step_kind(pose_index: int) -> int:
+	return _wall_class((dx + (x & 0xFF)) >> 8, pose_index, dx < 0)
+
+
+## $A166 -- carried by whatever is carrying him, and nothing asked of the map.
+func _pushed() -> void:
+	x += push_x << 8
+	y += push_y << 8
 
 
 ## $9FE2
@@ -1184,7 +1941,9 @@ func _wall_class(step_px: int, pose_index: int, left: bool) -> int:
 	for i in range(1, desc.size()):
 		if i > 1 and desc[i] == 0:
 			break
-		if _object_at((x >> 8) + edge, (y >> 8) + desc[i]) >= 0:
+		var n: int = _object_at((x >> 8) + edge, (y >> 8) + desc[i])
+		if n >= 0:
+			floor_obj = n               # $AD55: the same slot the others use
 			return 0x80
 	return 0x00
 

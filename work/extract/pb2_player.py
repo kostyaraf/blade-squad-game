@@ -129,6 +129,8 @@ def export():
         # $AF91/$AF99: the same trick sideways, into and out of a wall
         snap_right=[s8(x) for x in a9(0xAFD7, 16)],
         snap_left=[s8(x) for x in a9(0xAFE7, 16)],
+        # $B007: and the one that pushes him back to the near edge of a cell
+        snap_up=[s8(x) for x in a9(0xB007, 16)],
         # The ladder.  $A003 lets go of the ground when both points just under
         # his feet are ladder; then he is set down, waits, and is set down
         # again, and only then does he begin to climb ($945F).  Coming off the
@@ -197,6 +199,11 @@ def export():
         swim_along=[inline(b8, 0x9D29), inline(b8, 0x9D38)],
         swim_slow=[inline(b8, 0x9D58), inline(b8, 0x9D62)],
         swim_vert=[inline(b8, 0x9D6C), inline(b8, 0x9D76)],
+        # --- suit one, which holds on to walls and ceilings ----------
+        # $9710: how far he goes along a ceiling in one shuffle.  It is read
+        # twice, once at $970F,Y and once at $9717,Y, so the two halves
+        # overlap and the whole sixteen bytes are kept as they are.
+        cling_step=list(b8[0x9710 - 0x8000:0x9720 - 0x8000]),
         # $B462: what he sinks into swallows him a fraction of a pixel a frame
         sink=s16(a9(0xB465)[0] * 256 + a9(0xB466)[0]),
         drown_y=a9(0xB46B)[0],

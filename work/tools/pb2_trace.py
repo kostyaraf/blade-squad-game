@@ -101,7 +101,12 @@ PLACE_FIELD = (0x0400, 0x04F2, 0x0508, 0x04B0, 0x04C6)
 # $0400 to $0668, field f of place n at $0400 + 22*f + n.  Five bytes are
 # enough to ask the sweep its question; a mind has to be judged on all of them.
 FIELDS = 29
-SPAWN_PC = 'A2A9'        # where a new shot takes its slot in the object table
+# Where a new shot takes its slot in the object table.  There are two: the
+# boomerang the unsuited hero throws ($A2A6) and the suit's own shot ($A381),
+# which $A291 sends him to instead the moment $9A is not nought.  Naming only
+# the first left every suited throw counting itself, so the engine was told
+# one shot was already out when in truth none was.
+SPAWN_PC = ('A2A9', 'A384')
 # $E4CD..$E4FC -- the six stores that turn a record of the level's list into a
 # live object, and $D6D4's loop, which wipes a slot that has died or been left
 # behind.  The log names the instruction AFTER the store, so these are one
@@ -368,7 +373,7 @@ def _trace(d, state, script, first, frames, during=()):
             for k, (a, apc) in enumerate(PUSH):
                 if addr == a and pc == apc and push[k] is None:
                     push[k] = mem[a]
-            if pc == SPAWN_PC and shots is None:
+            if pc in SPAWN_PC and shots is None:
                 shots = sum(1 for a in SHOT_SLOTS if mem[a])
             if addr == SOLID_N and pc == SOLID_PC and solids is None:
                 solids = [[mem[a + i] for a in SOLID]
