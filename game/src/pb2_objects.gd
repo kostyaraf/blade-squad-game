@@ -1163,13 +1163,16 @@ func _spit_3c(s: PackedByteArray) -> void:
 ## Returns the places the sweep freed, in the order it walked them.
 func turns() -> Array:
 	clock = (clock + 1) & 0xFF
-	# $F163 -- the frame's own code reads the spare byte of the fifteenth
-	# place, which is where a boss stands, as a request for a noise: one asks
-	# for it once, two asks for it over and over.  The once is taken back
-	# where it is read, the over and over is left standing.  There is no sound
-	# in the engine, so the taking back is the whole of what is left of it --
-	# but it is what the cartridge shows in that byte, and the boss that fades
-	# ($55) is read against it.
+	# $F163 -- the spare byte of the fifteenth place read as a request for a
+	# noise: one asks for it once, two asks for it over and over.  The once is
+	# taken back where it is read, the over and over is left standing.  There
+	# is no sound in the engine, so the taking back is all that is left of it.
+	#
+	# It belongs to one boss and no one else.  $F11F is ten ways of drawing a
+	# boss, picked by which of the ten it is, and $F163 is the sixth of them:
+	# only while $55 stands in the fifteenth place is the byte read at all.
+	# Everywhere else it is an ordinary field of whatever place happens to be
+	# fifteenth, and taking it back there would be wiping a thing's own ground.
 	#
 	# It is done here, at the head of the frame, because that is where the
 	# cartridge does it: the byte is written during a thing's turn and the
@@ -1178,7 +1181,7 @@ func turns() -> Array:
 	# end of the step it was written in is a question of which frame it fell
 	# in, and only doing it a frame at a time gets that right.
 	var noisy: PackedByteArray = slots[NOISE_SLOT]
-	if noisy[F_GROUND] == 0x01:                       # $F172
+	if noisy[F_TYPE] == 0x55 and noisy[F_GROUND] == 0x01:   # $F172
 		noisy[F_GROUND] = 0x00
 	var gone := []
 	for n in range(FIRST_LIVE, SLOTS):
