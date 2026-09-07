@@ -27,6 +27,8 @@ func _ready() -> void:
 	var replay := ""
 	var spawns := ""
 	var weapon := ""
+	var hud := ""
+	var hudscreen := ""
 	var water := ""
 	var oam := ""
 	var demo := ""
@@ -45,6 +47,8 @@ func _ready() -> void:
 		elif a.begins_with("--replay="): replay = a.substr(9)
 		elif a.begins_with("--spawns="): spawns = a.substr(9)
 		elif a.begins_with("--weapon="): weapon = a.substr(9)
+		elif a.begins_with("--hud="): hud = a.substr(6)
+		elif a.begins_with("--hudscreen="): hudscreen = a.substr(12)
 		elif a.begins_with("--water="): water = a.substr(8)
 		elif a.begins_with("--oam="): oam = a.substr(6)
 		elif a.begins_with("--demo="): demo = a.substr(7)
@@ -56,6 +60,14 @@ func _ready() -> void:
 		return
 	if spawns != "":
 		_run_spawns(spawns)
+		get_tree().quit()
+		return
+	if hud != "":
+		_run_hud(hud)
+		get_tree().quit()
+		return
+	if hudscreen != "":
+		_run_hud_screen(hudscreen)
 		get_tree().quit()
 		return
 	if weapon != "":
@@ -556,6 +568,78 @@ func _run_spawns(path: String) -> void:
 			things.clear(int(n))
 		for t in f["taken"]:
 			things.take(int(t[0]), int(t[1]))
+	print("\n".join(out))
+
+
+## Э3.7 acceptance -- the status bar, a turn of one piece at a time.
+##
+## Nothing the bar does reaches the screen directly: every piece of it fills
+## the queue at $0300 and the blanking empties the queue ($CC41).  So the queue
+## is what is judged.  The piece is handed the numbers the cartridge held when
+## it drew, and the bytes it pushes must be the cartridge's own.
+## Э3.7 acceptance, the second half -- the emptying.
+##
+## The cartridge's own queues are handed over one after another, exactly as it
+## held them at the moment of each blanking, and read the way $CC41 reads
+## them.  What is left in the screen is then set against the picture unit's
+## own memory, over every cell the reading touched.
+func _run_hud_screen(path: String) -> void:
+	var doc: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var bar := Pb2Hud.new()
+	bar.mirror = int(doc["mirror"])
+	for q in doc["queues"]:
+		var n: int = q.size()
+		for i in range(n):
+			bar.queue[i] = int(q[i])
+		bar.head = n
+		bar.flush()
+	var out := PackedStringArray()
+	for k in bar.touched.keys():
+		out.append("c %04X %02X" % [int(k), bar.screen[int(k)]])
+	for k in bar.painted.keys():
+		out.append("p %02X %02X" % [int(k), bar.palette[int(k)]])
+	print("\n".join(out))
+
+
+func _run_hud(path: String) -> void:
+	var calls: Array = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var bar := Pb2Hud.new()
+	var out := PackedStringArray()
+	for c in calls:
+		bar.boss = int(c["boss"])
+		bar.stage = int(c["stage"])
+		bar.area = int(c["area"])
+		bar.score_hi = int(c["score_hi"])
+		bar.score_lo = int(c["score_lo"])
+		bar.health_tanks = int(c["health_tanks"])
+		bar.suit_tanks = int(c["suit_tanks"])
+		bar.lives = int(c["lives"])
+		bar.health = int(c["health"])
+		bar.fuel = int(c["fuel"])
+		bar.charge = int(c["charge"])
+		bar.boss_life = int(c["boss_life"])
+		bar.suit = int(c["suit"])
+		var was: int = bar.head
+		match String(c["piece"]):
+			"stage_area": bar.stage_area()
+			"boss_bar": bar.boss_bar()
+			"score": bar.score()
+			"right_1": bar.number(int(bar.cfg["numbers"]["right_1"]["addr"]),
+					bar.health_tanks)
+			"right_2": bar.number(int(bar.cfg["numbers"]["right_2"]["addr"]),
+					bar.suit_tanks)
+			"right_3": bar.number(int(bar.cfg["numbers"]["right_3"]["addr"]),
+					bar.lives)
+			"suit_bar": bar.suit_bar()
+			"health_bar": bar.health_bar()
+			"charge_bar": bar.charge_bar()
+			"face": bar.face()
+		var line := PackedStringArray()
+		var i: int = was
+		while i != bar.head:
+			line.append("%02X" % bar.queue[i])
+			i = (i + 1) & 0xFF
+		out.append("q " + " ".join(line))
 	print("\n".join(out))
 
 
