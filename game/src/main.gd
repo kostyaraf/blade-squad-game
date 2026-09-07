@@ -299,6 +299,17 @@ func _run_spawns(path: String) -> void:
 		s[Pb2Objects.F_XHI] = int(r["xhi"])
 		s[Pb2Objects.F_Y] = int(r["y"])
 		s[Pb2Objects.F_YHI] = int(r["yhi"])
+	# $0184, $0190, $019C and $01A8 -- the road one boss writes as it flies and
+	# the two pieces of its tail walk a dozen ticks behind.  A run that begins
+	# with the boss already in the air begins with the road already written, so
+	# it is handed over like the table.
+	if cfg.has("rings"):
+		var ring: Dictionary = cfg["rings"]
+		for i in range(Pb2Objects.TRAIL):
+			things.trail_x[i] = int(ring["trail_x"][i])
+			things.trail_y[i] = int(ring["trail_y"][i])
+			things.trail_pic[i] = int(ring["trail_pic"][i])
+			things.trail_bits[i] = int(ring["trail_bits"][i])
 	# The running copy of the cartridge's own table, which the steps below
 	# keep up to date and against which the engine is judged.
 	var truth: Array = []

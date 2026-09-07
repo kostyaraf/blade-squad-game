@@ -38,63 +38,51 @@ import verify_player as V                                    # noqa: E402
 
 # --- the boss rooms -------------------------------------------------------
 #
-# The ten of them are a table of their own, the last one the extractor found,
-# and `V.settled_spot` throws every one of them out: it asks that the game be
-# in play mode ($27 = 3) for the whole minute it watches, and a boss room
-# begins with the meter filling ($27 = 4).  So the same question is asked here
-# with the looser answer the cartridge itself uses -- $8003 runs the level's
-# frame for anything under five -- and the hero is allowed to be hurt, which
-# in a boss room is the point.
+# They are a table of their own, the last one the extractor found, and none of
+# them is reached by walking.  A door does it, and a door writes two bytes:
+# $79, which tells the whole game to read the last table whatever stage it is
+# in, and $9C, the room.  The ordinary door at the end of the last walked area
+# opens the middle boss's room and leaves $9C at the stage's own number
+# ($86F7); the boss door at the end of the stage opens the end boss's and puts
+# $9C six higher ($84FE).  What neither of them touches is $53: the stage the
+# hero came from stands, and that is what the boss itself reads to know which
+# of the twelve it is -- $8737 adds $50 to the room, $87C3 adds $56 to the
+# stage.  So a room opened behind the game's back has to be given all three,
+# and the number the room is filed under is not the number the cartridge wants
+# in $53.
+#
+# There is one thing left that walking-on would have done and this does not:
+# standing the hero up in the room.  Left alone, a room opened out of turn
+# notices within a second and loads itself the way it means to be loaded -- the
+# hero comes in at the door, the meter fills, and by three hundred frames on it
+# is being played.  So the run starts there instead of at the usual frame, the
+# four bytes the walking-on would have written are written anyway, and the hero
+# is made unkillable -- a boss room being the one place where he would not last
+# a run out, and that has to hold while the savestate is being made as well,
+# three hundred frames of a boss swinging at a hero who is not being told to
+# move, hence `patch=True`.  He is left where the game put him: there is no
+# picking a spot in a room the door leads into.
+BOSS_WAIT = 300
+
+BOSS_POKES = ((0x27, 0x03),                          # $27 -- ordinary play
+              (pb2_trace.P.field(7), 0x10),          # $049A -- a full bar
+              (pb2_trace.P.field(18), 0x04),         # $058C -- on his feet
+              (pb2_trace.P.field(1), 0x00))          # $0416 -- nothing owed
+
+# How many rooms hold a middle boss: after those the rooms hold end bosses, and
+# the stage a room belongs to starts over from nought ($84FE against $86F7).
+BOSS_MID = 6
+
+
+def boss_early(area):
+    """$53 and $79 as the door would have left them for this room."""
+    return ((0x53, area % BOSS_MID), (0x79, 0x01))
 
 
 def boss_stage():
     """Which table holds the boss rooms: the last one, and nothing walks it."""
     path = os.path.join(ROOT, 'game', 'data', 'pb2', 'levels', 'index.json')
     return json.load(open(path))['stages'][-1]['stage']
-
-
-# A room opened behind the game's back does not put the hero in it: five of
-# the six rooms in the middle hand slot zero over already dead ($049A nought,
-# $058C at $22 -- the fall of a man who has lost), and all four at the end
-# leave the game in mode 2, where the level runs but the hero is not driven.
-# Both are the same thing: the cartridge only ever walks into these rooms out
-# of the area before them, and the walking-on is what sets the hero up.
-#
-# So the four bytes that walk-on would have written are written here instead --
-# the mode, his health, his stance and his mark -- three frames before the run
-# takes control.  Nothing else is touched; what is being compared is the
-# things, and the hero is only there to be somewhere for them to aim at.
-BOSS_POKES = ((0x27, 0x03),                          # $27 -- ordinary play
-              (pb2_trace.P.field(7), 0x10),          # $049A -- a full bar
-              (pb2_trace.P.field(18), 0x04),         # $058C -- on his feet
-              (pb2_trace.P.field(1), 0x00))          # $0416 -- nothing owed
-
-
-def _boss_settled(stage, area, spot):
-    rows = pb2_trace.trace([(2, '-')], 60, stage=stage, area=area, spot=spot,
-                           pokes=BOSS_POKES)
-    if any(r['mode'] >= 5 for r in rows):            # $8003 -- CMP #$05 / BCS
-        return False
-    if rows[0]['alive'] == 0:
-        return False
-    return all(r['sub'] == 4 and r['state'] == 0 for r in rows[-20:])
-
-
-_BOSS_SPOTS = {}
-
-
-def boss_spot(stage, area, tries=16):
-    key = (stage, area)
-    if key not in _BOSS_SPOTS:
-        cam = pb2_trace.trace([(2, '-')], 2, stage=stage, area=area,
-                              pokes=BOSS_POKES)[0]['cam']
-        found = None
-        for spot in V.Area(stage, area).spots_on_screen(cam)[:tries]:
-            if _boss_settled(stage, area, spot):
-                found = spot
-                break
-        _BOSS_SPOTS[key] = found
-    return _BOSS_SPOTS[key]
 
 
 DRAG = 2400
@@ -132,7 +120,8 @@ def run_engine(cfg, path):
     return out
 
 
-def script_for(rows, stage, area, spot, script, pokes=()):
+def script_for(rows, stage, area, spot, script, pokes=(), first=None,
+               patch=False, early=()):
     """What the engine is told: where the things already are, and one line per
     step -- the hero's place on the screen, which the view follows, and the
     slots the cartridge emptied."""
@@ -146,6 +135,12 @@ def script_for(rows, stage, area, spot, script, pokes=()):
     # sent, each as its number followed by its twenty-nine bytes.  The engine
     # keeps the same running copy, so what it holds is always the whole truth.
     prev = [[0] * pb2_trace.FIELDS for _ in range(pb2_trace.SLOTS)]
+    # A copy of the table is only taken where the view is moved off it, and a
+    # room the view never moves in gives the first step no copy at all.  The
+    # first one there is stands in for it: where the hero is looked at here is
+    # only the seed of a number that every step after says again.
+    hero = next((r['whole'][-1][0] for r in rows if r['whole']), None)
+    here = 0 if hero is None else (hero[9] if vertical else hero[12])
     for r in rows[1:]:
         whole = []
         for tbl in r['whole']:
@@ -155,7 +150,12 @@ def script_for(rows, stage, area, spot, script, pokes=()):
                     d.append([n] + row)
                     prev[n] = row
             whole.append(d)
-        here = r['see_y'] if vertical else r['see_x']
+        # $D3CA and $D3D2 -- where the view was told to look.  A room the
+        # view never has to move in is never told, and the sample is empty;
+        # the last answer stands, as it does on the cartridge.
+        seen = r['see_y'] if vertical else r['see_x']
+        if seen is not None:
+            here = seen
         # Only the deaths the engine cannot yet reach on its own are told to
         # it; the sweep's own it must find, and what it finds is compared.
         told = [n for n in r['died'] if n not in r['culled']]
@@ -173,6 +173,10 @@ def script_for(rows, stage, area, spot, script, pokes=()):
                        'cams': r['cams'],
                        'culled': sorted(r['culled']),
                        'got': r['got'], 'done': r['done']})
+    slots, rings = pb2_trace.objects(stage, area, spot, first=first,
+                                     script=script, upto=start['frame'],
+                                     pokes=pokes, patch=patch, early=early,
+                                     rings=True)
     return dict(
         stage=stage, area=area,
         cam=start['cam'],
@@ -180,8 +184,8 @@ def script_for(rows, stage, area, spot, script, pokes=()):
         clock=start['clock'],
         shift_before=start['shift'],
         # Read where the comparison begins, not where the run does.
-        slots=pb2_trace.objects(stage, area, spot, script=script,
-                                upto=start['frame'], pokes=pokes),
+        slots=slots,
+        rings=rings,
         frames=frames,
     )
 
@@ -216,32 +220,39 @@ GATES = ([(0x2B, 0xFF, 0), (0x2C, 0xFF, 0), (0x0171, NDONE, 0)]
 
 
 def check(name, script, stage, area, tmp, spot, frames, drag=False,
-          gates=False, pokes=()):
+          gates=False, boss=False):
     P = pb2_trace.P
-    P.ROMPOKE = list(P.IMMORTAL) if drag else []
+    first = P.IN_LEVEL + (BOSS_WAIT if boss else 0)
+    pokes = BOSS_POKES if boss else ()
+    early = boss_early(area) if boss else ()
+    P.ROMPOKE = list(P.IMMORTAL) if drag or boss else []
     if drag:
         pin, far, near = (PIN_DOWN if V.Area(stage, area).vertical
                           else PIN_ALONG)
-        P.FREEZE = [(pin, far, 0), (pin, near, P.IN_LEVEL + frames // 2)]
+        P.FREEZE = [(pin, far, 0), (pin, near, first + frames // 2)]
     else:
         P.FREEZE = []
     if gates:
         P.FREEZE = P.FREEZE + GATES
     try:
-        return _check(script, stage, area, tmp, spot, frames, pokes)
+        return _check(script, stage, area, tmp, spot, frames, pokes, first,
+                      boss, early)
     finally:
         P.ROMPOKE = []
         P.FREEZE = []
 
 
-def _check(script, stage, area, tmp, spot, frames, pokes=()):
+def _check(script, stage, area, tmp, spot, frames, pokes=(), first=None,
+           patch=False, early=()):
     rows = V.logic_frames(V.ordinary(pb2_trace.trace(
-        script, frames, stage=stage, area=area, spot=spot, pokes=pokes)))
+        script, frames, stage=stage, area=area, spot=spot, pokes=pokes,
+        first=first, patch=patch, early=early)))
     rows = rows[:-1][V.SETTLE:]
     if len(rows) < 2:
-        return 0, 0, None
+        return 0, (0, 0, 0, 0, 0), None
     w = want(rows)
-    got = run_engine(script_for(rows, stage, area, spot, script, pokes),
+    got = run_engine(script_for(rows, stage, area, spot, script, pokes,
+                                first, patch, early),
                      os.path.join(tmp, 's.json'))
     agree = [0, 0, 0]
     for i, expect in enumerate(w):
@@ -277,9 +288,9 @@ def main():
     ran = bad = steps = births = culls = 0
     same = seen = mine = 0
     for stage, area in targets:
-        spot = (boss_spot(stage, area) if stage == boss
-                else V.settled_spot(stage, area))
-        if spot is None:
+        here = stage == boss
+        spot = None if here else V.settled_spot(stage, area)
+        if spot is None and not here:
             continue
         # The scan is a walk of the level's list, so what tests it is the view
         # travelling far.  The button scripts are short, but the four that only
@@ -292,8 +303,7 @@ def main():
         for name, script, frames, drag, gates in scripts:
             ran += 1
             n, b, diff = check(name, script, stage, area, tmp, spot, frames,
-                               drag, gates,
-                               BOSS_POKES if stage == boss else ())
+                               drag, gates, here)
             label = '%d:%-2d %-12s' % (stage, area, name)
             if diff is None:
                 steps += n

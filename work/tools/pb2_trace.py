@@ -186,20 +186,33 @@ LO = min(WATCH.values())
 HI = max(max(WATCH.values()), 0x0400 + 22 * FIELDS - 1)
 
 
-def state_for(first, stage, area, spot, pokes=()):
+def state_for(first, stage, area, spot, pokes=(), patch=False, early=()):
     """The savestate a run of this area starts from.  Making one costs a run of
     the whole boot, so they are kept and shared."""
     os.makedirs(P.SCRATCH, exist_ok=True)
-    tag = '_'.join('%04X%02X' % (a, v) for a, v in pokes)
+    tag = '_'.join('%04X%02X' % (a, v) for a, v in tuple(pokes) + tuple(early))
+    if patch:
+        tag += 'p%d' % len(P.ROMPOKE)
     path = os.path.join(P.SCRATCH, 'pb2_%d_%s_%s_%s_%s.st'
                         % (first, stage, area, spot, tag))
     P.make_state(path, frame=first, stage=stage, area=area, spot=spot,
-                 pokes=pokes)
+                 pokes=pokes, patch=patch, early=early)
     return path
 
 
+# $0184, $0190, $019C and $01A8 -- twelve places, twelve heights, twelve
+# pictures and twelve ways of looking.  One boss writes them as it flies and
+# the two pieces of its tail read them a dozen ticks behind, so a run that
+# begins with the boss already in the air begins with the ring already
+# written: it is level memory like the table itself, and has to be handed over
+# with it.
+RING = (('trail_x', 0x0184), ('trail_y', 0x0190),
+        ('trail_pic', 0x019C), ('trail_bits', 0x01A8))
+RING_LEN = 0x0C
+
+
 def objects(stage, area, spot=None, first=None, script=(), upto=None,
-            pokes=()):
+            pokes=(), patch=False, early=(), rings=False):
     """The table of live things as a run of this area would find it.
 
     A watch log only says what changed, so the six bytes the spawner writes are
@@ -212,7 +225,7 @@ def objects(stage, area, spot=None, first=None, script=(), upto=None,
     read where the comparison begins, with the same buttons pressed on the way.
     """
     first = P.IN_LEVEL if first is None else first
-    state = state_for(first, stage, area, spot, pokes)
+    state = state_for(first, stage, area, spot, pokes, patch, early)
     d = P.scratch('objects')
     try:
         ram = os.path.join(d, 'r.ram')
@@ -229,14 +242,17 @@ def objects(stage, area, spot=None, first=None, script=(), upto=None,
                         '-frames', str(last), '-ramdump', ram),
                        check=True, capture_output=True)
         m = open(ram, 'rb').read()
-        return [{k: m[a + n] for k, a in SNAP_FIELD.items()}
-                for n in range(SLOTS)]
+        out = [{k: m[a + n] for k, a in SNAP_FIELD.items()}
+               for n in range(SLOTS)]
+        if rings:
+            return out, {k: list(m[a:a + RING_LEN]) for k, a in RING}
+        return out
     finally:
         P.sweep(d)
 
 
 def trace(script, frames, state=None, first=None, stage=None, area=None,
-          spot=None, pokes=(), during=()):
+          spot=None, pokes=(), during=(), patch=False, early=()):
     """Play `script` and return a list of dicts, one per frame.
 
     Two runs are needed: the first stops at the starting frame and dumps all of
@@ -247,10 +263,10 @@ def trace(script, frames, state=None, first=None, stage=None, area=None,
     # The traces themselves are worth nothing once read, so they go in a
     # scratch of their own and are swept up below.
     if state is None:
-        state = state_for(first, stage, area, spot, pokes)
+        state = state_for(first, stage, area, spot, pokes, patch, early)
     else:
         P.make_state(state, frame=first, stage=stage, area=area, spot=spot,
-                     pokes=pokes)
+                     pokes=pokes, patch=patch, early=early)
     d = P.scratch('trace')
     try:
         return _trace(d, state, script, first, frames, during)

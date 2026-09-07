@@ -312,8 +312,10 @@ func _head_50(w: Pb2Objects, n: int, s: PackedByteArray) -> bool:
 	if (s[F_KEEP] & 0x0F) != 0:
 		return false
 	var side: int = 0xEA if (s[F_BITS] & 0x40) != 0 else 0x16
+	# $BDB8 -- the carry says the shot could not be made, and only a shot that
+	# was made is counted off.
 	if w.make_child_aimed(s, side, aim[1], SHOT_50, SHOT_50_SPEED,
-			aim[0]) < 0:
+			aim[0]) >= 0:                              # $BDBA
 		s[F_KEEP2] = (s[F_KEEP2] - 1) & 0xFF
 	return false
 
@@ -720,7 +722,8 @@ func _settle_52(w: Pb2Objects, s: PackedByteArray) -> void:
 
 ## $B9EE -- it slides along until it reaches the far end, and then dives.
 func _glide_52(w: Pb2Objects, s: PackedByteArray) -> void:
-	w.step_anim(s)                                     # $C8EE
+	w.step_anim(s)                                     # $C8EE -- $FA05 is
+	w.step_both(s)                                     # $E30F and then $FA08
 	if s[F_VX] < 0x80:
 		if s[F_X] < FAR_52[1]:
 			return
@@ -856,7 +859,8 @@ func _hover_52(w: Pb2Objects, s: PackedByteArray) -> void:
 ## In the two suits that climb it will drop from further off, so long as he is
 ## not far below as well.
 func _watch_52(w: Pb2Objects, s: PackedByteArray) -> void:
-	w.step_anim(s)                                     # $C8EE
+	w.step_anim(s)                                     # $C8EE -- $FA05 is
+	w.step_both(s)                                     # $E30F and then $FA08
 	s[F_Y] = HIGH_52
 	var side: Array = w.hero_side(s)                   # $C93C
 	if side[0] >= NEAR_52:
@@ -2096,7 +2100,11 @@ func _leap_56(w: Pb2Objects, n: int, s: PackedByteArray) -> void:
 		w.set_speed_down(s, LEAP_56[0], LEAP_56[1])    # $C909
 		return
 	w.boss_step = BOX_56_LEAP                          # $5F
+	# $C8EE is $FA05, which is the pictures and then $FA08 -- along and down
+	# both -- so it moves before it is made heavier, and the step it takes is
+	# the one it was left with a frame ago.
 	w.step_anim(s)                                     # $C8EE
+	w.step_both(s)
 	w.add_speed_down(s, WEIGHT_56)                     # $C90C
 	if w.ground_turn_clear(n, s, 0x00, FLOOR_56_UP) < 0x80:    # $C945
 		return

@@ -1152,6 +1152,23 @@ func _spit_3c(s: PackedByteArray) -> void:
 ## Returns the places the sweep freed, in the order it walked them.
 func turns() -> Array:
 	clock = (clock + 1) & 0xFF
+	# $F163 -- the frame's own code reads the spare byte of the fifteenth
+	# place, which is where a boss stands, as a request for a noise: one asks
+	# for it once, two asks for it over and over.  The once is taken back
+	# where it is read, the over and over is left standing.  There is no sound
+	# in the engine, so the taking back is the whole of what is left of it --
+	# but it is what the cartridge shows in that byte, and the boss that fades
+	# ($55) is read against it.
+	#
+	# It is done here, at the head of the frame, because that is where the
+	# cartridge does it: the byte is written during a thing's turn and the
+	# taking back is stamped with the frame after.  A step of the game can run
+	# over two frames of the console, so whether the byte still stands at the
+	# end of the step it was written in is a question of which frame it fell
+	# in, and only doing it a frame at a time gets that right.
+	var noisy: PackedByteArray = slots[NOISE_SLOT]
+	if noisy[F_GROUND] == 0x01:                       # $F172
+		noisy[F_GROUND] = 0x00
 	var gone := []
 	for n in range(FIRST_LIVE, SLOTS):
 		var s: PackedByteArray = slots[n]
@@ -1166,16 +1183,6 @@ func turns() -> Array:
 		var mind = MINDS.get(s[F_TYPE])
 		if mind != null:
 			call(mind, n, s)
-	# $F163 -- once the turns are over the frame's own code reads the spare
-	# byte of the fifteenth place, which is where a boss stands, and makes a
-	# noise by it: one asks for the noise once, two asks for it over and over.
-	# The once is taken back in the same step it was asked for; the over and
-	# over is left standing.  There is no sound in the engine, so the taking
-	# back is the whole of what is left of it -- but it is what the cartridge
-	# shows in that byte, and the boss that fades ($55) is read against it.
-	var noisy: PackedByteArray = slots[NOISE_SLOT]
-	if noisy[F_GROUND] == 0x01:                       # $F172
-		noisy[F_GROUND] = 0x00
 	return gone
 
 

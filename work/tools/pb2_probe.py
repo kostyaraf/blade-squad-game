@@ -101,7 +101,7 @@ PICK_LEVEL = 1052        # $53 and $9C are chosen at 1051; this is right after
 
 
 def make_state(path, frame=IN_LEVEL, boot=BOOT, stage=None, area=None,
-               spot=None, pokes=()):
+               spot=None, pokes=(), patch=False, early=()):
     """A savestate with the game standing in a level, ready for input.
 
     Which level is the game's business, except that it writes the stage and
@@ -114,12 +114,30 @@ def make_state(path, frame=IN_LEVEL, boot=BOOT, stage=None, area=None,
     open(inp, 'w').write(boot)
     # The boot is played on the plain cartridge: a study patch belongs to the
     # run that uses it, not to the state every run starts from.
-    cmd = [EMU, ROM, '-input', inp, '-frames', str(frame + 1),
-           '-savestate', '%s@%d' % (path, frame)]
+    #
+    # `patch` is the one exception, and it is asked for by name.  A boss room
+    # opened out of turn takes four hundred frames to load itself properly,
+    # and a boss kills an idle hero inside that time -- so the making of the
+    # state itself has to be run with the cartridge patched, or there is no
+    # live hero at the end of it to hand over.
+    cmd = [EMU, ROM]
+    if patch:
+        for off, val in ROMPOKE:
+            cmd += ['-rompoke', '%X=%02X' % (off, val)]
+    cmd += ['-input', inp, '-frames', str(frame + 1),
+            '-savestate', '%s@%d' % (path, frame)]
     if stage is not None:
         cmd += ['-poke', '0053=%02X@%d' % (stage, PICK_LEVEL)]
     if area is not None:
         cmd += ['-poke', '009C=%02X@%d' % (area, PICK_LEVEL)]
+    # Bytes set in the same gap, after the stage and the area, for a room the
+    # game does not open by walking into it.  A boss room is stage six's data
+    # with $79 set ($86F7, $84FE), and $53 is left holding the stage the boss
+    # belongs to, because that is what the boss reads to know which of the
+    # twelve it is ($8737, $87C3).  So the two cannot be the same number, and
+    # the one the room is filed under is not the one the cartridge wants.
+    for a, v in early:
+        cmd += ['-poke', '%04X=%02X@%d' % (a, v, PICK_LEVEL)]
     if spot is not None:
         # Where he stands is his own business everywhere except here, where
         # the area was opened behind the game's back and his feet are still
