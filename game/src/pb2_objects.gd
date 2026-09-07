@@ -155,9 +155,19 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 ## $BE36 -- one bit a stage, tried against $5B to tell a stage already beaten.
 const STAGE_BIT := [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40]
 
+## $E00A -- the table the boss rooms are filed under.  With $79 set the whole
+## game reads this one whatever $53 holds, which is how a room can belong to
+## the stage the hero came from and still be built out of its own list.
+const BOSS_STAGE := 6
+
 ## $9C -- which area of the stage is being played.  The door puts the next one
 ## here before the level is asked to build itself again.
 var area := 0
+## $53 -- which stage is being played, in the game's own count.  Neither door
+## touches it: a boss room is the seventh table's area, opened by setting $79,
+## and the stage the hero walked in from stays here, because that is what the
+## room reads to know which of the twelve bosses it holds ($8737, $87BB).
+var came := 0
 ## $79 -- what opens next is a boss room, not another area of the stage.
 var boss := 0
 ## $AD -- which half of a stage is being played: the walk, or the boss.
@@ -292,6 +302,7 @@ var fill := 0
 func _init(level: Pb2Level) -> void:
 	lvl = level
 	area = lvl.area
+	came = lvl.stage
 	water = lvl.line
 	for i in range(SLOTS):
 		slots.append(empty_row())
@@ -2518,7 +2529,7 @@ func _call_05(s: PackedByteArray) -> void:
 ## all four of them.
 func _call_06(s: PackedByteArray) -> void:
 	s[F_MARK] = 0x80                                   # $C9AB -> $FD86
-	var i: int = lvl.stage
+	var i: int = came                                  # $53
 	var b: PackedByteArray = slots[int(cfg_boss["slot"])]
 	b[F_KIND] = int(cfg_boss["end_pic"])
 	b[F_TYPE] = int(cfg_boss["end_first"]) + i
@@ -3471,11 +3482,12 @@ func restore_home(s: PackedByteArray) -> void:
 	s[F_YHI] = (hi - (1 if y < 0 else 0)) & 0xFF
 
 
-## $FC45 ($C963) -- write one place's record over another's.  All of it but
-## the record's own number and the last four fields.
+## $FC45 ($C963) -- write one place's record over another's.  Every field but
+## the record's own number: twenty-eight in all, the cached place among them,
+## so the copy is rebased by the view exactly as the original is.
 func copy_row(dst: int, src: PackedByteArray) -> void:
 	var d: PackedByteArray = slots[dst]
-	for f in range(0, 25):
+	for f in range(0, 29):
 		if f == F_REC:
 			continue
 		d[f] = src[f]
@@ -6557,10 +6569,10 @@ func _shut_04(n: int, s: PackedByteArray) -> void:
 		return
 	live = 6                                           # $1A := 6
 	area += 1                                          # INC $9C
-	if area == Pb2Level.walk_count(lvl.stage):         # $C894
+	if area == Pb2Level.walk_count(came):              # $C894
 		boss = 1                                       # $79 := 1
 		phase = 2                                      # $AD := 2
-		area = 0 if lvl.stage == 5 else lvl.stage
+		area = 0 if came == 5 else came
 	clear(n)                                           # $C810
 
 
@@ -6635,7 +6647,7 @@ func _count_03(s: PackedByteArray) -> void:
 func _hand_03(n: int, s: PackedByteArray) -> void:
 	live = 6                                           # $1A := 6
 	boss = 1                                           # $79 := 1
-	area = lvl.stage + 6                               # $9C := $53 + 6
+	area = came + 6                                    # $9C := $53 + 6
 	clear(n)                                           # $C810
 
 

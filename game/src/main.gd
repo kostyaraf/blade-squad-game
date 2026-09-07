@@ -290,6 +290,9 @@ func _run_spawns(path: String) -> void:
 	view.place(int(cfg["cam"]) >> 8, int(cfg["cam"]) & 0xFF,
 			int(cfg["cam_pend"]), int(cfg["clock"]))
 	var things := Pb2Objects.new(level_pb2)
+	# $53 -- see `came`.  A room opened cold has to be told it.
+	if cfg.has("came"):
+		things.came = int(cfg["came"])
 	for n in range(cfg["slots"].size()):
 		var r: Dictionary = cfg["slots"][n]
 		var s: PackedByteArray = things.slots[n]
@@ -759,6 +762,10 @@ var lives := 2
 ## The counters that are his and not the level's -- $9A, $56, $A0, $9E and the
 ## blade's three.  It outlives an area and a life both.
 var status: Pb2Status = null
+## $53 -- the stage in the game's own count.  A boss room is built out of the
+## seventh table, so `level_pb2.stage` is six there and this is not: it holds
+## the stage the hero walked in from, which is what the room reads.
+var came := 0
 
 
 ## Open an area and put a hero in it, where the area's own walk-on says.
@@ -772,6 +779,12 @@ func _start_play(st: int, ar: int) -> void:
 	Pb2Sprites.load_data()
 	view = Pb2Camera.new(level_pb2)
 	world = Pb2Objects.new(level_pb2)
+	# The boss rooms are the seventh table and belong to no stage of their own,
+	# so walking into one leaves $53 where it was ($86F0 and $84F6 set $79 and
+	# $9C, and neither touches $53).
+	if st != Pb2Objects.BOSS_STAGE:
+		came = st
+	world.came = came
 	hero = Pb2Player.new(level_pb2)
 	hero.world = world
 	# What he carries from one area to the next, and from one life to the

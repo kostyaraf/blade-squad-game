@@ -1226,7 +1226,8 @@ func _walk_53(w: Pb2Objects, n: int, s: PackedByteArray) -> void:
 	if _shot_coming_53(w, s):                          # $BF80
 		_dodge_53(w, s)
 		return
-	w.step_anim(s)                                     # $C8EE
+	w.step_anim(s)                                     # $C8EE -- $FA05 is
+	w.step_both(s)                                     # $E30F and then $FA08
 	s[F_KEEP2] = (s[F_KEEP2] + 1) & 0xFF
 	if s[F_KEEP2] < WALK_53_LOOK:
 		_walk_on_53(w, s)
@@ -1352,9 +1353,9 @@ func _land_rest_53(w: Pb2Objects, s: PackedByteArray) -> void:
 
 ## $BF08 -- the rest, which a shot on its way cuts short.
 func _rest_53(w: Pb2Objects, s: PackedByteArray) -> void:
-	if not _shot_coming_53(w, s):                      # $BF80
-		_charge_start_53(w, s)
-		return
+	if _shot_coming_53(w, s):                          # $BF80 -- $BF09 is
+		_charge_start_53(w, s)                         # BCC, and the carry
+		return                                         # is clear when one is
 	s[F_KEEP2] = (s[F_KEEP2] - 1) & 0xFF
 	if s[F_KEEP2] == 0:
 		_charge_start_53(w, s)

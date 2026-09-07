@@ -179,6 +179,9 @@ def script_for(rows, stage, area, spot, script, pokes=(), first=None,
                                      rings=True)
     return dict(
         stage=stage, area=area,
+        # $53 -- the stage the room belongs to, which is not the table it is
+        # built out of.  `boss_early` pokes the cartridge with the same number.
+        came=dict(early).get(0x53, stage),
         cam=start['cam'],
         cam_pend=start['pend'] - 256 if start['pend'] > 127 else start['pend'],
         clock=start['clock'],
