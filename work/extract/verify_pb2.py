@@ -11,6 +11,7 @@ of the work exports.
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -22,7 +23,10 @@ from render import Tiles, bg_frame, sprite_mask                  # noqa: E402
 from vramdump import VDump                                       # noqa: E402
 
 EMU = os.path.join(ROOT, 'work', 'tools', 'nesemu')
-TMP = '/tmp/pb3v3/verify'
+# The pictures and the dumps a run makes are worth nothing once read, and a
+# stand run over and over would otherwise pile up gigabytes of them in the
+# system's own scratch.  They go under the tree, and are wiped before use.
+TMP = os.path.join(ROOT, 'work', 'tmp', 'pb3v3', 'verify')
 FRAMES = [1900, 2200, 2500, 2800, 3100, 3400, 3700, 4000]
 
 
@@ -71,6 +75,7 @@ def check_nametable(st, area, dump):
 
 
 def main():
+    shutil.rmtree(TMP, ignore_errors=True)
     os.makedirs(TMP, exist_ok=True)
     inp = os.path.join(TMP, 'walk.inp')
     script(inp)

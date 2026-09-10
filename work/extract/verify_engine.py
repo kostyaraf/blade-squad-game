@@ -8,6 +8,7 @@ games, so a match here means the engine draws what the console drew.
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -19,7 +20,10 @@ import oracle                                                    # noqa: E402
 
 GODOT = '/Applications/Godot_mono.app/Contents/MacOS/Godot'
 GAME = os.path.join(ROOT, 'game')
-TMP = '/tmp/pb3v3/engine'
+# The pictures and the dumps a run makes are worth nothing once read, and a
+# stand run over and over would otherwise pile up gigabytes of them in the
+# system's own scratch.  They go under the tree, and are wiped before use.
+TMP = os.path.join(ROOT, 'work', 'tmp', 'pb3v3', 'engine')
 
 
 def pb2_views():
@@ -57,6 +61,7 @@ def sol_views():
 
 
 def main():
+    shutil.rmtree(TMP, ignore_errors=True)
     os.makedirs(TMP, exist_ok=True)
     views = pb2_views() + sol_views()
     lines = []

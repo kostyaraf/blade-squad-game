@@ -17,6 +17,7 @@ run and is seeded only once, at the start.
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -26,7 +27,10 @@ from vramdump import VDump                                       # noqa: E402
 import verify_player as V                                        # noqa: E402
 
 EMU = os.path.join(ROOT, 'work', 'tools', 'nesemu')
-TMP = '/tmp/pb3v3/oam'
+# The pictures and the dumps a run makes are worth nothing once read, and a
+# stand run over and over would otherwise pile up gigabytes of them in the
+# system's own scratch.  They go under the tree, and are wiped before use.
+TMP = os.path.join(ROOT, 'work', 'tmp', 'pb3v3', 'oam')
 SLOTS, FIELDS = 22, 29
 # Four runs of a hundred pictures each, spread over a walk through the first
 # stage: standing about, walking, jumping and throwing.
@@ -50,6 +54,7 @@ def table(ram):
 
 
 def main():
+    shutil.rmtree(TMP, ignore_errors=True)
     os.makedirs(TMP, exist_ok=True)
     inp = os.path.join(TMP, 'walk.inp')
     script(inp)

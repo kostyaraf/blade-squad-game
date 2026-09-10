@@ -33,6 +33,7 @@ func _ready() -> void:
 	var oam := ""
 	var demo := ""
 	var play := ""
+	var run := ""
 	var give := ""
 	var stage := 0
 	var area := 0
@@ -53,6 +54,7 @@ func _ready() -> void:
 		elif a.begins_with("--oam="): oam = a.substr(6)
 		elif a.begins_with("--demo="): demo = a.substr(7)
 		elif a.begins_with("--play="): play = a.substr(7)
+		elif a.begins_with("--run="): run = a.substr(6)
 		elif a.begins_with("--give="): give = a.substr(7)
 	if replay != "":
 		_run_replay(replay)
@@ -98,6 +100,9 @@ func _ready() -> void:
 	if play != "":
 		_run_play(play, stage, area)
 		get_tree().quit()
+		return
+	if run != "":
+		_run_through(run, stage, area)
 		return
 	if demo != "":
 		await _run_demo(demo, stage, area)
@@ -926,6 +931,10 @@ var slid := 0
 ## $9F -- how many more times he may be brought back.  $D090 gives him two at
 ## the start of a game.
 var lives := 2
+## How many times a life has been spent since the game began.  Nothing
+## in the game reads it; it is how a run of its own can tell a death
+## from a door, both of which open an area again.
+var died_count := 0
 ## The counters that are his and not the level's -- $9A, $56, $A0, $9E and the
 ## blade's three.  It outlives an area and a life both.
 var status: Pb2Status = null
@@ -1103,6 +1112,7 @@ func _next_area() -> void:
 ## $D022 -- a life is spent and the area is opened again; when there are none
 ## left the game is over and the stage begins from its first area.
 func _die() -> void:
+	died_count += 1
 	if lives > 0:
 		lives -= 1
 		_start_play(level_pb2.stage, level_pb2.area)
@@ -1262,3 +1272,265 @@ func _bar_show(m: ShaderMaterial) -> void:
 	m.set_shader_parameter("bar", bar_tex)
 	m.set_shader_parameter("bar_banks", PackedInt32Array(bar.bar_banks()))
 	m.set_shader_parameter("bar_on", true)
+
+
+## Э3.8 -- the whole game played by the engine and nothing else.
+##
+## It is stood in the first area of the first stage and left to run.  A pilot
+## holds it towards the far edge and taps A; where the hero gets stuck against
+## something the pilot cannot climb it shoves him a few points on, and where
+## the door is still not reached in time the door is made to open where it
+## stands -- the same two bytes $B5A5 writes when he walks into it.
+##
+## What is on trial is not the pilot.  It is whether every area of the seven
+## stages loads, runs its own minds for hundreds of steps without falling over,
+## puts out its door, and hands on to the area the door names -- the whole
+## game, end to end, out of the engine alone.  One line per area is put out:
+## where it began, how many steps it took, where the hero ended, and which
+## area it handed on to.
+const OPENING := 260
+
+
+func _run_through(spec: String, from_stage: int = 0, from_area: int = 0) -> void:
+	var f := spec.split(",")
+	var steps: int = int(f[0]) if f[0] != "" else 900
+	var limit: int = int(f[1]) if f.size() > 1 else 200
+	var trace: bool = f.size() > 2 and f[2] == "trace"
+	pads = [Pad.player_one(), Pad.player_two()]
+	_start_play(from_stage, from_area)
+	var seen := {}
+	var out := PackedStringArray()
+	var areas := 0
+	var stuck := 0
+	var forced := 0
+	var deaths := 0
+	var stepped := 0
+	while areas < limit:
+		var st: int = level_pb2.stage
+		var ar: int = level_pb2.area
+		var key := "%d:%d" % [st, ar]
+		# A boss room is filed under the stage it belongs to as well: the last
+		# stage's own room is $C894's area nought, which is also the first
+		# stage's, and the two are not the same visit.
+		var been := "%d/%s" % [came, key]
+		if seen.has(been):
+			out.append("%-6s seen already -- the run has come round" % key)
+			break
+		seen[been] = true
+		var down: bool = level_pb2.vertical
+		# Which end of the area the door is at is written down nowhere, so the
+		# run goes one way until the edge stops it and then the other.
+		var far := true
+		var was: int = view.pos
+		var still := 0
+		var turns := 0
+		# An area that carries the view along by itself ($2E) moves it one
+		# point every fourth, eighth or sixteenth step, and the hero cannot
+		# hurry it; such an area is given that many times as long.
+		var allow: int = steps
+		if level_pb2.auto != 0:
+			if level_pb2.auto in [3, 4, 5]:
+				allow = steps * 4
+			elif level_pb2.auto in [2, 7]:
+				allow = steps * 8
+			else:
+				allow = steps * 16
+		var n := 0
+		var died := 0
+		var d_was: int = died_count
+		var opened := ""
+		var over := false
+		var opening := false
+		# A boss room is not left through a door: when the meter is empty the
+		# cartridge hands the game back to the map of the stages ($18 := 5,
+		# $8912), and from there the player picks the next one.  The engine has
+		# no map yet, so the run walks on to the first area of the next stage
+		# itself and the map is written down as a debt.
+		var room_done := false
+		# Which step the door was made to open on.  The whole opening is a
+		# hundred and thirty frames and the level takes another sixty to come
+		# back; a door that has not handed on well past that was the wrong
+		# door, or was carried off the screen before it finished, so the pilot
+		# takes hold again and looks for another.
+		var open_at := 0
+		while n < allow:
+			# Once the door has been made to open the pilot lets go of
+			# everything: the opening is a hundred and thirty frames long and
+			# the door has to stay where it is for all of them, so the hero is
+			# neither pinned nor steered any more.  This is what the study runs
+			# do -- the pin is held exactly until the door is opened.
+			var b := 0
+			if not opening:
+				b = (Pad.DOWN if far else Pad.UP) if down \
+						else (Pad.RIGHT if far else Pad.LEFT)
+				if n % 24 == 8:
+					b |= Pad.A
+				# And it throws, without pause.  A boss room has no door: the
+				# only way out of one is to empty the boss's meter.
+				if n % 8 < 2:
+					b |= Pad.B
+			pads[0].pressed = b & ~pads[0].held
+			pads[0].held = b
+			# An area that builds itself again makes a new table; that is how
+			# the run tells a rebuild from an ordinary step.
+			var world_was: Pb2Objects = world
+			# The pilot cannot play, so it pins him: his place on the screen
+			# is written every step to one edge of it and the view chases him
+			# the whole length of the area.  This is what the study runs do to
+			# the cartridge ($0508 and $04C6, `PIN_ALONG` and `PIN_DOWN`);
+			# nothing else about him is touched.
+			if not opening:
+				if down:
+					hero.y = (hero.y & 0xFF) | ((0xC0 if far else 0x20) << 8)
+				else:
+					hero.x = (hero.x & 0xFF) | ((0xE0 if far else 0x00) << 8)
+			# ...and keeps him alive, the way $D0F1 is poked out for a study
+			# run.  A pilot that cannot dodge would otherwise spend the game's
+			# three lives in the first area.
+			world.slots[0][Pb2Objects.F_LIFE] = 0x10
+			status.life = 0x10
+			_step_pb2()
+			_bar_step()
+			n += 1
+			if died_count != d_was:
+				d_was = died_count
+				died += 1
+				still = 0
+				was = view.pos
+				if level_pb2.stage != st or level_pb2.area != ar:
+					over = true
+					break
+				continue
+			if world != world_was:
+				if level_pb2.stage != st or level_pb2.area != ar:
+					opened = "%d:%d" % [level_pb2.stage, level_pb2.area]
+				else:
+					room_done = true
+				break
+			# The pinned hero stands still by definition, so what says the run
+			# is getting anywhere is the view.
+			if trace and n % 60 == 0:
+				out.append("   %-6s step %4d  hero %d,%d  view %d  pend %d  "
+						% [key, n, hero.x >> 8, hero.y >> 8, view.pos,
+						view.pending]
+						+ "shift %d auto %d mode %d  out: %s"
+						% [view.shift, view.auto, status.mode, _types()])
+			var now: int = view.pos
+			if now != was:
+				still = 0
+				was = now
+			else:
+				still += 1
+			# Held against the end of the area for half a second: that end has
+			# no door, so the run turns round and walks the other way.
+			if still >= 30 and not opening:
+				still = 0
+				turns += 1
+				far = not far
+			# A door standing and waiting is made to open where it is: the
+			# pilot cannot walk into it, and what is on trial is the opening
+			# and the handing on, not the walking.
+			# A boss room has no door.  The pilot cannot fight, so the boss is
+			# put into the first of its six dying states -- where a spent
+			# meter puts it ($BDE9) -- and the room ends as it would have.
+			if not opening and (_force_door() or _force_boss()):
+				opening = true
+				open_at = n
+				forced += 1
+			elif opening and n - open_at > OPENING:
+				opening = false
+		deaths += died
+		if room_done:
+			# $88F0 -- the stage the room belonged to is $53, which the engine
+			# keeps in `came`; the next one begins at its first area.  Stage
+			# five is the last, and its rooms are a chain of their own.
+			areas += 1
+			if came >= 5:
+				out.append("%-6s ok    %4d steps -- the boss is down and the "
+						% [key, n] + "game is over")
+				break
+			out.append("%-6s ok    %4d steps, %d deaths  ->  the map, and on "
+					% [key, n, died] + "to %d:0" % [came + 1])
+			_start_play(came + 1, 0)
+			_apply()
+			continue
+		if opened == "":
+			# The area never put out a door in the time it was given.  Three do
+			# not put one out for the cartridge either, walked from a standing
+			# start; the run steps over into the next area of the stage -- the
+			# door leads to $9C + 1 and nowhere else -- and says so.
+			var walk: int = Pb2Level.walk_count(st)
+			if st != Pb2Objects.BOSS_STAGE and not over:
+				stepped += 1
+				areas += 1
+				out.append("%-6s NO DOOR %4d steps, %d turns, %d deaths -- "
+						% [key, n, turns, died]
+						+ "stepped over  (out: %s)" % _types())
+				if ar + 1 < walk:
+					_start_play(st, ar + 1)
+				else:
+					_start_play(Pb2Objects.BOSS_STAGE, st)
+				_apply()
+				continue
+			stuck += 1
+			out.append("%-6s STUCK %4d steps, %d turns, %d deaths -- %s"
+					% [key, n, turns, died,
+					"the last life was spent" if over else "no door opened"]
+					+ "  (hero %d,%d  view %d  out: %s)"
+					% [hero.x >> 8, hero.y >> 8, view.pos, _types()])
+			break
+		areas += 1
+		out.append("%-6s ok    %4d steps, %d turns, %d deaths  ->  %s"
+				% [key, n, turns, died, opened])
+	print("\n".join(out))
+	print("%d areas played, %d doors forced, %d stepped over, %d deaths, "
+			% [areas, forced, stepped, deaths] + "%d stuck" % stuck)
+	get_tree().quit()
+
+
+## $B5A5 -- the two bytes the hero's touch writes into the door: the mark that
+## says it has been opened, and the step that starts the opening.
+func _force_door() -> bool:
+	for n in range(Pb2Objects.SLOTS):
+		var s: PackedByteArray = world.slots[n]
+		if s[Pb2Objects.F_TYPE] == 0x04 and s[Pb2Objects.F_STATE] == 0x01:
+			s[Pb2Objects.F_MARK] = 0x80
+			s[Pb2Objects.F_STATE] = 0x02
+			return true
+	return false
+
+
+## $BDE9 -- a boss whose meter is empty is put into the first of the six states
+## every boss dies through.  Only in a boss room: the same types stand about in
+## the middle of a stage as well, and there they are ordinary things of an area
+## the pilot walks past.
+func _force_boss() -> bool:
+	if level_pb2.stage != Pb2Objects.BOSS_STAGE:
+		return false
+	var cfg: Dictionary = world.cfg_boss
+	var first: int = int(cfg["mid_first"])
+	for n in range(Pb2Objects.SLOTS):
+		var s: PackedByteArray = world.slots[n]
+		var t: int = s[Pb2Objects.F_TYPE]
+		if t < first or t > 0x59:
+			continue
+		# The six in the middle of a stage keep three states of their own and
+		# the four at the end six; the dying begins where those run out.
+		var own: int = int(cfg["mid_states"]) if t < int(cfg["end_first"]) \
+				else int(cfg["end_states"])
+		if s[Pb2Objects.F_STATE] < own:
+			s[Pb2Objects.F_STATE] = own
+			s[Pb2Objects.F_LIFE] = 0
+			return true
+	return false
+
+
+## What is out in the table, as type:state, for a line of the run's report.
+func _types() -> String:
+	var out := PackedStringArray()
+	for k in range(Pb2Objects.SLOTS):
+		var s: PackedByteArray = world.slots[k]
+		if s[Pb2Objects.F_TYPE] != 0:
+			out.append("%02X.%d" % [s[Pb2Objects.F_TYPE],
+					s[Pb2Objects.F_STATE]])
+	return " ".join(out)

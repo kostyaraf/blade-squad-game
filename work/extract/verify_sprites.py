@@ -12,6 +12,7 @@ each one comes out of, the colours, the eight-to-a-line limit and what stands
 in front of what.  Where the sprites came from is `verify_oam.py`'s question.
 """
 import os
+import shutil
 import subprocess
 import sys
 
@@ -23,7 +24,10 @@ from render import Tiles, bg_frame, spr_frame                    # noqa: E402
 from vramdump import VDump                                       # noqa: E402
 
 EMU = os.path.join(ROOT, 'work', 'tools', 'nesemu')
-TMP = '/tmp/pb3v3/sprites'
+# The pictures and the dumps a run makes are worth nothing once read, and a
+# stand run over and over would otherwise pile up gigabytes of them in the
+# system's own scratch.  They go under the tree, and are wiped before use.
+TMP = os.path.join(ROOT, 'work', 'tmp', 'pb3v3', 'sprites')
 FRAMES = [1900, 2200, 2500, 2800, 3100, 3400, 3700, 4000]
 
 
@@ -36,6 +40,7 @@ def script(path):
 
 
 def main():
+    shutil.rmtree(TMP, ignore_errors=True)
     os.makedirs(TMP, exist_ok=True)
     inp = os.path.join(TMP, 'walk.inp')
     script(inp)
