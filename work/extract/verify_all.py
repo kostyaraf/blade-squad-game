@@ -29,10 +29,10 @@ STANDS = [
     ('pb2',        'Э1',   'verify_pb2.py',        []),
     ('sprites',    'Э2',   'verify_sprites.py',    []),
     ('oam',        'Э2',   'verify_oam.py',        []),
-    ('player',     'Э3.1', 'verify_player.py',     ['--all-areas']),
+    ('player',     'Э2',   'verify_player.py',     ['--all-areas', '--random=14', '--seed=101']),
     ('flow',       'Э3.1', 'verify_flow.py',       []),
-    ('spawns',     'Э3.3', 'verify_spawns.py',     []),
-    ('weapons',    'Э3.5', 'verify_weapons.py',    ['--all-areas']),
+    ('spawns',     'Э3.2', 'verify_spawns.py',     ['--random=3']),
+    ('weapons',    'Э3.3', 'verify_weapons.py',    ['--all-areas', '--random=3']),
     ('water',      'Э3.2', 'verify_water.py',      []),
     ('hud',        'Э3.7', 'verify_hud.py',        ['--all-areas']),
     ('hudscreen',  'Э3.7', 'verify_hud_screen.py', ['--all-areas']),
@@ -44,6 +44,7 @@ STANDS = [
 # "worst frame: N pixels".
 COUNT = re.compile(r'^(\d+) of (\d+) ([^,;]+?) differ')
 WORST = re.compile(r'^worst frame: (\d+) pixels')
+NOTHING = re.compile(r'^0 of 0 ')
 
 
 def verdict(text):
@@ -78,6 +79,9 @@ def run(name, script, args):
     if r.returncode != 0:
         return None, 'exit %d -- see %s' % (r.returncode, path), took
     bad, line = verdict(text)
+    # "0 of 0 differ" is not a pass: the stand was given no work to do.
+    if bad == 0 and NOTHING.match(line):
+        return None, 'nothing was run -- %s' % line, took
     return bad, line, took
 
 
