@@ -70,11 +70,13 @@ def run(name, script, args):
     os.makedirs(LOGS, exist_ok=True)
     path = os.path.join(LOGS, name + '.txt')
     began = time.time()
-    r = subprocess.run([sys.executable, '-u', os.path.join(HERE, script)]
-                       + args, capture_output=True, text=True, cwd=ROOT)
-    text = r.stdout + r.stderr
+    # Straight into the log rather than into a pipe, so that a stand three
+    # quarters of an hour long can be watched while it runs.
     with open(path, 'w') as f:
-        f.write(text)
+        r = subprocess.run([sys.executable, '-u', os.path.join(HERE, script)]
+                           + args, stdout=f, stderr=subprocess.STDOUT,
+                           text=True, cwd=ROOT)
+    text = open(path).read()
     took = time.time() - began
     if r.returncode != 0:
         return None, 'exit %d -- see %s' % (r.returncode, path), took
