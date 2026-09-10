@@ -88,6 +88,8 @@ var hit := 0
 ## $05A2 -- how much of a movement survives what he is standing in: bit 6
 ## takes half of it and bit 7 takes half again.
 var scale := 0
+## $05A2 as the things left it, for a stand that has no table of things.
+var grip := 0
 ## $9A -- which suit he is wearing; one of them wades as if the water were
 ## not there.
 var suit := 0
@@ -154,9 +156,13 @@ func step(buttons: int, pressed: int, camera: int,
 	limit = shot_limit
 	dx = 0
 	dy = 0
-	scale = 0
-	# $8E49 clears it at the end of every update, so what the mud says about
-	# him is said afresh each frame -- on top of whatever the level says.
+	# $05A2 is his own cell, and $8E49 wipes it at the end of every update, so
+	# what the mud says about him is said afresh each frame.  But the things
+	# take their turn before he does ($CF1C before $CF20), and one of them --
+	# $21, which lies still and holds ($90F8) -- writes the divisor into that
+	# cell before his step begins.  What it left there is his to keep, and the
+	# level puts its own word on top of it.
+	scale = world.slots[0][Pb2Objects.F_HOLD] if world != null else grip
 	sunk = (held & 0x40) != 0
 	ticks = (ticks + 1) & 0xFF          # $8E1A
 	# $D34D runs before his update: the objects are kept in the camera's frame
@@ -190,6 +196,10 @@ func step(buttons: int, pressed: int, camera: int,
 		SUB_HAUL: _haul(false)
 		SUB_HAUL_CARRIED: _haul(true)
 		_: _ground()
+	# $8E49 -- and the cell is wiped, so that the next thing to write into it
+	# writes into an empty one.
+	if world != null:
+		world.slots[0][Pb2Objects.F_HOLD] = 0
 
 
 ## $8EC1 -- standing, walking, and everything that starts from the ground.

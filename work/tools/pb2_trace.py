@@ -75,6 +75,18 @@ HOLD_PC = ('B47B', '8E4C')
 # $063C and $0652: how far a moving floor is carrying him this frame, along and
 # down.  Wiped at the end of his update like the rest, so read the same way.
 PUSH = ((0x063C, '8E46'), (0x0652, '8E49'))
+# $05A2 -- the divisor for everything he moves: water halves it, deep mud
+# quarters it.  The things take their turn before he does, and one of them --
+# $21, which lies still and holds ($90F8) -- writes it into his own cell; his
+# update then puts what the level says on top and $8E40 wipes the lot.  What
+# the engine cannot work out for itself is the part that was already there
+# when his update began, so it is read at $8E1A -- the first thing that
+# update does.
+GRIP = 0x05A2
+GRIP_AT = 0x0110
+# The pc a write is filed under is the one after the instruction, as $8E46 and
+# $8E49 above: $8E1A INC $0110 is filed under $8E1D.
+GRIP_PC = '8E1D'
 # $D34D and $D389: before anything else moves, the view's own movement is taken
 # off every object, because they are all kept in the view's frame of reference.
 # How far is $94, which is not worth following on its own -- the store itself
@@ -357,6 +369,8 @@ def _trace(d, state, script, first, frames, during=()):
         shots = None
         solids = None
         hold = None
+        grip = None
+        grip_end = None
         push = [None, None]
         shift = 0
         born = {}
@@ -400,6 +414,10 @@ def _trace(d, state, script, first, frames, during=()):
                     shift = _s8((mem[a] - val) & 0xFF)
             if addr == HOLD and pc in HOLD_PC and hold is None:
                 hold = mem[HOLD]
+            if addr == GRIP_AT and pc == GRIP_PC and grip is None:
+                grip = mem[GRIP]
+            if addr == GRIP and pc == '8E43':
+                grip_end = mem[GRIP]
             for k, (a, apc) in enumerate(PUSH):
                 if addr == a and pc == apc and push[k] is None:
                     push[k] = mem[a]
@@ -446,6 +464,8 @@ def _trace(d, state, script, first, frames, during=()):
         # is left to whoever asked ($8E4C..$8E55).
         row['solids'] = solids
         row['hold'] = hold
+        row['grip'] = grip
+        row['grip_end'] = grip_end
         row['push'] = [None if push[k] is None else _s8(push[k])
                        for k in range(len(PUSH))]
         row['shift'] = shift

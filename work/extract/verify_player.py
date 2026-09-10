@@ -187,7 +187,7 @@ def logic_frames(rows):
             merged = dict(r)
             for k in ('pad', 'hit', 'cam', 'shots', 'lim', 'got', 'done'):
                 merged[k] = out[-1][k]
-            for k in ('solids', 'hold'):
+            for k in ('solids', 'hold', 'grip'):
                 merged[k] = r[k] if r[k] is not None else out[-1][k]
             merged['push'] = [r['push'][i] if r['push'][i] is not None
                               else out[-1]['push'][i] for i in (0, 1)]
@@ -241,6 +241,7 @@ def replay(rows):
         frames=[dict(pad=r['pad'], hit=r['hit'], suit=r['wear'],
                      shots=r['shots'], lim=r['lim'],
                      solids=r['solids'] or [], hold=r['hold'] or 0,
+                     grip=r['grip'] or 0,
                      push=[r['push'][0] or 0, r['push'][1] or 0],
                      ticks=r['frames'])
                 for r in rows[1:]],

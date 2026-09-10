@@ -165,6 +165,9 @@ func _run_replay(path: String) -> void:
 	for f in cfg["frames"]:
 		p.solids = f["solids"]
 		p.held = int(f["hold"])
+		# $05A2 as the things left it: this stand has no table of things, so
+		# what one of them wrote into his cell has to be handed over.
+		p.grip = int(f["grip"]) if f.has("grip") else 0
 		# $9A -- which suit he has on.  The recording says it; putting it on is
 		# the pause menu's business and not this hero's.
 		p.suit = int(f["suit"])
