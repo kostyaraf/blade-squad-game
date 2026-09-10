@@ -336,6 +336,9 @@ func _process(dt: float) -> void:
 func _step() -> void:
 	for p in pads:
 		p.poll()
+	if choosing:
+		_choice_step()
+		return
 	if world == null:
 		_walk_camera()
 		return
@@ -1103,6 +1106,14 @@ func _wear_suit() -> void:
 ## door chose, or the stage's boss room, and the hero stood where that area's
 ## own walk-on says.
 func _next_area() -> void:
+	# $88F0 -- a boss that has fallen opens no area.  $BE22 sets the stage's
+	# bit in $5B, and the game leaves for the map and the screen the next
+	# stage is picked on.  The same types stand about in the middle of a
+	# stage as well, so it is only a boss room that ends the stage.
+	if world.beat and level_pb2.stage == Pb2Objects.BOSS_STAGE:
+		status.cleared |= 1 << came
+		_start_choice()
+		return
 	var st: int = 6 if world.boss != 0 else level_pb2.stage
 	var ar: int = world.area
 	_start_play(st, ar)
@@ -1392,6 +1403,11 @@ func _run_through(spec: String, from_stage: int = 0, from_area: int = 0) -> void
 			_step_pb2()
 			_bar_step()
 			n += 1
+			if choosing:
+				# $88F0 -- the room's boss fell and the game has left for the
+				# choosing screen.  That is the area done, and done properly.
+				room_done = true
+				break
 			if died_count != d_was:
 				d_was = died_count
 				died += 1
@@ -1449,10 +1465,16 @@ func _run_through(spec: String, from_stage: int = 0, from_area: int = 0) -> void
 				out.append("%-6s ok    %4d steps -- the boss is down and the "
 						% [key, n] + "game is over")
 				break
-			out.append("%-6s ok    %4d steps, %d deaths  ->  the map, and on "
-					% [key, n, died] + "to %d:0" % [came + 1])
-			_start_play(came + 1, 0)
-			_apply()
+			out.append("%-6s ok    %4d steps, %d deaths  ->  the choice, "
+					% [key, n, died] + "and on to %d:0" % [came + 1])
+			# The pilot picks the next stage the way a player would, so the
+			# choosing screen is on trial here too.
+			_pick(came + 1)
+			if choosing:
+				stuck += 1
+				out.append("%-6s STUCK -- the choice would not take %d"
+						% [key, came + 1])
+				break
 			continue
 		if opened == "":
 			# The area never put out a door in the time it was given.  Three do
@@ -1486,6 +1508,56 @@ func _run_through(spec: String, from_stage: int = 0, from_area: int = 0) -> void
 	print("%d areas played, %d doors forced, %d stepped over, %d deaths, "
 			% [areas, forced, stepped, deaths] + "%d stuck" % stuck)
 	get_tree().quit()
+
+
+## ------------------------------------------------- Э3.10: picking a stage
+##
+## $859D is the screen a stage is picked on, and $9EC8 -- the map -- is only
+## the walk that leads to it.  What is here is its flow and nothing else: the
+## picture of it ($A860 and what draws it) is Э3.10b, so while the choice is
+## open the last room stands frozen behind it.
+
+var choosing := false
+var choice := 0                                     ## $22
+
+
+## $88F0 -> $18 := 5 -> the map -> $18/$19 := 3/20.  The stage the choice opens
+## on is the one just finished, as $8838 does ($22 := $53).
+func _start_choice() -> void:
+	choosing = true
+	choice = came
+	oam.fill(Pb2Sprites.HIDDEN)
+
+
+## $8969 -- a stage is refused only when it is both finished ($5B) and its suit
+## already taken ($56); a finished stage whose suit was missed is still open.
+func _may_pick(n: int) -> bool:
+	var bit := 1 << n
+	return (status.cleared & bit) == 0 or (status.owned & bit) == 0
+
+
+## $871C -- the pad on the choosing screen.  Left and right walk between the
+## five stages, and the fifth is only there once the first four are done
+## ($5B == $0F); START takes the pick.
+func _choice_step() -> void:
+	var p: Pad = pads[0]
+	var last := 4 if (status.cleared & 0x0F) == 0x0F else 3
+	if p.pressed & Pad.RIGHT and choice < last:
+		choice += 1
+	elif p.pressed & Pad.LEFT and choice > 0:
+		choice -= 1
+	elif p.pressed & Pad.START:
+		_pick(choice)
+
+
+## $8816 and $882F -- the pick is put into $53 and the level begins.
+func _pick(n: int) -> void:
+	if not _may_pick(n):
+		return
+	choosing = false
+	status.stage = n
+	_start_play(n, 0)
+	_apply()
 
 
 ## $B5A5 -- the two bytes the hero's touch writes into the door: the mark that

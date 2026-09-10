@@ -206,6 +206,12 @@ var boss_bar := 0
 ## hero's own any more: the suit menu will not open ($D0A6) and the meter
 ## stands at the top of the screen.
 var boss_here := 0
+
+## $88F0 -- the boss of the room has fallen.  What happens next is not this
+## table's business (the stage is marked cleared and the game leaves for the
+## choosing screen), but $88EB is where the cartridge learns it, so the word
+## is passed on from here.
+var beat := false
 ## data/pb2/bosses.json -- who the two triggers put out, and how it dies.
 var cfg_boss: Dictionary = {}
 ## The ten minds themselves, which live in a file of their own.
@@ -2696,6 +2702,7 @@ func _die_done(n: int, s: PackedByteArray) -> void:
 	boss = 0                                           # $79
 	phase = 0                                          # $AD
 	boss_here = 0
+	beat = true                                        # $88F0 follows $88EB
 	live = 6                                           # $1A -- build again
 	clear(n)
 

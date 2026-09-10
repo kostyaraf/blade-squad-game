@@ -32,6 +32,7 @@ var cfg: Dictionary
 var mode := PLAY             ## $27
 var suit := 0                ## $9A -- which suit he wears, nought for none
 var owned := 0               ## $56 -- which he has found
+var cleared := 0             ## $5B -- which stages are finished ($BE22)
 var energy := 0              ## $A0 -- the suit's bar, up to sixteen
 var tanks := 0               ## $9E -- spare suit energy
 var life_tanks := 0          ## $9D -- spare health, which is not the suit's
