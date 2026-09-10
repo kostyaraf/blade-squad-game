@@ -28,7 +28,11 @@ GAME = os.path.join(ROOT, 'game')
 
 # How many steps an area is given, and how many areas the run may play before
 # it is called a loop.  Forty-five areas and ten boss rooms is the whole game.
-STEPS = 900
+# How long the pilot is given in one area before it says the area put out no
+# door.  Nine hundred is not enough for two of them (2:3 and 5:3 open at about
+# a thousand), and an area that carries the view itself is given four, eight or
+# sixteen times this.
+STEPS = 1500
 LIMIT = 80
 # A script the engine cannot parse leaves it sitting in an empty main loop for
 # ever, so every run is given an end.

@@ -78,9 +78,12 @@ def run(name, script, args):
                            text=True, cwd=ROOT)
     text = open(path).read()
     took = time.time() - began
-    if r.returncode != 0:
-        return None, 'exit %d -- see %s' % (r.returncode, path), took
     bad, line = verdict(text)
+    # A stand that finds a difference exits non-zero, and that is its verdict,
+    # not a fall.  Only a run that put out no verdict at all has really fallen
+    # over, and then the exit code is all there is to say.
+    if bad is None:
+        return None, 'exit %d -- see %s' % (r.returncode, path), took
     # "0 of 0 differ" is not a pass: the stand was given no work to do.
     if bad == 0 and NOTHING.match(line):
         return None, 'nothing was run -- %s' % line, took
