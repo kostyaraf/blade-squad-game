@@ -36,6 +36,7 @@ STANDS = [
     ('water',      'Э3.2', 'verify_water.py',      []),
     ('hud',        'Э3.7', 'verify_hud.py',        ['--all-areas']),
     ('hudscreen',  'Э3.7', 'verify_hud_screen.py', ['--all-areas']),
+    ('run',        'Э3.8', 'verify_run.py',        []),
 ]
 
 # Every stand ends on a line that counts what differs.  Two shapes are in use:
