@@ -193,12 +193,33 @@ func _run_sol_play(path: String) -> void:
 		p.scripted = int(cfg["scripted"])
 	if cfg.has("suit"):
 		p.suit = int(cfg["suit"])
+	if cfg.has("gravity"):
+		p.gravity = int(cfg["gravity"])
+	if cfg.has("hold_max"):
+		p.hold_max = int(cfg["hold_max"])
+	if cfg.has("flags"):
+		p.flags = int(cfg["flags"])
+	if cfg.has("jump_flags"):
+		p.jump_flags = int(cfg["jump_flags"])
+	if cfg.has("seen"):
+		p.seen = int(cfg["seen"])
+	if cfg.has("swim"):
+		p.swim = int(cfg["swim"])
+	if cfg.has("shield"):
+		p.shield = int(cfg["shield"])
+	if cfg.has("fuel"):
+		p.fuel = int(cfg["fuel"])
+	if cfg.has("step_down"):
+		p.step_down = int(cfg["step_down"])
+	if cfg.has("clock"):
+		p.clock = int(cfg["clock"])
+	if cfg.has("pad_held"):
+		p.pad_held = int(cfg["pad_held"])
+	if cfg.has("map_kind"):
+		p.map_kind = int(cfg["map_kind"])
 	var out := PackedStringArray()
-	var was := 0
 	for f in cfg["pads"]:
-		var pad := int(f)
-		p.step(pad, pad & ~was)
-		was = pad
+		p.step(int(f))
 		out.append("%d %d %d %d %d %d" % [p.x, p.y, p.vx, p.vy, p.state,
 				p.speed])
 	print("\n".join(out))

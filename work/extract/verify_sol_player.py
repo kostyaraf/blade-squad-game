@@ -28,6 +28,7 @@ BITS = [('RIGHT', 0x01), ('LEFT', 0x02), ('DOWN', 0x04), ('UP', 0x08),
         ('START', 0x10), ('SELECT', 0x20), ('B', 0x40), ('A', 0x80)]
 
 BASE = 2320               # a frame by which the first stage is his to steer
+WARPED = P.WARP_IN        # the same, for a stage the game was asked to raise
 LEN = 96                  # short enough that nothing else in the level reaches him
 
 R, L, D, U, A, B = 0x01, 0x02, 0x04, 0x08, 0x80, 0x40
@@ -65,6 +66,20 @@ SCRIPTS = {
 WATCH = {'x': (0x80, 0x81), 'y': (0x82, 0x83),
          'vx': (0x05B6, 0x05B7), 'vy': (0x05B8, 0x05B9)}
 
+# Where he is stood before the buttons start.  The first stage is plain floor
+# and plain air, so the rest of the ground the game has -- water, the two belts
+# and a bed of spikes -- is reached by asking the game for that stage and
+# setting him down above it.  (mx, my) are metatiles; he is dropped half a tile
+# in from the left edge of the one named.
+PLACES = [
+    ('s0',    0, None),
+    ('water', 5, (56, 103)),
+    ('belt',  11, (24, 60)),
+    ('belt2', 10, (59, 24)),
+    ('spike', 2, (23, 236)),
+    ('ice',   4, (49, 38)),
+]
+
 
 def s16(lo, hi):
     v = lo | hi << 8
@@ -75,20 +90,21 @@ def sbyte(v):
     return v - 0x100 if v >= 0x80 else v
 
 
-def cartridge(state, pads):
+def cartridge(state, pads, base, pokes=()):
     """Play `pads` into the cartridge and answer a row per frame."""
     script = []
     last = None
     for i, p in enumerate(pads):
         if p != last:
             names = [n for n, b in BITS if p & b]
-            script.append((BASE + i, ','.join(names) if names else '-'))
+            script.append((base + i, ','.join(names) if names else '-'))
             last = p
     addrs = set()
     for lo, hi in WATCH.values():
         addrs |= {lo, hi}
     addrs |= {0x05A2, 0x35}
-    rows = P.watched(state, script, BASE, BASE + len(pads), addrs)
+    rows = P.watched(state, script, base, base + len(pads), addrs,
+                     pokes=pokes)
     out = []
     # A savestate is taken inside a frame, not between two, so resuming plays
     # the rest of the frame it was taken in: the first row is already a frame
@@ -119,62 +135,117 @@ def engine(cfg, scratch):
 NAMES = ('x', 'y', 'vx', 'vy', 'state', 'speed')
 
 
+def snapshot(base):
+    """The hero as the cartridge has him, in the words the engine's stand uses."""
+    return {
+        'stage': base[0x55],
+        'x': base[0x80] | base[0x81] << 8,
+        'y': base[0x82] | base[0x83] << 8,
+        'state': base[0x05A2],
+        'speed': sbyte(base[0x35]),
+        'jump': base[0x05E8],
+        'face_left': bool(base[0x05B2] & 0x80),
+        'timer': base[0x05A3],
+        'hold': base[0x05AC],
+        'rise': s16(base[0x05AD], base[0x05AE]),
+        'ground': base[0x05CD],
+        'hurt': base[0x05C2],
+        'scripted': base[0x05A5],
+        'suit': base[0x05C5],
+        'gravity': base[0x05E9],
+        'hold_max': base[0x05EA],
+        'flags': base[0x05CB],
+        'jump_flags': base[0x05C9],
+        'seen': base[0x05CA],
+        'swim': base[0x05CC],
+        'shield': base[0x05C8],
+        'fuel': base[0x05AF],
+        'step_down': base[0x5B],
+        'clock': base[0x0C],
+        'pad_held': base[0x06],
+        'map_kind': base[0x70],
+    }
+
+
+DROP = 60                 # frames between setting him down and the first button
+
+
+def stand(scratch, label, stage, spot):
+    """A savestate with him standing where the place wants him.
+
+    He is set down a few tiles above the ground the place is about and left to
+    fall for `DROP` frames, so that by the time the buttons start he is standing
+    on it.  Everything is baked into the state: what is played from it is
+    whole frames, the same as the first stage's own.
+    """
+    lvl = P.make_state(os.path.join(scratch, 'lvl.state'), frame=BASE)
+    if stage == 0:
+        return lvl
+    pokes = ()
+    if spot is not None:
+        mx, my = spot
+        x, y = mx * 256 + 128, my * 256
+        at = WARPED - DROP
+        pokes = tuple((a, v, at) for a, v in
+                      ((0x80, x & 0xFF), (0x81, x >> 8),
+                       (0x82, y & 0xFF), (0x83, y >> 8),
+                       (0x35, 0), (0x05B6, 0), (0x05B7, 0),
+                       (0x05AD, 0), (0x05AE, 0)))
+    return P.warp(os.path.join(scratch, '%s.state' % label), stage, lvl,
+                  pokes=pokes)
+
+
 def main():
     only = [a for a in sys.argv[1:] if not a.startswith('--')]
+    places = [a.split('=')[1] for a in sys.argv[1:] if a.startswith('--place=')]
     scratch = P.scratch('accept')
     try:
-        state = P.make_state(os.path.join(scratch, 'lvl.state'), frame=BASE)
-        # Where the cartridge has him standing before a button is touched, so
-        # that the engine starts from the cartridge's own numbers and what is
-        # on trial is what he does next and nothing else.
-        base = P.ram(state, [(BASE, '-')], BASE)
-        cfg0 = {
-            'stage': base[0x55],
-            'x': base[0x80] | base[0x81] << 8,
-            'y': base[0x82] | base[0x83] << 8,
-            'state': base[0x05A2],
-            'speed': sbyte(base[0x35]),
-            'jump': base[0x05E8],
-            'face_left': bool(base[0x05B2] & 0x80),
-            'timer': base[0x05A3],
-            'hold': base[0x05AC],
-            'rise': s16(base[0x05AD], base[0x05AE]),
-            'ground': {0x18: 1, 0x30: 2}.get(base[0x05CD], 0),
-            'hurt': base[0x05C2],
-            'scripted': base[0x05A5],
-            'suit': base[0x05C5],
-            'face_left': bool(base[0x05B2] & 0x80),
-        }
         bad = 0
         total = 0
-        for name, pads in sorted(SCRIPTS.items()):
-            if only and name not in only:
+        for label, stage, spot in PLACES:
+            if places and label not in places:
                 continue
-            total += 1
-            want = cartridge(state, pads)
-            cfg = dict(cfg0)
-            cfg['pads'] = pads
-            got = engine(cfg, scratch)
-            n = min(len(want), len(got))
-            where = None
-            for i in range(n):
-                if want[i] != got[i]:
-                    where = i
-                    break
-            if where is None and len(want) != len(got):
-                where = n
-            if where is None:
-                print('%-11s ok, %d frames' % (name, n))
-                continue
-            bad += 1
-            print('%-11s differs on frame %d' % (name, where))
-            if where < n:
-                for k, nm in enumerate(NAMES):
-                    if want[where][k] != got[where][k]:
-                        print('    %-5s cartridge %6d   engine %6d'
-                              % (nm, want[where][k], got[where][k]))
-            else:
-                print('    cartridge %d frames, engine %d' % (len(want), len(got)))
+            # The first stage's state is taken in the middle of frame BASE, so
+            # resuming it replays the rest of that frame and the first button
+            # belongs to BASE itself.  A warped state is taken on a clean
+            # boundary, so its first whole frame is the one after.
+            first = BASE if stage == 0 else WARPED
+            play = first if stage == 0 else first + 1
+            state = stand(scratch, label, stage, spot)
+            # Where the cartridge has him standing before a button is touched,
+            # so that the engine starts from the cartridge's own numbers and
+            # what is on trial is what he does next and nothing else.
+            cfg0 = snapshot(P.ram(state, [(first, '-')], first))
+            for name, pads in sorted(SCRIPTS.items()):
+                if only and name not in only:
+                    continue
+                total += 1
+                want = cartridge(state, pads, play)
+                cfg = dict(cfg0)
+                cfg['pads'] = pads
+                got = engine(cfg, scratch)
+                n = min(len(want), len(got))
+                where = None
+                for i in range(n):
+                    if want[i] != got[i]:
+                        where = i
+                        break
+                if where is None and len(want) != len(got):
+                    where = n
+                if where is None:
+                    print('%-6s %-11s ok, %d frames' % (label, name, n))
+                    continue
+                bad += 1
+                print('%-6s %-11s differs on frame %d' % (label, name, where))
+                if where < n:
+                    for k, nm in enumerate(NAMES):
+                        if want[where][k] != got[where][k]:
+                            print('    %-5s cartridge %6d   engine %6d'
+                                  % (nm, want[where][k], got[where][k]))
+                else:
+                    print('    cartridge %d frames, engine %d'
+                          % (len(want), len(got)))
+                sys.stdout.flush()
         print('%d of %d scripts differ' % (bad, total))
         return 1 if bad else 0
     finally:

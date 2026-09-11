@@ -166,3 +166,35 @@ def watched(state, script, first, last, addrs, pokes=()):
         cur.update({a: v for a, v in w.get(fr, {}).items() if a in addrs})
         rows.append((fr, dict(cur)))
     return rows
+
+
+# The game keeps its mode in $02, and mode $1D is "raise the stage named in
+# $55" ($D930 in the fixed bank).  Writing both of those into a game already
+# standing in the first stage is how any other stage is reached without
+# playing the ones before it.
+WARP_MODE = 0x1D
+WARP_SET = IN_LEVEL + 80  # after any savestate the first stage is taken at
+WARP_IN = 2960           # by which the asked for stage is up and steerable
+
+
+def warp(path, stage, base, frame=WARP_IN, pokes=()):
+    """A savestate standing in `stage`, ready for input.
+
+    `pokes` are (addr, value, frame) written on the way in, which is how the
+    hero is set down somewhere other than the stage's own door.  They are baked
+    into the state rather than replayed with it, so that the state is a clean
+    frame boundary and the first frame played from it is a whole frame.
+    """
+    if os.path.exists(path):
+        return path
+    inp = path + '.inp'
+    open(inp, 'w').write('%d -\n' % (WARP_SET - 4))
+    cmd = [EMU, ROM, '-loadstate', base, '-input', inp,
+           '-frames', str(frame + 1),
+           '-poke', '0055=%02X@%d' % (stage, WARP_SET),
+           '-poke', '0002=%02X@%d' % (WARP_MODE, WARP_SET + 1),
+           '-savestate', '%s@%d' % (path, frame)]
+    for a, v, fr in pokes:
+        cmd += ['-poke', '%04X=%02X@%d' % (a, v, fr)]
+    subprocess.run(cmd, check=True, capture_output=True)
+    return path

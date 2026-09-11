@@ -58,8 +58,8 @@ must stay whole numbers in the rebuild.
 9485   $50..$53     <- 0        the scratch the run code builds speed in
 948D   $05A3++                  frames in this state, stopping at $FF
 9495   $05CE += 4               stopping at $FC
-94A5   if hurt or in a cutscene, some buttons are taken away ($06, $04)
-94D2   JSR $94FA                buttons: weapons, the wire, the special moves
+94A5   some of the pad is taken away ($06, $04) -- see below
+94D2   JSR $94FA                what he is standing in: water, ice, a current
 94D5   JSR $9689                up and down
 94D8   JSR $9AA5                left and right
 94DB   $80:$81 += $05B6:$05B7   and only now does he move
@@ -69,6 +69,52 @@ must stay whole numbers in the rebuild.
 The order matters and the rebuild keeps it: **decide the whole of the speed
 first, move once at the end.** A collision that happens in the middle of the
 frame trims the speed; it never moves him itself.
+
+### The pad — `$94A5`
+
+Read it in the order the cartridge does, because the first line is the
+surprising one:
+
+```
+94A5   $05C2 set (hurt)      -> nothing is taken away at all
+94AA   $05C5 zero (no suit)  -> $06 <- 0, $04 <- 0
+94AF   $05C9 bit 6 set       -> $06 &= ($3F if $05A3 > $20 else $33), $04 <- 0
+94C1   $05A3 < $20           -> $06 <- 0, $04 <- 0
+                             -> otherwise the pad reaches him whole
+```
+
+Being hurt **hands the pad back**, it does not take it away; what stops him
+while he is reeling is `$9AA5`, not the mask.
+
+The mask writes the trimmed value **back into `$06`**, and `$C882` works out
+what is newly pressed by comparing the pad against `$06` as it stood last
+frame. So a button held down through a mask reads as *newly pressed* on the
+frame the mask lifts: a jump held through being hurt is a second jump the
+moment he has control again. The rebuild keeps `$06` itself rather than being
+handed "pressed" from outside.
+
+### What he is standing in — `$94FA`
+
+`$A172` looks up the metatile his own middle is inside, `$05CA` remembers it
+from last frame, and four of the classes mean something:
+
+| `and #$18` | what | routine |
+|---|---|---|
+| `$00` | ordinary ground and air | `$9522` -> `$9541` |
+| `$08` | water | `$95AD` |
+| `$10` | a current | `$9565` |
+| `$18` | `$05CB \|= $20` and nothing else | `$9515` |
+
+`$9541` is the plain world: gravity 4, six frames of hold, `$05E8 <- $B8`.
+`$95AD` is water: gravity 1, `$20` frames of hold, `$05E8 <- $E0`, so a jump
+under water is slow and long. Coming out of the water (`$9522`, and only on the
+frame the class changes) either halves what he had, going up, or gives him
+`-36` of rise if he had held the button at least `$10` frames.
+
+`$05CD`, the kind of ground, is not his to keep: the level's own frame routine
+clears it (`$AAA9` in bank 9) before he runs, and water and ice write it back
+while he is still in them. Ice therefore stops being slippery on the frame he
+steps off it. A stage with neither never writes the byte at all.
 
 ## 3. Left and right — `$9AA5`
 
@@ -220,13 +266,42 @@ Three points, and only three:
 
 | probe | point | routine |
 |---|---|---|
-| the floor | `(x, y + 16 px)` | `$A1B3` |
-| a wall on the right | `(x + 8 px + vx, y + 14 px)` | `$A411` -> `$C00F` |
-| a wall on the left | `(x - 8 px + vx, y - 6 px)` | `$A381` -> `$C00F` |
+| the floor | `(x, y + 16 px)` | `$A1B3` -> `$C00C` |
+| the floor he is falling onto | `(x + vx, y + vy + 16 px)` | `$A1D6` -> `$C00C` |
+| the ceiling he is rising into | `(x + vx, y + vy - 16 px)` | `$A253` -> `$C00C` |
+| a wall on the right | `(x + 8 px, y + 14 px)` then `(.., y - 6 px - 1)` | `$A411` -> `$C00F` |
+| a wall on the left | `(x - 8 px, y - 6 px)` then `(.., y + 14 px)` | `$A381` -> `$C00F` |
 
 `$C00F` (`$D010`) is the same lookup as `$C00C` with this frame's horizontal
 speed added to the point first, so a wall is tested where he is about to be and
-not where he is.
+not where he is. Two things about that add are worth writing down, because
+neither is visible in the routine that asks for it:
+
+* **It adds in place.** `$A411` and `$A381` work the point out once, into
+  `$90:$91`, and then call `$C00F` twice, changing only the height between the
+  two. `$D018` adds the move to `$90:$91` and stores it back, so the second
+  point is a whole move further across than the first. A hero going fast meets
+  a wall a frame earlier with his upper half than with his lower.
+* **It carries `$70` with it.** `$D012` compares the kind of map against `$3C`
+  and the add at `$D018` has no `CLC` of its own, so on a map numbered above
+  `$3C` every one of these probes lands one sixteenth of a pixel further along.
+  Stage 10 is such a map (`$70 = $57`); most are not. Measured, not guessed:
+  the same wall stops him one frame apart in the two cases.
+
+Where the move would put him inside something, the move is cut back so he lands
+exactly on the surface: going down (`$A221`) the move loses however far into the
+metatile he would have gone, going up (`$A29E`) it gains what is left of it.
+
+The two sides are not mirror images, and that is the cartridge and not a slip in
+the reading: `$A41F` is `ADC #$E0` where `$A390` is `SBC #$60`. Written as a
+16-bit offset the right-hand one would have wanted `$FFE0`; the high byte is
+`ADC #$00`, so it really does add 224 and the point lands fourteen pixels below
+him instead of two above. The right-hand side's *upper* point is a sixteenth
+higher again (`$A430` subtracts with the borrow `$C00F` left behind). It is all
+ported as it stands.
+
+A wall that hurts hurts on touch (`$A3B0`, `$A43F` -> `$9FA5`); unlike the
+ground under him, a wall never pushes and never slips.
 
 The two sides are not mirror images, and that is the cartridge and not a slip in
 the reading: `$A41F` is `ADC #$E0` where `$A390` is `SBC #$60`. Written as a
@@ -242,7 +317,9 @@ at **x = 631.75**, and the first solid column there begins at 640.
 ## 6. What is still open
 
 * The 17 unnamed states, and which button or event reaches each.
-* The wire, the wall cling and the wall jump — `$94FA` and `$A172`.
+* The wire and the grapple — states 4..7, `$98CF`, `$9938`, `$99A8`, `$99FB`,
+  object slot `$0C`, `$9A7C`, `$A2F3`.
+* The cutscene, death and transition states `$08`..`$13`.
 * `$05C5` and what each suit changes.
 * `$9689`'s first half (`$05C8`, `$0112`) — the afterimage trail.
 
@@ -256,6 +333,21 @@ rows = P.watched(st, [(2320, 'RIGHT'), (2360, '-')], 2320, 2400,
                  [0x35, 0x80, 0x81, 0x05B2])
 P.sweep(P.SCRATCH)
 ```
+
+Any stage but the first is reached without playing the ones before it: write
+the stage into `$55` and `$1D` into `$02` (the mode that raises the stage named
+in `$55`, `$D930`). `P.warp` does that and hands back a savestate standing in
+it, with any pokes baked in, so the state is a clean frame boundary:
+
+```python
+lvl = P.make_state(scratch + '/lvl.state', frame=2320)
+st = P.warp(scratch + '/s11.state', 11, lvl,
+            pokes=((0x80, 0x10, P.WARP_IN - 60), (0x81, 0x1A, P.WARP_IN - 60)))
+```
+
+A state made that way is whole: the first frame played from it is `WARP_IN + 1`.
+The first stage's own state is taken in the *middle* of frame 2320, so resuming
+it replays the rest of that frame and the first button belongs to 2320 itself.
 
 `P.run` gives every write frame by frame, `P.ram` the whole 2 KB at one frame,
 and `P.watched` the two together — the standing value carried forward through
