@@ -525,10 +525,12 @@ func shift(dv: int) -> void:
 ## $B0C0 in bank 11 -- the big one that grabs him (12 records).
 ##
 ## Every frame, before anything else, it tells the hero he is held ($BF20,
-## which reaches $B90D in bank 9) and stands on the ground.  The first is the
-## hero's own book-keeping -- $0160, $0161 and $0164 -- and writes nothing in
-## the table of things, so the engine leaves it to him.
+## which reaches $B90D in bank 9) and stands on the ground.  The first writes
+## nothing in the table of things -- $0160, $0161 and $0164 are the hero's own
+## book-keeping -- but $0164 is what the grab below reads to decide whether it
+## has anything to throw, so the move itself cannot be skipped.
 func _mind_38(n: int, s: PackedByteArray) -> void:
+	ride(s, 0x0E, 0xE4)                                # $BF20 -> $B90D
 	ground_stand_deep(s, 0xE8)                         # $9BA5
 	if s[F_STATE] == 0:
 		_wake_38(s)
