@@ -35,6 +35,14 @@ PAL_TBL = 0x811F
 PAL_LO = 0x82F5
 PAL_HI = 0x837D
 PAL_N = 47
+# $89FA -- five stages, each a pointer to three bytes: the coarse scroll ($FD),
+# the page it stands on ($FF) and where the sign goes ($0509).
+STAGE_TBL, STAGE_N = 0x89FA, 5
+# $8A13 -- the patch laid over a stage already finished: eight tiles a row for
+# sixteen rows, and two colour bytes a row for four.  $8A4B lays the last one,
+# which is colours only and opens the fifth stage.
+STAMP_TILE_AT, STAMP_ATTR_AT = 0x8ADA, 0x8AE2
+STAMP_TILES, STAMP_ATTR, STAMP_LAST = 0x8AEC, 0x8B6C, 0x8B74
 
 
 def stream(img14, img89, at):
@@ -87,6 +95,28 @@ def palettes(img0):
     return out
 
 
+def stages(img0):
+    """$89FA -- the three bytes each stage stands at."""
+    out = []
+    for n in range(STAGE_N):
+        at = img0[STAGE_TBL - 0x8000 + n * 2]
+        at |= img0[STAGE_TBL - 0x8000 + n * 2 + 1] << 8
+        out.append(list(img0[at - 0x8000:at - 0x8000 + 3]))
+    return out
+
+
+def stamp(img0):
+    """$8A13 -- the patch and the two tables of places it goes."""
+    def word(at):
+        return (img0[at - 0x8000] << 8) | img0[at - 0x8000 + 1]
+    return dict(
+        tile_at=[word(STAMP_TILE_AT + n * 2) for n in range(4)],
+        attr_at=[word(STAMP_ATTR_AT + n * 2) for n in range(5)],
+        tiles=list(img0[STAMP_TILES - 0x8000:STAMP_TILES - 0x8000 + 128]),
+        attr=list(img0[STAMP_ATTR - 0x8000:STAMP_ATTR - 0x8000 + 8]),
+        attr_last=list(img0[STAMP_LAST - 0x8000:STAMP_LAST - 0x8000 + 8]))
+
+
 def export():
     rom = Rom(ROM_PB2)
     b14 = rom.bank(14) + rom.bank(15)
@@ -100,7 +130,8 @@ def export():
                             blocks=stream(b14, img89, at)))
     d = outdir('pb2')
     size = write_json(os.path.join(d, 'screens.json'),
-                      dict(screens=screens, palettes=palettes(img0)))
+                      dict(screens=screens, palettes=palettes(img0),
+                           stage_records=stages(img0), stamp=stamp(img0)))
     for s in screens:
         wrote = sum(len(b['tiles']) for b in s['blocks'])
         print('screen $%02X  $%04X  %d blocks  %4d tiles  %s'
