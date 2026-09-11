@@ -1868,13 +1868,38 @@ func _ground_far(xhi: int, xlo: int, yhi: int, ylo: int) -> int:
 ## when the view may be more than a page away.  The console keeps the level in
 ## pages of two hundred and forty lines and reads it in pages of two hundred
 ## and fifty six, so sixteen lines are added for every page boundary crossed.
+##
+## The console does the sum in bytes and mends the page boundary once, and a
+## point above the top of the level is not mended at all: $F493 takes sixteen
+## off a line that has run past two hundred and forty without taking one off
+## the page, so the question comes back round to the foot of the page it
+## started on.  Reckoning the lines as a whole number instead would answer for
+## a line above the level, where there is nothing, and the cartridge answers
+## for the foot of the page, where there may well be a wall.
 func _line(hi: int, lo: int) -> int:
-	var far: int = (hi << 8) | lo
-	if hi >= 0x80:
-		far -= 0x10000
-	var total: int = (cam >> 8) * 240 + (cam & 0xFF) + far
-	var page: int = floori(float(total) / 240.0)
-	return page * 256 + (total - page * 240)
+	var cam_hi: int = (cam >> 8) & 0xFF
+	var cam_lo: int = cam & 0xFF
+	var line: int = cam_lo + lo                        # $F44B
+	var carry: int = 1 if line > 0xFF else 0
+	line &= 0xFF
+	var page: int = (cam_hi + hi + carry) & 0xFF       # $F451
+	# $F455 -- the high byte as it was before the sum says which way to go.
+	if hi < 0x80:
+		var step: int = (((page - cam_hi) & 0xFF) << 4) & 0xFF  # $F45B
+		line += step
+		page = (page + (1 if line > 0xFF else 0)) & 0xFF
+		line &= 0xFF
+		if line >= 0xF0:                               # $F46F
+			line &= 0x0F
+			page = (page + 1) & 0xFF
+	else:
+		var step2: int = (((cam_hi - page) & 0xFF) << 4) & 0xFF  # $F479
+		line -= step2
+		page = (page - (1 if line < 0 else 0)) & 0xFF
+		line &= 0xFF
+		if line >= 0xF0:                               # $F48F
+			line &= 0xEF
+	return (page << 8) | line
 
 
 ## $FB88 ($C945) -- ask the ground, but only when it is this thing's turn;
