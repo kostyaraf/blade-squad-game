@@ -106,15 +106,21 @@ def run_engine(cfg, path):
         if '|' not in line:
             continue
         parts = line.split('|')
-        if len(parts) != 5 or not parts[0].isdigit():
+        if len(parts) != 6 or not parts[0].isdigit():
             continue
-        cam, rest, gone, agree, wrong = parts
+        cam, rest, gone, agree, wrong, ride = parts
         born = [] if rest == '-' else [tuple(int(x) for x in p.split(':'))
                                        for p in rest.split()]
         culled = [] if gone == '-' else [int(x) for x in gone.split()]
+        # The boxes the level declared solid this step and how far it is
+        # carrying him, as the last sweep of the step left them.
+        px, py, boxes = ride.split(',')
+        solids = [] if boxes == '-' else [[int(x) for x in b.split(':')]
+                                          for b in boxes.split()]
         out.append(((int(cam), sorted(born), sorted(culled)),
                     tuple(int(x) for x in agree.split('/')),
-                    [] if wrong == '-' else sorted(wrong.split())))
+                    [] if wrong == '-' else sorted(wrong.split()),
+                    (solids, [int(px), int(py)])))
     if not out:
         sys.stderr.write(r.stdout[-3000:] + r.stderr[-3000:])
     return out
@@ -258,6 +264,9 @@ def _check(script, stage, area, tmp, spot, frames, pokes=(), first=None,
                                 first, patch, early),
                      os.path.join(tmp, 's.json'))
     agree = [0, 0, 0]
+    ride = _ride(rows, got)
+    if ride[2] is not None:
+        return None, None, ride[2]
     for i, expect in enumerate(w):
         have = got[i][0] if i < len(got) else None
         if have != expect:
@@ -271,7 +280,39 @@ def _check(script, stage, area, tmp, spot, frames, pokes=(), first=None,
         agree[2] += got[i][1][2]
     return len(w), (sum(len(x[1]) for x in w),
                     sum(len(x[2]) for x in w),
-                    agree[0], agree[1], agree[2]), None
+                    agree[0], agree[1], agree[2], ride[0], ride[1]), None
+
+
+# Э3.4: what the level says about the hero himself -- $011F and the boxes at
+# $0120..$0150, the two pushes $063C and $0652.  The things take their turn
+# first ($800C) and his own update reads what they left ($8E15) and then wipes
+# it, so both belong to the one step; `rows[0]` is what the engine was stood
+# on, so its line for step `i` is the cartridge's row `i + 1`.
+#
+# A step in which the cartridge's hero update never ran has nothing to say
+# about them and is passed over.
+def _ride(rows, got):
+    seen = held = 0
+    for i, line in enumerate(got):
+        if i + 1 >= len(rows) or len(line) < 4:
+            break
+        r = rows[i + 1]
+        if r['solids'] is None:
+            continue
+        seen += 1
+        mine, push = line[3]
+        theirs = [list(b) for b in r['solids']]
+        # A frame in which the cartridge wrote nothing to the two pushes is a
+        # frame in which they were already nought: the log only carries what
+        # changed, so nothing seen means nought.
+        cart = [r['push'][0] or 0, r['push'][1] or 0]
+        if mine != theirs or push != cart:
+            return seen, held, (i + 1,
+                                'solid %s push %s' % (theirs, cart),
+                                'solid %s push %s' % (mine, push))
+        if theirs or push != [0, 0]:
+            held += 1
+    return seen, held, None
 
 
 def main():
@@ -290,6 +331,7 @@ def main():
     tmp = pb2_trace.P.scratch('spawnverify')
     ran = bad = steps = births = culls = 0
     same = seen = mine = 0
+    ride_seen = ride_held = 0
     for stage, area in targets:
         here = stage == boss
         spot = None if here else V.settled_spot(stage, area)
@@ -315,9 +357,12 @@ def main():
                 same += b[2]
                 seen += b[3]
                 mine += b[4]
-                print('%s ok   %d steps %d born %d swept%s'
+                ride_seen += b[5]
+                ride_held += b[6]
+                print('%s ok   %d steps %d born %d swept%s%s'
                       % (label, n, b[0], b[1],
-                         '' if not b[4] else ' %d judged' % b[4]))
+                         '' if not b[4] else ' %d judged' % b[4],
+                         '' if not b[6] else ' %d carried' % b[6]))
             else:
                 bad += 1
                 print('%s DIFF at step %d' % (label, diff[0]))
@@ -333,6 +378,9 @@ def main():
               % (same, seen, 100.0 * same / seen))
     print('%d turns were the engine\'s own and every field of them agreed'
           % mine)
+    print('the boxes the level declared solid and the two pushes agreed on '
+          '%d steps, %d of which the level had hold of him'
+          % (ride_seen, ride_held))
     return 1 if bad else 0
 
 

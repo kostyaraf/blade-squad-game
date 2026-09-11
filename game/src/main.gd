@@ -675,11 +675,27 @@ func _run_spawns(path: String) -> void:
 		# sweep threw away.  The view is put out too: it drives the scan, so a
 		# scan that agrees only because the view was wrong in both would prove
 		# nothing.
-		out.append("%d|%s|%s|%d/%d/%d|%s" % [view.pos,
+		# $011F and $0120..$0150, $063C and $0652 as the sweep of this step
+		# left them.  In the cartridge the things take their turn first and
+		# his own update reads what they left straight after, in the same
+		# step, so the line belongs to the step it stands in.
+		var boxes := PackedStringArray()
+		for b in things.solids:
+			boxes.append("%d:%d:%d:%d" % [int(b[0]), int(b[1]), int(b[2]),
+					int(b[3])])
+		out.append("%d|%s|%s|%d/%d/%d|%s|%d,%d,%s" % [view.pos,
 				" ".join(born) if born.size() else "-",
 				" ".join(PackedStringArray(gone)) if gone.size() else "-",
 				same, seen, mine,
-				" ".join(wrong) if wrong.size() else "-"])
+				" ".join(wrong) if wrong.size() else "-",
+				things.push_x - 256 if things.push_x > 127 else things.push_x,
+				things.push_y - 256 if things.push_y > 127 else things.push_y,
+				" ".join(boxes) if boxes.size() else "-"])
+		# $8E43 and $8E46 -- the hero's own update wipes the two pushes at the
+		# end of the step.  This stand does not run his update, so the wiping
+		# is done here, in its place and where it stands: after the sweep.
+		things.push_x = 0
+		things.push_y = 0
 		for n in f["died"]:
 			things.clear(int(n))
 		for t in f["taken"]:
@@ -1143,6 +1159,12 @@ func _step_pb2() -> void:
 	hero.shift = view.shift
 	hero.held = world.held
 	hero.suit = world.suit
+	# $011F and $0120..$0150, $063C and $0652 -- what the level worked out
+	# about him during the turns of the things.  The two pushes are bytes with
+	# a sign in them and his own step reads them as numbers.
+	hero.solids = world.solids
+	hero.push_x = world.push_x - 256 if world.push_x > 127 else world.push_x
+	hero.push_y = world.push_y - 256 if world.push_y > 127 else world.push_y
 	# $8BBE -- the break in the middle of the fifth stage takes the pad away
 	# and holds it towards the left itself ($48 := 0, $4A := 2).
 	if world.take_pad:
@@ -1151,6 +1173,12 @@ func _step_pb2() -> void:
 		hero.step(pad.held, pad.pressed, view.pos,
 				hero_shots_out(), world.extra)
 	view.decide(((hero.y if level_pb2.vertical else hero.x) >> 8) & 0xFF)
+	# $8E32..$8E52 -- everything the level said about him this frame ends with
+	# his step; the head of the next sweep would wipe it again anyway.
+	world.push_x = 0
+	world.push_y = 0
+	world.solids = []
+	world.claimed = 0
 	_mirror_hero()
 	# $A17A -- no health left, or no time left, and he dies either way.
 	if world.slots[0][Pb2Objects.F_LIFE] == 0 or status.out_of_time:

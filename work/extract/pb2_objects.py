@@ -61,6 +61,14 @@ HURT = 0xB3EF
 # байт (полуширина, полувысота).  Для $50 и выше -- слово в $B7A4, и там уже
 # три пары: короб большой вещи меняется с её ходом ($5F).
 BOX_LOW = 0xB7DC
+# Банк 9, «вещи, на которые герой встаёт».  $BA44 берёт короб героя по счёту
+# позы: указатели $BAEE/$BAF9 и одиннадцать записей за ними, а $BAE6 -- $011A
+# по тому же счёту.  $B98A и $B990 -- то, чем $B91C выбирает ответный ход:
+# шесть смещений по прошлой стороне и пять блоков по тридцать шесть.
+HERO_BOX_PTR_LO, HERO_BOX_PTR_HI, HERO_BOX_N = 0xBAEE, 0xBAF9, 11
+HERO_BLOCK = 0xBAE6
+RIDE_BEFORE, RIDE_BEFORE_N = 0xB98A, 6
+RIDE_ACTION, RIDE_ACTION_N = 0xB990, 180
 BOX_HIGH = 0xB7A4
 BOX_SPLIT = 0x50
 NBOSS = 10                  # $50..$59
@@ -139,6 +147,13 @@ def export():
     b10 = rom.bank(10)
     b15 = rom.bank(15)
     b7 = rom.bank(7)
+    b9 = rom.bank(9)
+
+    def at9(a, n):
+        return list(b9[a - 0xA000:a - 0xA000 + n])
+
+    def word9(a):
+        return b9[a - 0xA000] | (b9[a - 0xA000 + 1] << 8)
 
     def at7(a, n):
         return list(b7[a - 0xA000:a - 0xA000 + n])
@@ -213,6 +228,19 @@ def export():
         # $B73C и $B764: два списка типов, которые смерть читает.
         leaves_one=at7(LEAVES_ONE, NLEAVES),
         written_down=at7(WRITTEN_DOWN, NWRITTEN),
+        # $BA44 (банк 9): короб героя -- слева, справа, сверху, снизу от его
+        # места, со знаком.  Запись выбирает счёт позы, а указатели их уже
+        # разложили в его порядке.
+        hero_box=[at9(b9[HERO_BOX_PTR_LO - 0xA000 + i]
+                      | (b9[HERO_BOX_PTR_HI - 0xA000 + i] << 8), 4)
+                  for i in range(HERO_BOX_N)],
+        # $BAE6 -- $011A по тому же счёту: поза героя, умноженная на 36.
+        hero_block=at9(HERO_BLOCK, 8),
+        # $B98A -- сдвиг по стороне, с которой герой был в вещи в прошлый
+        # раз, и $B990 -- сам выбор ответного хода, пять блоков по тридцать
+        # шесть: $011A + $B98A[прошлая] + новая.
+        ride_before=at9(RIDE_BEFORE, RIDE_BEFORE_N),
+        ride_action=at9(RIDE_ACTION, RIDE_ACTION_N),
     ))
     print('%d types, %d classes, %d runs of pictures, %d bytes'
           % (NTYPES, len(set(classes)), len(runs), size))

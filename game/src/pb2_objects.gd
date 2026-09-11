@@ -288,6 +288,22 @@ var whirr := 0
 ## solid this frame.  The hero works them out; a throw aimed down asks them
 ## whether there is floor under the place it would go.
 var solids: Array = []
+## $011A -- thirty-six to the hero's pose: where in the table of answers
+## ($B990) his own six rows begin.
+var hero_block := 0
+## $011B..$011E -- the hero's box this frame: left, right, top, bottom.  $8009
+## works it out at the head of the sweep, before any thing has had its turn,
+## so all of them are measured against the one box.
+var hero_box: Array = [0, 0, 0, 0]
+## $08..$0B -- where the two boxes last overlapped, as $B867 left it.
+var overlap: Array = [0, 0, 0, 0]
+## $0167 -- something has taken hold of him this frame already, and the next
+## thing only declares itself solid.
+var claimed := 0
+## $063C and $0652 -- how far the thing carrying him moves him this frame.
+## They are bytes with a sign in them, and his own step reads them as such.
+var push_x := 0
+var push_y := 0
 ## The tables of work/re/pb2_weapons.md, out of data/pb2/weapons.json.
 var spawn_dy := PackedByteArray()
 var spawn_dx := PackedByteArray()
@@ -362,6 +378,11 @@ func _init(level: Pb2Level) -> void:
 		for pair in r:
 			steps.append([int(pair[0]), int(pair[1])])
 		box.append(steps)
+	for r in t["hero_box"]:
+		hero_boxes.append([int(r[0]), int(r[1]), int(r[2]), int(r[3])])
+	hero_blocks = PackedByteArray(t["hero_block"])
+	ride_before = PackedByteArray(t["ride_before"])
+	ride_action = PackedByteArray(t["ride_action"])
 	var wf := FileAccess.open("res://data/pb2/weapons.json", FileAccess.READ)
 	var w: Dictionary = JSON.parse_string(wf.get_as_text())
 	spawn_dy = PackedByteArray(w["spawn_dy"])
@@ -637,7 +658,10 @@ func _grab_38(s: PackedByteArray) -> void:
 		return
 	var hero: PackedByteArray = slots[0]
 	if (hero[F_MARK] & 0x60) != 0:
-		return                                         # $B1A1 -- already held
+		# $B1A1 -- he is already in someone's hands, and all this one does is
+		# stand under him.
+		ride_apply(s, 0x0E, 0xE4)
+		return
 	if not looking_away(s):                            # $C98D -- $B1B2 BCC
 		return
 	if hero[F_STUN] == 0:
@@ -1177,6 +1201,12 @@ func _spit_3c(s: PackedByteArray) -> void:
 ## Returns the places the sweep freed, in the order it walked them.
 func turns() -> Array:
 	clock = (clock + 1) & 0xFF
+	# $8009 -- his box first of all, and then $800C wipes what the level said
+	# about him last frame.  The order matters: the box is the one he stood in
+	# when the frame opened, and every thing of this frame is measured by it.
+	hero_look()                                        # $BF18 -> $BA44
+	solids = []                                        # $011F
+	claimed = 0                                        # $0167
 	# $F163 -- the spare byte of the fifteenth place read as a request for a
 	# noise: one asks for it once, two asks for it over and over.  The once is
 	# taken back where it is read, the over and over is left standing.  There
@@ -2313,20 +2343,19 @@ func set_speed_reach(s: PackedByteArray, frames: int, lift: int) -> void:
 ## принадлежит герою, а герой в проверке умов приходит из картриджа уже
 ## посчитанным.  Поэтому здесь от них нужен только порядок вызова; сама работа
 ## -- долг Э3.4, записан в docs/status_ver3.md.
-## $BA44 (банк 9) -- коробка героя.  Какую из одиннадцати записей ($BB04 и
-## дальше, четыре числа со знаком: слева, справа, сверху, снизу) брать, решает
-## самый младший поднятый бит его метки ($0416), а позы $18 и $1A берут свои
-## записи помимо него.  Записи здесь уже разложены по этому же счёту, как их
-## называет указатель $BAEE.
-const HERO_BOX := [
-	[0xF9, 0x06, 0xE0, 0x01], [0xFA, 0x05, 0xE0, 0x01],
-	[0xFA, 0x05, 0xE0, 0x01], [0xFA, 0x05, 0xEA, 0x01],
-	[0xF8, 0x07, 0xF2, 0x01], [0xF9, 0x06, 0xDC, 0x01],
-	[0xFA, 0x05, 0xE0, 0x01], [0xFA, 0x05, 0xE0, 0x01],
-	[0xFA, 0x05, 0xDF, 0x01], [0xFF, 0x05, 0xDC, 0x01],
-	[0xFA, 0x01, 0xDC, 0x01]]
-## $BAE6 -- и по тому же счёту $011A: поза героя, умноженная на тридцать шесть.
-const HERO_BLOCK := [0x00, 0x24, 0x00, 0x24, 0x24, 0x6C, 0x48, 0x24]
+## $BA44 (bank 9) -- the hero's own box.  Which of the eleven records ($BB04
+## and after, four numbers with a sign in them: left, right, top, bottom) is
+## his is decided by the lowest raised bit of his mark ($0416), and the poses
+## $18 and $1A take records of their own beside it.  The records are laid out
+## by that same count, as the pointer $BAEE names them.
+var hero_boxes: Array = []
+## $BAE6 -- and by the same count $011A: the pose times thirty-six.
+var hero_blocks := PackedByteArray()
+## $B98A -- six to a side, because the answer of the frame before picks one of
+## six rows, and $B990 -- one hundred and eighty answers: five blocks of six
+## rows of six, the block being $011A.
+var ride_before := PackedByteArray()
+var ride_action := PackedByteArray()
 
 
 ## $BA44..$BA52 -- счёт позы: сколько нулей снизу в метке героя, но не больше
@@ -2357,7 +2386,7 @@ func _hero_solid() -> Array:
 		i = 0x0A if (h[F_BITS] & 0x40) != 0 else 0x09
 	elif h[F_STATE] == 0x1A:
 		i = 0x08
-	var r: Array = HERO_BOX[i]
+	var r: Array = hero_boxes[i]
 	var t: int = h[F_X] + r[0]                         # $BA96
 	var left: int = t & 0xFF
 	if ((0xFF + h[F_XHI] + (t >> 8)) & 0xFF) != 0:
@@ -2411,11 +2440,65 @@ func _thing_solid(s: PackedByteArray, side: int, down: int) -> Array:
 	return [left, right, top, bottom]
 
 
+## $BA52..$BA70 -- $011A: thirty-six to the pose.  The record $6C is the one
+## he lies down in, and it only stays itself while his mark and his state
+## agree about which way he is lying; anything else makes it $90.
+func _hero_block() -> int:
+	var b: int = hero_blocks[_hero_pose()]
+	if b != 0x6C:
+		return b
+	var h: PackedByteArray = slots[0]
+	var lying: bool = (h[F_BITS] & 0x40) != 0          # $042C
+	if h[F_STATE] == 0x18:                             # $BA5C
+		return 0x6C if lying else 0x90
+	return 0x90 if lying else 0x6C                     # $BA69
+
+
+## $BA44 ($8E00 through $BF18) -- the hero's box and his place in the table of
+## answers.  $8009 asks for it at the head of the frame, before the count of
+## solids is wiped and before any thing has had its turn, so every thing of
+## the frame is measured against the one box.
+func hero_look() -> void:
+	hero_block = _hero_block()
+	hero_box = _hero_solid()
+
+
+## $B7EA -- the box goes on the end of the list of solids of this frame.
+func _add_solid(b: Array) -> void:
+	solids.append([b[0], b[1], b[2], b[3]])            # $0120..$0150
+
+
+## $B808 -- pushed sideways, out of the side he came in by.
+func _push_side() -> void:
+	claimed = 1                                        # $0167
+	if hero_box[1] == overlap[1]:                      # $011C == $09
+		push_x = (overlap[0] - hero_box[1]) & 0xFF
+	else:
+		push_x = (overlap[1] - hero_box[0]) & 0xFF
+
+
+## $B828 -- and the same up or down.
+func _push_down() -> void:
+	claimed = 1                                        # $0167
+	if hero_box[3] == overlap[3]:                      # $011E == $0B
+		push_y = (overlap[2] - hero_box[3]) & 0xFF
+	else:
+		push_y = (overlap[3] - hero_box[2]) & 0xFF
+
+
+## $B848 -- carried both ways: he goes exactly as far as the thing has gone
+## since it last looked.
+func _carry_both(s: PackedByteArray) -> void:
+	push_x = (s[F_X] - ridden[0]) & 0xFF               # $0160
+	push_y = (s[F_Y] - ridden[1]) & 0xFF               # $0161
+	claimed = 1
+
+
 ## $B867 -- с какой стороны герой вошёл в вещь.  Пересечение двух коробок:
 ## шире, чем выше, -- значит сверху или снизу; выше, чем шире, -- сбоку; а
 ## если герой целиком внутри, ответ пятый.
 func _which_side(b: Array) -> int:
-	var h: Array = _hero_solid()
+	var h: Array = hero_box
 	if b[1] < h[0]:                                    # $B869
 		return 0
 	var ov_right: int = h[1] if b[1] >= h[1] else b[1]
@@ -2428,6 +2511,8 @@ func _which_side(b: Array) -> int:
 	if h[3] < b[2]:                                    # $B89C
 		return 0
 	var ov_top: int = b[2] if b[2] >= h[2] else h[2]
+	# $08..$0B -- $B808 and $B828 read the overlap back out of them.
+	overlap = [ov_left, ov_right, ov_top, ov_bottom]
 	var tall: int = (ov_bottom - ov_top) & 0xFF        # $B8AF
 	var wide: int = (ov_right - ov_left) & 0xFF
 	if wide < tall:                                    # $B8DD
@@ -2449,13 +2534,40 @@ func ride(s: PackedByteArray, side: int, down: int) -> int:
 	return held
 
 
-## $B91C ($8E09) -- ответный ход: по $011A, прошлому $0164 и новой стороне
-## таблица $B990 выбирает, вытолкнуть героя, понести его за собой или ничего
-## не делать.  Всё, что он пишет, -- поля героя и список твёрдых, а герой в
-## проверке умов приходит из картриджа уже посчитанным; работа записана в
-## долги Э3.4.
-func ride_apply(_s: PackedByteArray, _side: int, _down: int) -> void:
-	pass
+## $B91C ($8E09 through $BF26) -- the answering turn.  The pose he is in
+## ($011A), the side he was on when the thing last looked ($0164) and the side
+## he is on now together name one of one hundred and eighty answers ($B990),
+## and the answer is one of seven: leave him be, only declare the box solid,
+## carry him both ways, push him up or down, push him sideways, or one of the
+## two that do both.  Every answer but the first ends with the box on the list.
+##
+## Once something has taken hold of him this frame ($0167) nothing else may:
+## the second thing only declares itself solid.
+func ride_apply(s: PackedByteArray, side: int, down: int) -> void:
+	var b: Array = _thing_solid(s, side, down)         # $B793
+	if b.is_empty():                                   # $B91F
+		return
+	if claimed != 0:                                   # $B921 -> $B987
+		_add_solid(b)
+		return
+	var row: int = (hero_block + ride_before[held]) & 0xFF   # $B926
+	var what: int = ride_action[(row + _which_side(b)) & 0xFF]
+	match what:
+		0:                                             # $B91B
+			return
+		2:                                             # $B984
+			_carry_both(s)
+		3:                                             # $B97E
+			_push_down()
+		4:                                             # $B978
+			_push_side()
+		5:                                             # $B968
+			_push_down()
+			push_x = (s[F_X] - ridden[0]) & 0xFF
+		6:                                             # $B958
+			_push_side()
+			push_y = (s[F_Y] - ridden[1]) & 0xFF
+	_add_solid(b)                                      # $B7EA
 
 
 ## $BDA3 -- three records of six numbers each, picked by the number the mind
@@ -3805,11 +3917,13 @@ func under_line(s: PackedByteArray) -> Array:
 ## its own number in the table in $05FA so that afterwards it can look at what
 ## it let out and hold the next one back until that one is done.
 func _mind_1e(n: int, s: PackedByteArray) -> void:
+	ride(s, 0x07, 0xDE)                                # $A654
 	match s[F_STATE]:
 		0: _wake_1e(n, s)
 		1: _wait_1e(s)
 		2: _open_1e(s)
 		3: _shut_1e(s)
+	ride_apply(s, 0x07, 0xDE)                          # $A65E
 
 
 ## $A66C
@@ -4047,12 +4161,13 @@ func _mind_07(_n: int, s: PackedByteArray) -> void:
 		var sp: Array = _wake_07(s)                    # $A004
 		set_speed_down(s, sp[0], sp[1])                # $C909
 		return
+	ride(s, 0x0F, 0xF1)                                # $A053
 	step_down(s)                                       # $C8F4
 	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
-	if s[F_COUNT] != 0:
-		return
-	s[F_COUNT] = s[F_KEEP]
-	flip_speed_down(s)                                 # $C921
+	if s[F_COUNT] == 0:
+		s[F_COUNT] = s[F_KEEP]
+		flip_speed_down(s)                             # $C921
+	ride_apply(s, 0x0F, 0xF1)                          # $A05A
 
 
 ## $9FB8 -- челнок вбок.
@@ -4062,12 +4177,13 @@ func _mind_08(_n: int, s: PackedByteArray) -> void:
 		var sp: Array = _wake_07(s)                    # $A004
 		set_speed_side(s, sp[0], sp[1])                # $C906
 		return
+	ride(s, 0x0F, 0xF1)                                # $A053
 	step_side(s)                                       # $C8F7
 	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
-	if s[F_COUNT] != 0:
-		return
-	s[F_COUNT] = s[F_KEEP]
-	flip_speed_side(s)                                 # $C91E
+	if s[F_COUNT] == 0:
+		s[F_COUNT] = s[F_KEEP]
+		flip_speed_side(s)                             # $C91E
+	ride_apply(s, 0x0F, 0xF1)                          # $A05A
 
 
 ## $9780 (банк 10) -- ползун по стенам.  У него двенадцать положений
