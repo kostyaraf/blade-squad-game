@@ -61,6 +61,11 @@ SCRIPTS = {
     'jump wall':  hold(40, R) + hold(6, R | A) + hold(LEN - 46, R),
     'stutter':    ([R] * 4 + [0] * 4) * (LEN // 8),
     'taps':       ([A] + [0] * 7) * (LEN // 8),
+    'shoot':      hold(10, 0) + hold(2, B) + hold(LEN - 12, 0),
+    'run shoot':  hold(10, R) + hold(2, R | B) + hold(LEN - 12, R),
+    'duck shoot': hold(10, D) + hold(2, D | B) + hold(LEN - 12, D),
+    'air shoot':  hold(6, A) + hold(6, 0) + hold(2, B) + hold(LEN - 14, 0),
+    'rapid':      ([B] + [0] * 3) * (LEN // 4),
 }
 
 WATCH = {'x': (0x80, 0x81), 'y': (0x82, 0x83),
@@ -102,7 +107,8 @@ def cartridge(state, pads, base, pokes=()):
     addrs = set()
     for lo, hi in WATCH.values():
         addrs |= {lo, hi}
-    addrs |= {0x05A2, 0x35}
+    addrs |= {0x05A2, 0x35, 0x05A4, 0x05A5, 0x05B4, 0x05B5, 0x05A6, 0x05A7,
+              0x05CE}
     rows = P.watched(state, script, base, base + len(pads), addrs,
                      pokes=pokes)
     out = []
@@ -112,7 +118,9 @@ def cartridge(state, pads, base, pokes=()):
     for fr, c in rows[:-1]:
         out.append((c[0x80] | c[0x81] << 8, c[0x82] | c[0x83] << 8,
                     s16(c[0x05B6], c[0x05B7]), s16(c[0x05B8], c[0x05B9]),
-                    c[0x05A2], sbyte(c[0x35])))
+                    c[0x05A2], sbyte(c[0x35]),
+                    c[0x05B5], c[0x05A5], c[0x05A4], c[0x05B4],
+                    c[0x05A6], c[0x05A7], c[0x05CE]))
     return out
 
 
@@ -125,14 +133,15 @@ def engine(cfg, scratch):
     rows = []
     for line in r.stdout.split('\n'):
         f = line.split()
-        if len(f) == 6 and all(x.lstrip('-').isdigit() for x in f):
+        if len(f) == 13 and all(x.lstrip('-').isdigit() for x in f):
             rows.append(tuple(int(x) for x in f))
     if not rows:
         sys.stderr.write(r.stdout[-3000:] + r.stderr[-3000:])
     return rows
 
 
-NAMES = ('x', 'y', 'vx', 'vy', 'state', 'speed')
+NAMES = ('x', 'y', 'vx', 'vy', 'state', 'speed',
+         'pose', 'scripted', 'step_t', 'step_i', 'pic_lo', 'pic_hi', 'anim')
 
 
 def snapshot(base):
@@ -164,6 +173,12 @@ def snapshot(base):
         'clock': base[0x0C],
         'pad_held': base[0x06],
         'map_kind': base[0x70],
+        'pose': base[0x05B5],
+        'step_t': base[0x05A4],
+        'step_i': base[0x05B4],
+        'pic_lo': base[0x05A6],
+        'pic_hi': base[0x05A7],
+        'anim': base[0x05CE],
     }
 
 
@@ -205,12 +220,12 @@ def main():
         for label, stage, spot in PLACES:
             if places and label not in places:
                 continue
-            # The first stage's state is taken in the middle of frame BASE, so
-            # resuming it replays the rest of that frame and the first button
-            # belongs to BASE itself.  A warped state is taken on a clean
-            # boundary, so its first whole frame is the one after.
+            # A savestate is taken before the frame it is named for is played,
+            # so loading it and asking for that frame plays it whole.  What the
+            # engine is seeded with is therefore the end of that frame, and the
+            # first frame it is on trial for is the one after.
             first = BASE if stage == 0 else WARPED
-            play = first if stage == 0 else first + 1
+            play = first + 1
             state = stand(scratch, label, stage, spot)
             # Where the cartridge has him standing before a button is touched,
             # so that the engine starts from the cartridge's own numbers and

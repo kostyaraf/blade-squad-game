@@ -124,12 +124,19 @@ var clock := 0                  # $0C, the frame counter the whole game shares
 ## carry that comparison left, so on a map numbered above $3C every one of
 ## those probes lands a sixteenth further along.
 var map_kind := 0
-## $05A4 stands in for the little animation script the landing waits on: the
-## cartridge lets state 2 run until the script marked itself finished ($8806,
-## $05A4 = $FF), and until the scripts are ported this counts the frames it
-## took instead -- nine, measured.
-var land := 0
-const LAND_FRAMES := 9
+## The animation.  $05B5 is the one the state itself asks for and $05A5 the
+## named one a shot or an arrival sets going; $05A4 counts the current step
+## down and $05B4 says which step it is; $05A6:$05A7 is the picture those two
+## arrive at, and the picture is the whole of what the drawing wants.
+var pose := 0                   # $05B5
+var step_t := 0                 # $05A4
+var step_i := 0                 # $05B4
+var pic_lo := 0                 # $05A6
+var pic_hi := 0                 # $05A7
+## $937A -- the picture he is drawn out of this frame and the marks that go
+## with it ($9E).  -1 is "not drawn at all".
+var draw_id := -1
+var draw_mark := 0
 ## $06 as it stood at the end of last frame -- masked, not raw.  $C88B works
 ## out what was newly pressed by comparing the pad against this, so a mask that
 ## blanked $06 makes a button that was never let go read as pressed again the
@@ -179,8 +186,11 @@ func step(pad: int) -> void:
 	# $948D
 	if timer < 0xFF:
 		timer += 1
-	# $9495
-	anim = min(anim + 4, 0xFC)
+	# $9495 -- four more, and $FC only when the add carried out of the byte.
+	# $FE and $FF are reachable and the shot's own counting leans on it.
+	anim += 4
+	if anim > 0xFF:
+		anim = 0xFC
 	# $94A5 -- the pad, and how much of it reaches him.
 	var masked := _mask(held, pressed)
 	held = masked[0]
@@ -201,6 +211,65 @@ func step(pad: int) -> void:
 	# $94DB -- and only now does he move.
 	x = (x + vx) & 0xFFFF
 	y = (y + vy) & 0xFFFF
+	# $937A -- and only now is the picture chosen, because two of its branches
+	# write back into him.
+	_picture()
+
+
+## $937A -- which picture he wears this frame, and the marks that go with it.
+## `draw_id` of -1 means he is not drawn at all, which the flicker of a hero
+## who has just arrived or just been hit is made of.
+func _picture() -> void:
+	draw_id = -1
+	draw_mark = flags                       # $937A -- $9E starts as $05CB
+	if suit == 0:
+		return                              # $9384, not ported yet
+	if timer >= 0x70:                       # $93CE -- an old enough hero
+		_worn()
+		return
+	if timer == 0x1F:
+		# $93DB -- the frame the arrival is over.
+		if hurt != 0:
+			_worn()
+			return
+		if state != ST_AIR:
+			state = ST_GROUND               # $8830
+		step_t = 0                          # $93EA
+		step_i = 0
+		return
+	if timer > 0x1F:
+		# $93F3 -- every other frame of what is left of the arrival he is
+		# simply left out, and that is the flicker.
+		if (timer & 1) == 0 or hurt != 0:
+			_worn()
+		return
+	# $93FC -- the first thirty one frames: arriving, or reeling from a hit.
+	if hurt != 0:
+		if (clock & 0x04) == 0:
+			draw_mark |= 0x03               # $9407 -- and in the wrong colours
+		_worn()
+		return
+	if face_left:
+		draw_mark |= 0x40                   # $9414
+	if state == ST_GROUND or state == ST_LAND:
+		# $9423 -- every other frame of the arrival, and nothing between.
+		if (clock & 0x01) != 0:
+			draw_id = 0x64
+		return
+	if (jump_flags & HURT_IN_AIR) != 0:     # $942D
+		draw_id = 0xC2 if timer < 0x08 else 0x72
+		return
+	draw_id = 0xBC if timer < 0x08 else 0xBA
+
+
+## $944D -- the picture the animation arrived at, and the one next door when he
+## faces the other way: it is the same picture mirrored, and its own flags
+## carry the $40 that turns it about.
+func _worn() -> void:
+	var id: int = pic_lo | ((pic_hi & 0x1F) << 8)
+	if id == 0:
+		return
+	draw_id = (id + 1) & 0xFFFF if face_left else id
 
 
 ## $94A5 -- how much of the pad he is allowed.  Being hurt gives it all back:
@@ -330,13 +399,23 @@ func _vertical(held: int, pressed: int) -> void:
 		ST_LAND:
 			_landing(held, pressed)
 		ST_CROUCH:
-			_crouch(held)
+			_crouch(held, pressed)
 		_:
 			_ground(held, pressed)
 
 
 ## $9ED3 -- on the ground, standing or running.
 func _ground(held: int, pressed: int) -> void:
+	# $9ED3 -- a named animation is still running, so it and not the ground
+	# says what he looks like, and the crouch and the jump are not offered.
+	if scripted != 0:
+		_script(scripted)
+		_apply_speed()
+		if _under() >= 0x80:
+			return
+		vy = _s16(vy + GROUND_PULL)
+		_fall()
+		return
 	# $9EFC -- down, and something under him, is a crouch.
 	if (held & DOWN) != 0:
 		if _floor() >= 0x80:
@@ -353,9 +432,45 @@ func _ground(held: int, pressed: int) -> void:
 	# there a small push down and a fall.
 	_apply_speed()
 	if _under() >= 0x80:
+		_upright(held, pressed)
 		return
 	vy = _s16(vy + GROUND_PULL)
 	_fall()
+
+
+## $9F41 -- what a hero on his feet looks like: standing still, walking, or
+## running once the speed is up.
+func _upright(held: int, pressed: int) -> void:
+	if (pressed & B) != 0:
+		_shoot(0x0F, 0x01)
+		return
+	if (held & 0x03) == 0:
+		_pose(0x00)
+		return
+	var far: int = -speed if speed < 0 else speed
+	_pose(0x02 if far >= 0x0E else 0x10)
+
+
+## $9F67 and $9D2A -- letting a shot go.  $05CE is how hard the button is being
+## worked: it climbs while he keeps firing and two in a row past the threshold
+## bring out the long animation instead of the short one.
+func _shoot(long_id: int, short_id: int) -> void:
+	var long := false
+	if anim >= 0x50:
+		if (anim & 0x03) >= 2:
+			long = true
+		else:
+			anim = 0xFF
+	else:
+		anim &= 0x03
+		if anim >= 2:
+			long = true
+	if long:
+		anim = 0x4A
+		_script(long_id)
+	else:
+		anim = (anim + 1) & 0xFF
+		_script(short_id)
 
 
 ## $9EA1 -- the moment after he lands.  Any button at all cuts it short.
@@ -366,10 +481,18 @@ func _landing(held: int, pressed: int) -> void:
 	if _under() < 0x80:
 		_fall()
 		return
-	land += 1
 	# $9EAE -- a hand on the pad and he is up at once; an empty pad and he
-	# waits out the little script $9EBF starts.
-	if held != 0 or land >= LAND_FRAMES:
+	# waits out the little script $9EBF starts, which is over when its last
+	# step marks itself as never ending ($8806 reads $05A4 back).
+	var done := held != 0
+	if done:
+		scripted = 0
+		step_t = 0
+		step_i = 0
+	else:
+		_pose(0x0C)
+		done = step_t == 0xFF
+	if done:
 		state = ST_GROUND
 		# $9ECD -- and the next jump starts at full strength again.
 		jump = JUMP_FULL
@@ -380,13 +503,30 @@ func _landing(held: int, pressed: int) -> void:
 
 ## $9C7D -- ducking.  He keeps his place and lets go of the ground under him
 ## the same way standing does.
-func _crouch(held: int) -> void:
+func _crouch(held: int, pressed: int) -> void:
+	# $9C7D -- a named animation, and the crouch's own business is skipped.
+	if scripted != 0:
+		_script(scripted)
+		_apply_speed()
+		if _under() < 0x80:
+			_fall()
+		return
 	_apply_speed()
 	if _under() < 0x80:
 		_fall()
 		return
+	# $9CE1 -- letting go of down stands him up, and $9D19 still has its say
+	# about what he looks like on the way.
 	if (held & DOWN) == 0:
 		state = ST_GROUND
+	if (pressed & B) == 0:
+		_pose(0x03)
+		return
+	# $9D2A -- the crouching shot, which keeps its own script once started.
+	if scripted == 0x15:
+		_script(0x15)
+		return
+	_shoot(0x16, 0x09)
 
 
 ## $A005 -- in the air.
@@ -413,11 +553,70 @@ func _air(held: int, pressed: int) -> void:
 	if rise >= 0:
 		if _meet() >= 0x80:
 			_settle(held)
+			return
 	elif _ceiling() >= 0x80:
 		# $A08F -- SEC/ROR on the low byte alone, which is what kills the
 		# rise; the high byte is left where it was.
 		hold = hold_max
 		rise = _s16((rise & 0xFF00) | (((rise & 0xFF) >> 1) | 0x80))
+	# $A093 -- and what he looks like on the way up or down.
+	if scripted != 0:
+		_script(scripted if scripted == 0x14 else 0x08)
+		return
+	if (pressed & B) != 0:
+		_script(0x08)
+		return
+	_pose(0x06 if rise < 0 else 0x07)
+
+
+## $B7BA -- the animation the state itself wears.  Asking for the one already
+## running changes nothing; asking for another starts it at its first step.
+func _pose(id: int) -> void:
+	if id != pose:
+		pose = id
+		step_t = 0
+		step_i = 0
+	_reel(pose)
+
+
+## $B78E -- a named animation, which puts itself away once it reaches the step
+## that never ends.
+func _script(id: int) -> void:
+	if id != scripted:
+		scripted = id
+		step_t = 0
+		step_i = 0
+	_reel(scripted)
+	if step_t == 0xFF:
+		scripted = 0
+		step_t = 0
+		step_i = 0
+
+
+## $B7CE -- one frame of whichever little script is running.  A step's length
+## of $FF means it never ends, and the script is a ring: running off the end
+## comes back to the first step.  Being hurt swaps the whole book for another.
+func _reel(id: int) -> void:
+	SolSprites.load_data()
+	if step_t != 0:
+		if step_t == 0xFF:
+			return
+		step_t -= 1
+		if step_t != 0:
+			return
+	var book: Array = SolSprites.hurt if hurt != 0 else SolSprites.scripts
+	if id >= book.size():
+		return
+	var steps: Array = book[id]
+	if steps.is_empty():
+		return
+	if step_i >= steps.size():
+		step_i = 0                      # $B837 -- a length of nought is the end
+	var s: Array = steps[step_i]
+	step_t = int(s[0])
+	pic_lo = int(s[1])
+	pic_hi = int(s[2])
+	step_i += 1
 
 
 ## $A2B5 -- a push up, unless this jump has already been spent and the button
@@ -453,10 +652,12 @@ func _settle(held: int) -> void:
 	hold = 0
 	rise = 0
 	jump_flags = 0
+	# $A31A -- and whatever animation was running is put away entirely.
 	scripted = 0
+	step_t = 0
+	step_i = 0
 	# $A323 -- a direction already held and he is simply walking.
 	state = ST_GROUND if (held & 0x03) != 0 else ST_LAND
-	land = 0
 	# $A330
 	jump = JUMP_FULL
 

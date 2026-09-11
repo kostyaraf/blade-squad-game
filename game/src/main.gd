@@ -217,11 +217,25 @@ func _run_sol_play(path: String) -> void:
 		p.pad_held = int(cfg["pad_held"])
 	if cfg.has("map_kind"):
 		p.map_kind = int(cfg["map_kind"])
+	if cfg.has("pose"):
+		p.pose = int(cfg["pose"])
+	if cfg.has("step_t"):
+		p.step_t = int(cfg["step_t"])
+	if cfg.has("step_i"):
+		p.step_i = int(cfg["step_i"])
+	if cfg.has("pic_lo"):
+		p.pic_lo = int(cfg["pic_lo"])
+	if cfg.has("pic_hi"):
+		p.pic_hi = int(cfg["pic_hi"])
+	if cfg.has("anim"):
+		p.anim = int(cfg["anim"])
 	var out := PackedStringArray()
 	for f in cfg["pads"]:
 		p.step(int(f))
-		out.append("%d %d %d %d %d %d" % [p.x, p.y, p.vx, p.vy, p.state,
-				p.speed])
+		out.append("%d %d %d %d %d %d %d %d %d %d %d %d %d"
+				% [p.x, p.y, p.vx, p.vy, p.state, p.speed,
+				p.pose, p.scripted, p.step_t, p.step_i,
+				p.pic_lo, p.pic_hi, p.anim])
 	print("\n".join(out))
 
 
