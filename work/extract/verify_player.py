@@ -210,6 +210,7 @@ def logic_frames(rows):
             merged['ticks'] = out[-1]['ticks'] + r['ticks']
             merged['waters'] = out[-1]['waters'] + r['waters']
             merged['helds'] = out[-1]['helds'] + r['helds']
+            merged['colours'] = out[-1]['colours'] + r['colours']
             merged['draws'] = out[-1]['draws'] + r['draws']
             merged['cams'] = out[-1]['cams'] + r['cams']
             merged['seized'] = out[-1]['seized'] or r['seized']

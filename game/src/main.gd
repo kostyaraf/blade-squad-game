@@ -551,6 +551,11 @@ func _run_spawns(path: String) -> void:
 			things.frame = int(f["ticks"][i_tbl])
 			things.held = int(f["helds"][i_tbl])
 			things.suit = int(f["suits"][i_tbl])
+			# $5C -- which colours the background wears, and in bit 7 whether
+			# the storm is out.  What the hero grabs hold of in the three
+			# storm areas ($A50B) reads it, and the walk through the colours
+			# lives in the level's own frame, which this stand does not run.
+			things.storm = int(f["colours"][i_tbl])
 			# $29 -- the line the water or the lava has climbed to.  What
 			# moves it lives in the level's own frame, which the harness does
 			# not run, so it comes with the table.
@@ -1121,6 +1126,7 @@ func _step_pb2() -> void:
 	if not play:
 		return
 	world.frame = (world.frame + 1) & 0xFF          # $0110
+	world.step_colour(status.menu != 0)             # $BF32
 	world.status = status
 	# $CF00 -- how long the button has been down.
 	hero.step_charge(world.frame)

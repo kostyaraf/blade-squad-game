@@ -133,7 +133,7 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x07: "_mind_07", 0x08: "_mind_08", 0x2B: "_mind_2b",
 		0x29: "_mind_29", 0x20: "_mind_20",
 		0x39: "_mind_39",
-		0x09: "_mind_09", 0x0A: "_mind_0a",
+		0x09: "_mind_09", 0x0A: "_mind_0a", 0x0B: "_mind_0b",
 		0x3E: "_mind_3e", 0x3A: "_mind_3a", 0x3B: "_mind_3b",
 		0x40: "_mind_40", 0x41: "_mind_41",
 		0x43: "_mind_43",
@@ -224,6 +224,12 @@ var cfg_boss: Dictionary = {}
 var bosses := Pb2Bosses.new()
 ## $4A -- the switches of the level; $B5B7 reads bit three of it.
 var switch := 0
+## $5C -- which of the three sets of colours the background is wearing, and in
+## bit 7 whether the walk through them is stopped at all.  In the three storm
+## areas (2:3, 2:4 and 3:5) that bit turns itself over every 256 pictures --
+## the storm going out and coming back -- and what the hero grabs hold of in
+## those areas ($A50B) does nothing while it is set.
+var storm := 0
 ## $0160:$0161 -- where the thing the hero rides stood when it last looked.
 var ridden := [0, 0]
 ## $0164 -- what has hold of the hero.  It is the hero's own book-keeping
@@ -1199,6 +1205,32 @@ func _spit_3c(s: PackedByteArray) -> void:
 ## the level, and while it is set only the door and the thing at $03 move.
 ##
 ## Returns the places the sweep freed, in the order it walked them.
+## $BF32 -- один шаг прогулки по трём наборам цветов фона.  В трёх грозовых
+## областях она идёт вчетверо быстрее, а раз в 256 картинок гроза выключается
+## и включается снова -- это и есть седьмой бит $5C.  Пока меню костюма
+## открыто ($4D), не двигается ничего.
+func step_colour(menu: bool) -> void:
+	var thunder: bool = ((came == 2 and (area == 3 or area == 4))
+			or (came == 3 and area == 5))
+	if thunder:
+		if menu:                                       # $BF50
+			return
+		if frame == 0:                                 # $BF55
+			storm ^= 0x80
+			if storm >= 0x80:
+				return
+		if storm >= 0x80:                              # $BF66
+			return
+		if (frame & 0x03) != 0:
+			return
+	else:
+		if storm >= 0x80:                              # $BF72
+			return
+		if (frame & 0x07) != 0:
+			return
+	storm = (storm + 1) % 3                            # $BF7C
+
+
 func turns() -> Array:
 	clock = (clock + 1) & 0xFF
 	# $8009 -- his box first of all, and then $800C wipes what the level said
@@ -5182,6 +5214,143 @@ func _mind_09(_n: int, s: PackedByteArray) -> void:
 			ride_apply(s, 0x0F, 0xF1)
 		3:                                             # $A09A
 			step_down(s)                               # $C8F4
+
+
+## $A5EC -- шестнадцать высот, по которым вещь качает героя: круг, пройденный
+## по счёту картинок ($1C >> 1).
+const SWING_0B := [0xCC, 0xCB, 0xCA, 0xC9, 0xC8, 0xC7, 0xC6, 0xC5,
+		0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xCB]
+
+## $A64B и $A64D -- чем герою заводят шаг, когда вещь его отпускает.  Картридж
+## читает обе по байту записи ($049A), а таблица короткая: из четырёх байтов,
+## какие в уровнях встречаются (0, 1, 2 и $80), три попадают в неё, а $80
+## уводит далеко за конец -- в $A6CB/$A6CD, посреди кода соседнего ума.
+const LET_0B := {0x00: [0x60, 0x00], 0x01: [0x00, 0x02],
+		0x02: [0x00, 0xFE], 0x80: [0x9D, 0x2D]}
+
+
+## $A50B (банк 11) -- то, за что герой цепляется: в грозовых областях (2:3,
+## 2:4 и 3:5) оно хватает его и качает.  Все пять шагов пишут в место героя,
+## а не в своё, и все смотрят на $5C: пока гроза выключена, вещь стоит.
+func _mind_0b(_n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _wake_0b(s)
+		1: _wait_0b(s)
+		2: _grip_0b(s)
+		3: _drop_0b(s)
+		4: _free_0b(s)
+
+
+## $A518 -- по седьмому биту записи вещь уходит либо ждать, либо сразу
+## отпускать.
+func _wake_0b(s: PackedByteArray) -> void:
+	if not lvl.vertical:                               # $A715
+		nudge_side(s, 0, 8)                            # $C936
+	s[F_STATE] = 1 if (s[F_LIFE] & 0x7F) == 0 else 3
+
+
+## $A52B -- ждать: счёт вниз, и пока он не ушёл под ноль, а герой не в позе
+## восемь, ничего не происходит.
+func _wait_0b(s: PackedByteArray) -> void:
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF                 # $A52B
+	if s[F_SELF] < 0x80 and slots[0][F_STATE] != 0x08:
+		return
+	_drop_0b(s)                                        # $A539
+
+
+## $A539 -- шаг три, он же выход из ожидания: в грозу переходить дальше, без
+## грозы стоять ещё $40 кадров.
+func _drop_0b(s: PackedByteArray) -> void:
+	if storm >= 0x80:                                  # $5C
+		s[F_SELF] = 0x40                               # $A547
+		return
+	s[F_STATE] = (s[F_STATE] + 1) & 0xFF               # $C966
+	s[F_COUNT] = 0x00
+	s[F_SELF] = 0x00
+
+
+## $A5FC -- спросить у $B90D, стоит ли герой на этой вещи.  У помеченной
+## седьмым битом записи щуп уходит на $E0 выше.
+func _ride_0b(s: PackedByteArray, down: int) -> int:
+	if s[F_LIFE] >= 0x80:                              # $A5FF
+		down = (down + 0xE0) & 0xFF
+	return ride(s, 0x22, down)                         # $A606
+
+
+## $A550 -- сам захват.
+func _grip_0b(s: PackedByteArray) -> void:
+	if storm >= 0x80:                                  # $A552
+		s[F_STATE] = (s[F_STATE] - 1) & 0xFF           # $C969
+		return
+	s[F_COUNT] = (s[F_COUNT] + 1) & 0xFF               # $A554
+	var h: PackedByteArray = slots[0]
+	if h[F_STATE] != 0x08:                             # $A557
+		# Поймал: герою гасят дробь падения и заводят медленный подъём.
+		if _ride_0b(s, 0xD0) == 0:                     # $A560
+			return
+		h[F_KEEP] = 0x00                               # $05FA
+		h[F_VYFR] = 0x00                               # $054A
+		h[F_KEEP2] = 0xFF                              # $0610
+		h[F_VY] = 0xFF                                 # $0534
+		return
+	# $A576 -- он уже висит: пока подъём не выбран до конца, его тормозят.
+	if h[F_VY] >= 0x80 and h[F_VY] != 0xFF:
+		if _ride_0b(s, 0x80) == 0:                     # $A581
+			return
+		var d: int = 0xE4 if h[F_VY] >= 0xFB else 0xEC  # $A586
+		var f: int = h[F_VYFR] + d
+		h[F_VYFR] = f & 0xFF
+		h[F_VY] = (h[F_VY] + 0xFF + (1 if f > 0xFF else 0)) & 0xFF
+		return
+	# $A5A5 -- качание: одна из шестнадцати высот по счёту картинок.
+	if _ride_0b(s, SWING_0B[(frame >> 1) & 0x0F]) == 0:
+		return
+	h[F_VY] = 0xFF                                     # $A5B4
+	h[F_VYFR] = 0xCE
+	if held != 0x01:                                   # $A5BE
+		_loose_0b(h)
+		return
+	var gap: int = (overlap[2] - hero_box[3]) & 0xFF   # $0A против $011E
+	if gap != 0:
+		if gap < 0xFE:                                 # $A5CF
+			_loose_0b(h)
+			return
+		_push_down()                                   # $BF1C -> $B828
+	h[F_KEEP2] = 0x01                                  # $A5D4
+	h[F_KEEP] = 0x00
+	_hold_0b(s)                                        # $A60F
+
+
+## $A5E1 -- он рядом, но не на ней.
+func _loose_0b(h: PackedByteArray) -> void:
+	h[F_KEEP] = 0x00                                   # $05FA
+	h[F_KEEP2] = 0xFE                                  # $0610
+
+
+## $A60F -- пока счёт меньше $D0, героя держат: скорость вбок гасят, а дробь
+## места по иксу ставят по переключателям уровня.
+func _hold_0b(s: PackedByteArray) -> void:
+	if s[F_COUNT] >= 0xD0:                             # $A612
+		return
+	var h: PackedByteArray = slots[0]
+	h[F_VXFR] = 0x00                                   # $0576
+	h[F_VX] = 0x00                                     # $0560
+	h[F_XFR] = 0x00 if (switch & 0x01) != 0 else 0x80  # $051E, $4A
+
+
+## $A62C -- отпустить: щуп пошире, и если герой на ней, ему заводят шаг из
+## двух табличек по байту записи.
+func _free_0b(s: PackedByteArray) -> void:
+	if storm >= 0x80:                                  # $A62E
+		s[F_STATE] = (s[F_STATE] - 1) & 0xFF           # $C969
+		return
+	ride(s, 0x28, 0xB0)                                # $A634
+	if held == 0:                                      # $A637
+		return
+	var r: Array = LET_0B.get(s[F_LIFE], [0x00, 0x00])
+	var h: PackedByteArray = slots[0]
+	h[F_SELF] = r[0]                                   # $05CE
+	h[F_COUNT] = r[1]                                  # $05E4
 
 
 ## $A09D (банк 11) -- площадка на рельсе.  Она идёт по дорожке из записей
