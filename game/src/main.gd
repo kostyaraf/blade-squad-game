@@ -40,6 +40,7 @@ func _ready() -> void:
 	var orbit := ""
 	var solplay := ""
 	var soloam := ""
+	var solcam := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -66,6 +67,7 @@ func _ready() -> void:
 		elif a.begins_with("--orbit="): orbit = a.substr(8)
 		elif a.begins_with("--solplay="): solplay = a.substr(10)
 		elif a.begins_with("--soloam="): soloam = a.substr(9)
+		elif a.begins_with("--solcam="): solcam = a.substr(9)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -80,6 +82,10 @@ func _ready() -> void:
 		return
 	if soloam != "":
 		_run_sol_oam(soloam)
+		get_tree().quit()
+		return
+	if solcam != "":
+		_run_sol_cam(solcam)
 		get_tree().quit()
 		return
 	if solplay != "":
@@ -174,6 +180,45 @@ func _run_shots(path: String) -> void:
 ## the cartridge is work/extract/verify_sol_player.py.
 func _run_sol_play(path: String) -> void:
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var p := _seed_sol(cfg)
+	var out := PackedStringArray()
+	for f in cfg["pads"]:
+		p.step(int(f))
+		out.append("%d %d %d %d %d %d %d %d %d %d %d %d %d"
+				% [p.x, p.y, p.vx, p.vy, p.state, p.speed,
+				p.pose, p.scripted, p.step_t, p.step_i,
+				p.pic_lo, p.pic_hi, p.anim])
+	print("\n".join(out))
+
+
+## Э4.1 -- the view, $F1EA and $F24B, held against the cartridge picture by
+## picture.  The hero is seeded exactly as the movement stand seeds him and
+## then walks; what is printed is only where the view stood and which way it
+## was told it could go.  The stand is work/extract/verify_sol_camera.py.
+func _run_sol_cam(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var p := _seed_sol(cfg)
+	var view := SolCamera.new(level_sol)
+	view.x = int(cfg["cam_x"])
+	view.y = int(cfg["cam_y"])
+	view.map_kind = int(cfg["map_kind"]) if cfg.has("map_kind") else 0
+	view.hold = int(cfg["ride_hold"]) if cfg.has("ride_hold") else 0
+	view.fall = int(cfg["ride_fall"]) if cfg.has("ride_fall") else 0
+	# $CD9C runs before the hero does, so the view always moves on the picture
+	# he has already finished, not the one being drawn.
+	p.vx = int(cfg["vx"])
+	p.vy = int(cfg["vy"])
+	var out := PackedStringArray()
+	for f in cfg["pads"]:
+		view.step(p.vx, p.vy, p.x, p.y)
+		p.step(int(f))
+		out.append("%d %d %d" % [view.x, view.y, view.want])
+	print("\n".join(out))
+
+
+## Everything the cartridge had in the hero when the buttons started, put back
+## into him.  Two stands lean on this, so it is written once.
+func _seed_sol(cfg: Dictionary) -> SolPlayer:
 	_load("sol", int(cfg["stage"]), 0)
 	var p := SolPlayer.new(level_sol)
 	p.place(int(cfg["x"]), int(cfg["y"]))
@@ -235,14 +280,7 @@ func _run_sol_play(path: String) -> void:
 		p.pic_hi = int(cfg["pic_hi"])
 	if cfg.has("anim"):
 		p.anim = int(cfg["anim"])
-	var out := PackedStringArray()
-	for f in cfg["pads"]:
-		p.step(int(f))
-		out.append("%d %d %d %d %d %d %d %d %d %d %d %d %d"
-				% [p.x, p.y, p.vx, p.vy, p.state, p.speed,
-				p.pose, p.scripted, p.step_t, p.step_i,
-				p.pic_lo, p.pic_hi, p.anim])
-	print("\n".join(out))
+	return p
 
 
 ## Э4.1 -- the hero laid out into the console's sprite table.  Each picture is

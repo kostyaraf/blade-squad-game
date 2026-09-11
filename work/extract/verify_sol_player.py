@@ -95,8 +95,8 @@ def sbyte(v):
     return v - 0x100 if v >= 0x80 else v
 
 
-def cartridge(state, pads, base, pokes=()):
-    """Play `pads` into the cartridge and answer a row per frame."""
+def cartridge_script(pads, base):
+    """The button list in the shape the emulator's -input file wants."""
     script = []
     last = None
     for i, p in enumerate(pads):
@@ -104,6 +104,12 @@ def cartridge(state, pads, base, pokes=()):
             names = [n for n, b in BITS if p & b]
             script.append((base + i, ','.join(names) if names else '-'))
             last = p
+    return script
+
+
+def cartridge(state, pads, base, pokes=()):
+    """Play `pads` into the cartridge and answer a row per frame."""
+    script = cartridge_script(pads, base)
     addrs = set()
     for lo, hi in WATCH.values():
         addrs |= {lo, hi}
