@@ -34,6 +34,7 @@ STANDS = [
     ('spawns',     'Э3.2', 'verify_spawns.py',     ['--random=3']),
     ('weapons',    'Э3.3', 'verify_weapons.py',    ['--all-areas', '--random=3']),
     ('water',      'Э3.2', 'verify_water.py',      []),
+    ('orbit',      'Э3.4', 'verify_orbit.py',      []),
     ('hud',        'Э3.7', 'verify_hud.py',        ['--all-areas']),
     ('hudscreen',  'Э3.7', 'verify_hud_screen.py', ['--all-areas']),
     ('run',        'Э3.8', 'verify_run.py',        []),

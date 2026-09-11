@@ -37,6 +37,7 @@ func _ready() -> void:
 	var run := ""
 	var give := ""
 	var sel := ""
+	var orbit := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -60,12 +61,17 @@ func _ready() -> void:
 		elif a.begins_with("--run="): run = a.substr(6)
 		elif a.begins_with("--give="): give = a.substr(7)
 		elif a.begins_with("--select="): sel = a.substr(9)
+		elif a.begins_with("--orbit="): orbit = a.substr(8)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
 		return
 	if spawns != "":
 		_run_spawns(spawns)
+		get_tree().quit()
+		return
+	if orbit != "":
+		_run_orbit(orbit)
 		get_tree().quit()
 		return
 	if hud != "":
@@ -708,6 +714,52 @@ func _run_spawns(path: String) -> void:
 	print("\n".join(out))
 
 
+## Э3.4 acceptance -- the fourth suit's two satellites, $A945 alone.
+##
+## Every other stand hands the first six places over whole, so the two
+## satellites are told and never judged.  Here they are the only thing judged:
+## the world is set to what the cartridge held the instant before $8E2C called
+## $A945 -- the whole table, the two bytes of marks the things left, the suit
+## and the picture count -- and the engine must answer with the two places as
+## the cartridge left them, and with the same things eaten.
+func _run_orbit(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_load("pb2", int(cfg["stage"]), int(cfg["area"]))
+	var things := Pb2Objects.new(level_pb2)
+	if cfg.has("came"):
+		things.came = int(cfg["came"])
+	var out := PackedStringArray()
+	for f in cfg["frames"]:
+		var was: Array = f["before"]
+		for n in range(Pb2Objects.SLOTS):
+			var s: PackedByteArray = things.slots[n]
+			var w: Array = was[n]
+			for k in range(Pb2Objects.FIELDS):
+				s[k] = int(w[k])
+		things.suit = int(f["suit"])                # $9A
+		things.frame = int(f["tick"])               # $0110
+		things.marks = int(f["marks"])              # $0117
+		things.marks2 = int(f["marks2"])            # $0118
+		things.orbit()                              # $A945
+		var rows := PackedStringArray()
+		for n in [4, 5]:
+			var s2: PackedByteArray = things.slots[n]
+			var b := PackedStringArray()
+			for k in range(Pb2Objects.FIELDS):
+				b.append(str(s2[k]))
+			rows.append(",".join(b))
+		# $AB44 -- what the satellites ate on the way past.  A place the
+		# cartridge had already emptied is not one of them.
+		var ate := PackedStringArray()
+		for n in range(Pb2Objects.FIRST_LIVE, Pb2Objects.SLOTS):
+			if things.slots[n][Pb2Objects.F_TYPE] == 0 \
+					and int(was[n][Pb2Objects.F_TYPE]) != 0:
+				ate.append(str(n))
+		out.append("%s|%s|%s" % [rows[0], rows[1],
+				" ".join(ate) if ate.size() else "-"])
+	print("\n".join(out))
+
+
 ## Э3.7 acceptance -- the status bar, a turn of one piece at a time.
 ##
 ## Nothing the bar does reaches the screen directly: every piece of it fills
@@ -1179,13 +1231,21 @@ func _step_pb2() -> void:
 		hero.step(pad.held, pad.pressed, view.pos,
 				hero_shots_out(), world.extra)
 	view.decide(((hero.y if level_pb2.vertical else hero.x) >> 8) & 0xFF)
+	_mirror_hero()
+	# $8E2C -- the fourth suit's two satellites take their turn last of all,
+	# after his step has moved him, because the ellipse they walk is measured
+	# from where he stands now.
+	world.orbit()
 	# $8E32..$8E52 -- everything the level said about him this frame ends with
 	# his step; the head of the next sweep would wipe it again anyway.
 	world.push_x = 0
 	world.push_y = 0
 	world.solids = []
 	world.claimed = 0
-	_mirror_hero()
+	# $8E4C and $8E4F -- and so do the marks the things left for the
+	# satellites, which is why a thing has to set its bit on every turn.
+	world.marks = 0
+	world.marks2 = 0
 	# $A17A -- no health left, or no time left, and he dies either way.
 	if world.slots[0][Pb2Objects.F_LIFE] == 0 or status.out_of_time:
 		_die()

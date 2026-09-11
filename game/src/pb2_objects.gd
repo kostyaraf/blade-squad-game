@@ -306,6 +306,13 @@ var overlap: Array = [0, 0, 0, 0]
 ## $0167 -- something has taken hold of him this frame already, and the next
 ## thing only declares itself solid.
 var claimed := 0
+## $0117 and $0118 -- one bit a slot, six to thirteen in the first and
+## fourteen to twenty-one in the second: this thing is something the suit's
+## satellites may go for.  A thing sets its own bit on every turn it takes
+## ($C9D2), and the hero's step wipes both bytes at the end of the frame
+## ($8E4C), so they say what was there this frame and nothing older.
+var marks := 0
+var marks2 := 0
 ## $063C and $0652 -- how far the thing carrying him moves him this frame.
 ## They are bytes with a sign in them, and his own step reads them as such.
 var push_x := 0
@@ -526,6 +533,9 @@ func take(n: int, what: int) -> void:
 ## the same record will be made again if the view comes back over it.
 func clear(n: int) -> void:
 	slots[n] = empty_row()
+	# $D72D -- and with the slot goes the mark it left for the satellites.
+	if n >= FIRST_LIVE:
+		unmark_target(n)                               # $FEE0
 
 
 ## $E3F7 and $E422 -- how far the view has travelled counted in pixels.  Down a
@@ -5873,8 +5883,7 @@ func _curl_3b(n: int, s: PackedByteArray) -> void:
 		if s[F_SELF] != was:                           # $B439
 			_aim_3b(s)
 	_wall_3b(n, s)                                     # $B487
-	# $C9D2 sets its bit in $0117, which is the drawing's own book and is not
-	# kept here.
+	mark_target(n)                                     # $C9D2
 	step_both(s)                                       # $C8F1
 
 
@@ -6098,6 +6107,7 @@ const NOSE_41_SIDE := [0x08, 0xF7, 0xF7, 0x08]
 ## along the slant the table names.  $C9D2 at its head marks its bit in $0117,
 ## the drawing's own book, which is not kept here.
 func _mind_41(n: int, s: PackedByteArray) -> void:
+	mark_target(n)                                     # $C9D2
 	match s[F_STATE]:                                  # $C97E
 		0: _wake_41(n, s)
 		1: _fly_41(n, s)
@@ -6518,6 +6528,7 @@ func _mind_14(n: int, s: PackedByteArray) -> void:
 		s[F_KIND] = 0x2A                               # $BE6E
 		s[F_STATE] = 1                                 # $C966
 		return
+	mark_target(n)                                     # $C9D2
 	ground_or_die(n, s)                                # $C8EB
 
 
@@ -6551,6 +6562,7 @@ func _fly_21(n: int, s: PackedByteArray) -> void:
 		if ground_turn_clear(n, s, 0x00, 0xFC) >= 0x80:
 			set_speed_down(s, 0x00, 0x00)              # $BEB9
 	_slide_21(n, s)                                    # $90FC
+	mark_target(n)                                     # $C9D2
 	step_down(s)                                       # $C8F4
 
 
@@ -6746,6 +6758,7 @@ func _fall_3f(n: int, s: PackedByteArray) -> void:
 	if s[F_VY] >= 0x04:                                # $B4BA
 		set_speed_down(s, 0x04, 0x00)                  # $BEB9 00 04
 	if ground_turn_clear(n, s, 0x00, 0x00) < 0x80:     # $BECB 00 00
+		mark_target(n)                                 # $C9D2
 		step_anim(s)                                   # $C8EE
 		step_both(s)
 		return
@@ -7206,6 +7219,246 @@ static func _asr16(v: int) -> int:
 	return ((v >> 1) | (v & 0x8000)) & 0xFFFF
 
 
+## $FEE0 -- and takes it back, which $D733 does for every slot it empties.
+func unmark_target(n: int) -> void:
+	if n < FIRST_PLACED:                               # $FEEC
+		marks &= ~(1 << ((n - FIRST_LIVE) & 0x07)) & 0xFF
+	else:
+		marks2 &= ~(1 << ((n - FIRST_LIVE) & 0x07)) & 0xFF
+
+
+## $FEC0 ($C9D2) -- a thing marks itself as something the satellites may go
+## for.  Slots six to thirteen have their bit in $0117, fourteen to twenty-one
+## in $0118, and the bit is the slot counted from six.
+func mark_target(n: int) -> void:
+	if n < FIRST_PLACED:                               # $FEC0
+		marks |= 1 << ((n - FIRST_LIVE) & 0x07)
+	else:
+		marks2 |= 1 << ((n - FIRST_LIVE) & 0x07)
+
+
+## $A945 (bank 9, stub $8E12) -- the two satellites of the fourth suit.  They
+## are slots four and five, they belong to no record and have no type of their
+## own: only a picture, a place and a state.  $8E2C runs this in the hero's own
+## frame, after his step and before $8E32 wipes the marks.
+func orbit() -> void:
+	if suit != 0x04:                                   # $9A
+		# $A94B -- out of the suit and they go, but only once.
+		if slots[4][F_KIND] == 0:                      # $0446
+			return
+		clear(4)                                       # $C810
+		clear(5)
+		return
+	if slots[4][F_KIND] == 0:                          # $A95A
+		_make_orbit()                                  # $AA86
+	_orbit_one(4)                                      # $A962
+	_orbit_one(5)
+
+
+## $AA86 -- born a third of a turn apart, each already standing where its own
+## angle says, and both wearing the ninth run of pictures.
+func _make_orbit() -> void:
+	_place_orbit(4, 0x18)
+	_place_orbit(5, 0xE8)
+
+
+## $AA94 -- put one down.
+func _place_orbit(n: int, ang: int) -> void:
+	var s: PackedByteArray = slots[n]
+	s[F_KEEP] = ang                                    # $05FA
+	var at: Array = _orbit_place(s)                    # $AAB3
+	s[F_X] = at[0]
+	s[F_XHI] = at[1]
+	s[F_Y] = at[2]
+	s[F_YHI] = at[3]
+	# $C891 ($E2D8) -- $E2D5 with the first store stepped over: the run is
+	# laid out in the thing but its number is not kept, because the satellite
+	# names the run afresh on every turn ($A96E).
+	var run: Dictionary = anims[0x09]
+	s[F_HOLD] = int(run["hold"])
+	s[F_KIND] = int(run["first"])
+	s[F_STEP] = 0
+
+
+## $AAB3 -- where the satellite belongs this turn: round him, at the angle its
+## own count has reached, on an ellipse as wide as $05FA and as tall as $0610
+## -- which is nought, so the walk is flat -- and sixteen points above him.
+## Answers [x, xhi, y, yhi].
+func _orbit_place(s: PackedByteArray) -> Array:
+	var off: Array = around(s[F_COUNT], s[F_KEEP], s[F_KEEP2])
+	var h: PackedByteArray = slots[0]
+	var side: int = off[0]
+	var x: int = h[F_X] + side
+	var xhi: int = (h[F_XHI] + (0xFF if side >= 0x80 else 0x00) + (x >> 8)) & 0xFF
+	var down: int = (off[1] - 0x10) & 0xFF             # $AAD8
+	var y: int = h[F_Y] + down
+	var yhi: int = (h[F_YHI] + (0xFF if down >= 0x80 else 0x00) + (y >> 8)) & 0xFF
+	return [x & 0xFF, xhi, y & 0xFF, yhi]
+
+
+## $A968 -- one satellite's turn.
+func _orbit_one(n: int) -> void:
+	var s: PackedByteArray = slots[n]
+	s[F_COUNT] = (s[F_COUNT] + 1) & 0xFF               # $05E4
+	_orbit_sweep(n, s)                                 # $AAED
+	step_anim_into(s, 0x09)                            # $C88E
+	match s[F_STATE]:                                  # $A973
+		0: _orbit_round(n, s)
+		1: _orbit_chase(n, s)
+		2: _orbit_rest(n, s)
+		3: _orbit_home(n, s)
+
+
+## $AAED -- what it touches, it takes: any marked thing standing within
+## thirteen points of it both ways is gone.  Neither side counts if it is off
+## the screen, which the high bytes of a place say.
+func _orbit_sweep(n: int, s: PackedByteArray) -> void:
+	if (s[F_XHI] | s[F_YHI]) != 0:                     # $AAED
+		return
+	_orbit_sweep_eight(FIRST_LIVE, marks, s[F_X], s[F_Y])
+	_orbit_sweep_eight(FIRST_PLACED, marks2, s[F_X], s[F_Y])
+
+
+## $AB12 -- eight slots, one bit each, lowest bit first.
+func _orbit_sweep_eight(first: int, mask: int, x: int, y: int) -> void:
+	for i in range(8):
+		if (mask & (1 << i)) == 0:                     # $AB18
+			continue
+		var t: PackedByteArray = slots[first + i]
+		if (t[F_XHI] | t[F_YHI]) != 0:                 # $AB1C
+			continue
+		if _gap(t[F_X], x) >= 0x0D:                    # $AB24
+			continue
+		if _gap(t[F_Y], y) >= 0x0D:                    # $AB34
+			continue
+		clear(first + i)                               # $C810
+
+
+## $AB24 and $AB34 -- how far apart two bytes are, whichever is the greater.
+static func _gap(a: int, b: int) -> int:
+	var d: int = (a - b) & 0xFF
+	return d if a >= b else ((-d) & 0xFF)
+
+
+## $AB4D -- the two satellites split the marked things between them: the even
+## slot takes the bits of $55, the odd one the bits of $AA.  The first byte is
+## tried before the second, and whichever answered is kept -- $0626 for the
+## near eight, $063C for the far eight.  Answers what it found.
+func _orbit_pick(n: int, s: PackedByteArray) -> int:
+	var half: int = 0xAA if (n & 1) != 0 else 0x55     # $AB6A
+	var a: int = marks & half                          # $AB51
+	if a != 0:
+		s[F_PUSH] = a                                  # $0626
+		return a
+	a = marks2 & half                                  # $AB59
+	if a != 0:
+		s[F_ANG] = a                                   # $063C
+		return a
+	return 0
+
+
+## $A98B -- state nought: walk the ellipse, and take the first marked thing
+## that turns up.
+func _orbit_round(n: int, s: PackedByteArray) -> void:
+	if _orbit_pick(n, s) != 0:                         # $AB4D
+		_orbit_go(s)                                   # $A9A8
+		return
+	var at: Array = _orbit_place(s)                    # $AAB3
+	s[F_X] = at[0]
+	s[F_XHI] = at[1]
+	s[F_Y] = at[2]
+	s[F_YHI] = at[3]
+
+
+## $A9A8 -- set off after what was picked.
+func _orbit_go(s: PackedByteArray) -> void:
+	s[F_STATE] = 0x01                                  # $058C
+	set_speed_side(s, 0x00, 0x00)                      # $C906
+	set_speed_down(s, 0x00, 0x00)                      # $C909
+
+
+## $A9B6 -- state one: the chase.  What it was going for is looked at again
+## every turn, because a thing that has gone leaves its bit down; when nothing
+## it held is left it stands still for a space of $20 turns.  The aim is laid
+## down on every other turn, and which turn that is depends on the slot, so
+## the two satellites never do it together.
+func _orbit_chase(n: int, s: PackedByteArray) -> void:
+	s[F_PUSH] = s[F_PUSH] & marks                      # $A9B6
+	s[F_ANG] = s[F_ANG] & marks2
+	if (s[F_ANG] | s[F_PUSH]) == 0:                    # $A9CB
+		s[F_STATE] = (s[F_STATE] + 1) & 0xFF           # $A9F2
+		s[F_SELF] = 0x20                               # $05CE
+		return
+	if ((n ^ frame) & 0x01) == 0:                      # $A9CD
+		var t: PackedByteArray = slots[_orbit_first(s)]
+		_orbit_aim(s, t[F_X], t[F_Y], t[F_XHI], t[F_YHI])
+	step_both(s)                                       # $C8F1
+
+
+## $AB89 -- the lowest bit still standing, counted as a slot.  The near eight
+## are looked at first and answer six upward; the far eight, when the near
+## byte is empty, answer six upward as well and not fourteen -- the cartridge
+## starts the count over and does not put the eight back.  Kept as it is.
+func _orbit_first(s: PackedByteArray) -> int:
+	var y: int = FIRST_LIVE
+	var m: int = s[F_PUSH]
+	if m == 0:                                         # $AB8E
+		m = s[F_ANG]
+	for i in range(8):
+		if (m & (1 << i)) != 0:
+			return (y + i) & 0xFF
+		# $AB96 -- nothing found in eight tries and the count walks on; the
+		# two bytes are never both empty here, so it never comes to that.
+	return y
+
+
+## $AB6C -- point the speed straight at a place, flat out.
+func _orbit_aim(s: PackedByteArray, x: int, y: int, xhi: int, yhi: int) -> void:
+	var a: Array = _halve16(s[F_XHI], s[F_X], xhi, x)  # $C8B5 -> $F690
+	var b: Array = _halve16(s[F_YHI], s[F_Y], yhi, y)
+	set_speed_at(s, 0x3F, _atan(a[0], b[0], a[1], b[1]))
+
+
+## $A9FB -- state two: stand where the chase left it until the count runs out,
+## unless something new turns up in the meantime.
+func _orbit_rest(n: int, s: PackedByteArray) -> void:
+	if _orbit_pick(n, s) != 0:                         # $AB4D
+		_orbit_go(s)
+		return
+	s[F_SELF] = (s[F_SELF] - 1) & 0xFF                 # $05CE
+	if s[F_SELF] != 0:
+		return
+	s[F_STATE] = (s[F_STATE] + 1) & 0xFF               # $AA06
+	set_speed_side(s, 0x00, 0x00)                      # $C906
+	set_speed_down(s, 0x00, 0x00)                      # $C909
+
+
+## $AA12 -- state three: back to him.  Once it is within twenty-four points of
+## where the ellipse says it belongs, both ways, it takes the walk up again.
+func _orbit_home(n: int, s: PackedByteArray) -> void:
+	if _orbit_pick(n, s) != 0:                         # $AB4D
+		_orbit_go(s)
+		return
+	var at: Array = _orbit_place(s)                    # $AAB3
+	if (_near16(at[1], at[0], s[F_XHI], s[F_X])
+			and _near16(at[3], at[2], s[F_YHI], s[F_Y])):
+		s[F_STATE] = 0x00                              # $AA72
+		return
+	if ((n ^ frame) & 0x01) == 0:                      # $AA78
+		_orbit_aim(s, at[0], at[2], at[1], at[3])
+	step_both(s)                                       # $C8F1
+
+
+## $AA2A -- two places, both bytes of each, no further apart than $18.
+static func _near16(hi0: int, lo0: int, hi1: int, lo1: int) -> bool:
+	var a: int = (hi0 << 8) | lo0
+	var b: int = (hi1 << 8) | lo1
+	var d: int = (a - b) & 0xFFFF
+	if a < b:                                          # $AA37, the borrow
+		d = (-d) & 0xFFFF
+	return d < 0x18
+
+
 ## $A563 -- every throw of his gets its turn, between his own step and the
 ## sweep that says what it touched.
 func shots_turn() -> void:
@@ -7515,6 +7768,7 @@ func _mind_25(n: int, s: PackedByteArray) -> void:
 	add_speed_down(s, 0x24)                            # $C90C
 	if s[F_VY] == 0x04:                                # $934E
 		set_speed_down(s, 0x04, 0x00)                  # $BEB9 00 04
+	mark_target(n)                                     # $C9D2
 	step_down(s)                                       # $C8F4
 
 
@@ -7540,6 +7794,7 @@ func _mind_44(n: int, s: PackedByteArray) -> void:
 		s[F_STATE] += 1                                # $C966
 		return
 	step_anim(s)                                       # $C837
+	mark_target(n)                                     # $C9D2
 	if (s[F_VY] | s[F_VYFR]) == 0 and s[F_SELF] < 0x06:    # $BCA1
 		s[F_SELF] = (s[F_SELF] + 1) & 0xFF
 		nudge_down(s, 0x00, 0x01)                      # $C930
@@ -7572,6 +7827,7 @@ func _mind_4c(n: int, s: PackedByteArray) -> void:
 		s[F_STATE] += 1                                # $C966
 		return
 	step_anim(s)                                       # $C837
+	mark_target(n)                                     # $C9D2
 	ground_or_die(n, s)                                # $C8EB
 
 
