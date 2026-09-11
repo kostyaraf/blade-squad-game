@@ -954,6 +954,13 @@ var _bar_was := {}
 ## seventh table, so `level_pb2.stage` is six there and this is not: it holds
 ## the stage the hero walked in from, which is what the room reads.
 var came := 0
+## $AD -- which half of the stage is being played.  The table of things is
+## made afresh for every area, so this is where it lives between them.
+var phase := 0
+## How many times the scene between the two halves has built the area again.
+## A study run watches the table to tell a rebuild from an ordinary step, and
+## this is how it tells that rebuild from the one a door makes.
+var interludes := 0
 
 
 ## Open an area and put a hero in it, where the area's own walk-on says.
@@ -973,6 +980,7 @@ func _start_play(st: int, ar: int) -> void:
 	if st != Pb2Objects.BOSS_STAGE:
 		came = st
 	world.came = came
+	world.phase = phase
 	hero = Pb2Player.new(level_pb2)
 	hero.world = world
 	# What he carries from one area to the next, and from one life to the
@@ -1075,14 +1083,28 @@ func _step_pb2() -> void:
 	if world.live == 6:
 		_next_area()
 		return
+	# $18 := 6 -- the scene between the two halves of the fifth stage.  There
+	# is nothing to show here yet, so it is over at once and the same area is
+	# built again with $AD one, where the same record is a door ($B0D7).
+	if world.interlude:
+		phase = world.phase
+		interludes += 1
+		_start_play(level_pb2.stage, world.area)
+		_apply()
+		return
 	# $8E26 -- what is already in the air moves first, and only then does
 	# $8E29 let go of the next one; $8E2C moves him after both.
 	world.shots_turn()
 	hero.shift = view.shift
 	hero.held = world.held
 	hero.suit = world.suit
-	hero.step(pad.held, pad.pressed, view.pos,
-			hero_shots_out(), world.extra)
+	# $8BBE -- the break in the middle of the fifth stage takes the pad away
+	# and holds it towards the left itself ($48 := 0, $4A := 2).
+	if world.take_pad:
+		hero.step(Pad.LEFT, 0, view.pos, hero_shots_out(), world.extra)
+	else:
+		hero.step(pad.held, pad.pressed, view.pos,
+				hero_shots_out(), world.extra)
 	view.decide(((hero.y if level_pb2.vertical else hero.x) >> 8) & 0xFF)
 	_mirror_hero()
 	if world.slots[0][Pb2Objects.F_LIFE] == 0:
@@ -1109,6 +1131,9 @@ func _wear_suit() -> void:
 ## door chose, or the stage's boss room, and the hero stood where that area's
 ## own walk-on says.
 func _next_area() -> void:
+	# $AD belongs to the stage, not to the area, and the table of things that
+	# knew it is about to be thrown away ($88EB puts it back to nought).
+	phase = world.phase
 	# $88F0 -- a boss that has fallen opens no area.  $BE22 sets the stage's
 	# bit in $5B, and the game leaves for the map and the screen the next
 	# stage is picked on.  The same types stand about in the middle of a
@@ -1388,6 +1413,7 @@ func _run_through(spec: String, from_stage: int = 0, from_area: int = 0) -> void
 			# An area that builds itself again makes a new table; that is how
 			# the run tells a rebuild from an ordinary step.
 			var world_was: Pb2Objects = world
+			var mid_was := interludes
 			# The pilot cannot play, so it pins him: his place on the screen
 			# is written every step to one edge of it and the view chases him
 			# the whole length of the area.  This is what the study runs do to
@@ -1421,6 +1447,15 @@ func _run_through(spec: String, from_stage: int = 0, from_area: int = 0) -> void
 					break
 				continue
 			if world != world_was:
+				# $18 := 6 -- the scene in the middle of the stage builds the
+				# same area again with the other half's things in it.  The
+				# area is not over; it has only changed under the hero, so the
+				# run goes on playing it.
+				if interludes != mid_was:
+					still = 0
+					was = view.pos
+					opening = false
+					continue
 				if level_pb2.stage != st or level_pb2.area != ar:
 					opened = "%d:%d" % [level_pb2.stage, level_pb2.area]
 				else:
@@ -1559,6 +1594,7 @@ func _pick(n: int) -> void:
 		return
 	choosing = false
 	status.stage = n
+	phase = 0                                       # $A08F -- a fresh stage
 	_start_play(n, 0)
 	_apply()
 

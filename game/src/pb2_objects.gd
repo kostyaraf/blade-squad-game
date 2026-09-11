@@ -141,7 +141,7 @@ const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x0C: "_mind_0c",
 		0x14: "_mind_14", 0x21: "_mind_21",
 		0x0F: "_mind_0f", 0x47: "_mind_47",
-		0x3F: "_mind_3f", 0x0D: "_mind_0d",
+		0x3F: "_mind_3f", 0x0D: "_mind_0d", 0x0E: "_mind_0e",
 		0x04: "_mind_04", 0x03: "_mind_03",
 		0x05: "_mind_05", 0x06: "_mind_06",
 		0x50: "_mind_boss", 0x51: "_mind_boss", 0x52: "_mind_boss",
@@ -172,6 +172,12 @@ var came := 0
 var boss := 0
 ## $AD -- which half of a stage is being played: the walk, or the boss.
 var phase := 0
+## $4E, and with it $48 := 0 and $4A := 2 -- the end of the walk through 4:3
+## takes the pad away and holds it towards the left itself.  See $0E.
+var take_pad := false
+## $18 := 6 -- the same place asks for the scene between the two halves of the
+## stage.  What is shown is the whole game's business, not the table's.
+var interlude := false
 ## $5B -- which stages have already been beaten.  A door with a life in its
 ## record is not there at all on a second walk through a beaten stage.
 var cleared := 0
@@ -6522,6 +6528,42 @@ func _mind_0d(n: int, s: PackedByteArray) -> void:
 		return
 	switch = switch ^ MASK_36[s[F_LIFE]]               # $8B7F
 	clear(n)                                           # $C810
+
+
+## $8B86 (bank 10) -- the one of its kind, and it is not a thing that fights.
+##
+## It stands in area 4:3 and it is the break in the middle of the stage.  On
+## the first half ($AD nought) it is only a picture; when the man walks off
+## the left of it the game takes the pad away, walks him out itself, and shows
+## the scene between the halves ($18 := 6).  The level is then built again
+## with $AD one, and the same record is a door instead.
+##
+## `work/re/pb2_minds.md`, "Ум $0E".
+func _mind_0e(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_MARK] = 0x80                               # $C9AB
+		if phase == 0:
+			# $8B92 -- $46 := $10 as well, which is only which kilobyte of
+			# tiles it is drawn from.
+			s[F_KIND] = 0xF8
+			s[F_STATE] += 1                            # $C966
+			return
+		# $8B9E -- on the second half it puts out the door and goes.
+		for k in range(FIRST_PLACED, SLOTS):           # $C86A
+			if slots[k][F_TYPE] == 0:
+				slots[k][F_TYPE] = 0x04
+				slots[k][F_X] = 0x10
+				slots[k][F_Y] = 0x80
+				break
+		clear(n)                                       # $C810
+		return
+	# $8BB7 -- while he is still to the right of $90 the game holds him
+	# walking left; once he is past it, the half of the stage is over.
+	if slots[0][F_X] >= 0x90:
+		take_pad = true
+		return
+	phase = 1                                          # $AD := 1
+	interlude = true                                   # $18 := 6
 
 
 # --- The door at the end of an area -----------------------------------
