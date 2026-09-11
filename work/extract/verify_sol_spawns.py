@@ -67,20 +67,37 @@ def ids(rows):
     behaviours are Э4.3.  They are masked off here so that this stand answers
     only its own question.
     """
-    return [tuple(n & 0x3F for n, _x, _y in r) for r in rows]
+    return [tuple(r[s][0] & 0x3F for s in range(SLOTS)) for r in rows]
 
 
-def cartridge(state, pads, base):
+# $0C counts pictures; $0E is the hash of RAM that $CD57 stirs, and until that
+# is ported the engine is handed the cartridge's own.
+TICKS = [0x0C, 0x0E]
+FIELDS = [0x0650, 0x0690, 0x0660, 0x0670]
+
+
+def cartridge(state, pads, base, full=False):
     script = V.cartridge_script(pads, base)
-    addrs = set(POOL) | set(POS)
+    addrs = set(POOL) | set(POS) | set(TICKS)
+    if full:
+        addrs |= {p + i for p in FIELDS for i in range(SLOTS)}
     rows = P.watched(state, script, base, base + len(pads), addrs)
     out = []
+    ticks = []
     for _fr, c in rows[:-1]:
-        out.append(tuple(
-            (c[0x0600 + i], c[0xA0 + i] | c[0xB0 + i] << 8,
-             c[0xC0 + i] | c[0xD0 + i] << 8)
-            for i in range(SLOTS)))
-    return out
+        ticks.append((c[0x0C], c[0x0E]))
+        if full:
+            out.append(tuple(
+                (c[0x0600 + i], c[0xA0 + i] | c[0xB0 + i] << 8,
+                 c[0xC0 + i] | c[0xD0 + i] << 8,
+                 c[0x0650 + i], c[0x0690 + i], c[0x0660 + i], c[0x0670 + i])
+                for i in range(SLOTS)))
+        else:
+            out.append(tuple(
+                (c[0x0600 + i], c[0xA0 + i] | c[0xB0 + i] << 8,
+                 c[0xC0 + i] | c[0xD0 + i] << 8)
+                for i in range(SLOTS)))
+    return out, ticks
 
 
 def engine(cfg, scratch):
@@ -92,7 +109,7 @@ def engine(cfg, scratch):
     rows = []
     for line in r.stdout.split('\n'):
         f = line.split()
-        if len(f) != SLOTS or not all(t.count(',') == 2 for t in f):
+        if len(f) != SLOTS or not all(t.count(',') == 6 for t in f):
             continue
         rows.append(tuple(tuple(int(v) for v in t.split(',')) for t in f))
     if not rows:
@@ -115,10 +132,22 @@ def seed(base):
     cfg['seen_x'] = base[0x05E0] | base[0x05E1] << 8
     cfg['seen_y'] = base[0x05E2] | base[0x05E3] << 8
     cfg['room'] = base[0x05EB]
+    cfg['stage'] = base[0x55]
     cfg['mark'] = [base[0x0560 + i] for i in range(MARKS)]
     cfg['id'] = [base[0x0600 + i] for i in range(SLOTS)]
     cfg['ox'] = [base[0xA0 + i] | base[0xB0 + i] << 8 for i in range(SLOTS)]
     cfg['oy'] = [base[0xC0 + i] | base[0xD0 + i] << 8 for i in range(SLOTS)]
+    # The rest of the slot: what it thinks, what it wears and where its walk
+    # has got to.  Э4.2 does not read any of it, but the stand seeds the whole
+    # pool so that Э4.3 can lean on the same seed.
+    for name, page in (('omind', 0x0650), ('okind', 0x0690),
+                       ('opic_lo', 0x0660), ('opic_hi', 0x0670),
+                       ('oa', 0x0610), ('ob', 0x0620), ('oc', 0x0630),
+                       ('od', 0x0640), ('oface', 0x0680),
+                       ('oanim_a', 0x06A0), ('oanim_b', 0x06B0),
+                       ('oleft', 0x06C0), ('oframe', 0x06D0),
+                       ('ocool', 0x06E0), ('olife', 0x06F0)):
+        cfg[name] = [base[page + i] for i in range(SLOTS)]
     return cfg
 
 
@@ -139,9 +168,12 @@ def main():
                 if only and name not in only:
                     continue
                 total += 1
-                want = ids(cartridge(state, pads, play))
+                rows, ticks = cartridge(state, pads, play)
+                want = ids(rows)
                 cfg = dict(cfg0)
                 cfg['pads'] = pads
+                cfg['clock_at'] = [t[0] for t in ticks]
+                cfg['noise_at'] = [t[1] for t in ticks]
                 got = ids(engine(cfg, scratch))
                 n = min(len(want), len(got))
                 where = None

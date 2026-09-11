@@ -257,23 +257,58 @@ func _run_sol_objects(path: String) -> void:
 		pool.id[i] = int(cfg["id"][i])
 		pool.x[i] = int(cfg["ox"][i])
 		pool.y[i] = int(cfg["oy"][i])
+		pool.mind[i] = int(cfg["omind"][i])
+		pool.kind[i] = int(cfg["okind"][i])
+		pool.a[i] = int(cfg["oa"][i])
+		pool.b[i] = int(cfg["ob"][i])
+		pool.c[i] = int(cfg["oc"][i])
+		pool.d[i] = int(cfg["od"][i])
+		pool.face[i] = int(cfg["oface"][i])
+		pool.anim_a[i] = int(cfg["oanim_a"][i])
+		pool.anim_b[i] = int(cfg["oanim_b"][i])
+		pool.left[i] = int(cfg["oleft"][i])
+		pool.frame[i] = int(cfg["oframe"][i])
+		pool.cool[i] = int(cfg["ocool"][i])
+		pool.life[i] = int(cfg["olife"][i])
+		pool.pic_lo[i] = int(cfg["opic_lo"][i])
+		pool.pic_hi[i] = int(cfg["opic_hi"][i])
+	# $0C is a plain count of pictures, but $0E is a hash of the whole of RAM
+	# ($CD57) and is not ported yet, so both are handed over as the cartridge
+	# had them.  `work/re/sol_minds.md` says what that still owes.
+	var clocks: Array = cfg["clock_at"]
+	var noises: Array = cfg["noise_at"]
 	var out := PackedStringArray()
+	var n := 0
 	for f in cfg["pads"]:
 		# The order of one picture: what the background owed is paid at the
 		# top, then the view moves, then the hero, then the scroll is looked
 		# at again, then the room, then the scan, then the pool itself.
+		pool.clock = int(clocks[n])
+		pool.noise = int(noises[n])
 		pool.drew()
 		view.step(p.vx, p.vy, p.x, p.y)
 		p.step(int(f))
+		pool.hero_x = p.x
+		pool.hero_y = p.y
+		pool.hero_vx = p.vx
+		pool.hero_face = 0x80 if p.face_left else 0x00
+		pool.map_kind = view.map_kind
+		pool.stage = int(cfg["stage"]) if cfg.has("stage") else 0
+		pool.z34 = view.fall
 		pool.scrolled(view.x, view.y)
 		pool.room = pool.room_of(view.x, view.y)
 		pool.scan(view.x, view.y, p.x, p.state)
 		pool.step(view.x, view.y)
 		var row := PackedStringArray()
 		for i in range(SolObjects.SLOTS):
-			row.append("%d,%d,%d" % [pool.id[i], pool.x[i], pool.y[i]])
+			row.append("%d,%d,%d,%d,%d,%d,%d" % [pool.id[i], pool.x[i],
+					pool.y[i], pool.mind[i], pool.kind[i],
+					pool.pic_lo[i], pool.pic_hi[i]])
 		out.append(" ".join(row))
+		n += 1
 	print("\n".join(out))
+	if not pool.skipped.is_empty():
+		printerr("minds not read yet: ", pool.skipped)
 
 
 ## Everything the cartridge had in the hero when the buttons started, put back

@@ -63,6 +63,11 @@ static func hero(p: SolPlayer, x: int, y: int, t: Table) -> void:
 	_place(p.draw_id, p.draw_mark, x, y, t)
 
 
+## $CF73 -- any picture at all, which is how an object puts itself in.
+static func picture(id: int, mark: int, x: int, y: int, t: Table) -> void:
+	_place(id, mark, x, y, t)
+
+
 ## $F3DC -- the place is carried in sixteenths of a pixel and the console wants
 ## whole ones, so both are shifted four down before the picture is laid out.
 static func _place(id: int, mark: int, x: int, y: int, t: Table) -> void:
