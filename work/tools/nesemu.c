@@ -289,6 +289,13 @@ static const char *opt_loadstate = NULL;
 typedef struct { const char *path; long frame; } SaveReq;
 static SaveReq savereqs[64]; static int n_savereqs = 0;
 static SaveReq vramreqs[512]; static int n_vramreqs = 0;
+
+/* -ramat FILE@PC: the two kilobytes of work memory written down every time
+ * the program counter reaches PC, which is how a stand sees the console in
+ * the middle of a frame and not only at the end of one.  Each record is eight
+ * bytes of heading -- frame, program counter, bank -- and then the memory. */
+typedef struct { const char *path; uint16_t pc; FILE *fp; } RamAtReq;
+static RamAtReq ramats[8]; static int n_ramats = 0;
 /* CHR bank mapping sampled at the start of every visible scanline, so a ripped
  * frame can be rebuilt even though MMC3 swaps banks mid-screen. */
 static uint16_t chr_scan[240][8];
@@ -1329,6 +1336,19 @@ static void cpu_step(void)
     }
     uint8_t I0 = P & FI;
 
+    for (int k = 0; k < n_ramats; k++) {
+        if (ramats[k].pc != PC) continue;
+        if (!ramats[k].fp) ramats[k].fp = fopen(ramats[k].path, "wb");
+        if (!ramats[k].fp) continue;
+        uint8_t hdr[8];
+        long fr = cur_frame; int bk = prg_bank_at(PC);
+        hdr[0] = (uint8_t)(fr & 0xFF);       hdr[1] = (uint8_t)((fr >> 8) & 0xFF);
+        hdr[2] = (uint8_t)((fr >> 16) & 0xFF); hdr[3] = (uint8_t)((fr >> 24) & 0xFF);
+        hdr[4] = (uint8_t)(PC & 0xFF);       hdr[5] = (uint8_t)(PC >> 8);
+        hdr[6] = (uint8_t)(bk & 0xFF);       hdr[7] = (uint8_t)((bk >> 8) & 0xFF);
+        fwrite(hdr, 1, 8, ramats[k].fp);
+        fwrite(ram, 1, 2048, ramats[k].fp);
+    }
     if (trace_fp && n_samples) {
         for (int k = 0; k < n_samples; k++) {
             if (samples[k].pc != PC) continue;
@@ -2264,6 +2284,8 @@ static void usage(void)
         "  -rompoke O=V      write byte V at PRG file offset O before the run (hex O/V)\n"
         "  -sample P=A       log what address A held whenever PC reached P (hex);\n"
         "                    A may instead be a register: A, X, Y or P\n"
+        "  -ramat FILE@PC    write the 2K of work RAM to FILE every time PC is\n"
+        "                    reached (hex); a record is frame, PC, bank, memory\n"
         "  -verbose LO-HI    one line per frame in that range: frame, PC, PRG banks\n");
 }
 
@@ -2327,6 +2349,18 @@ int main(int argc, char **argv)
             vramreqs[n_vramreqs].path = s;
             vramreqs[n_vramreqs].frame = strtol(at + 1, NULL, 10);
             n_vramreqs++;
+        }
+        else if (!strcmp(o, "-ramat")) {
+            NEED(o);
+            char *s2 = argv[++i];
+            char *at = strrchr(s2, '@');
+            if (!at) { fprintf(stderr, "-ramat needs FILE@PC\n"); return 1; }
+            if (n_ramats >= 8) { fprintf(stderr, "too many -ramat\n"); return 1; }
+            *at = 0;
+            ramats[n_ramats].path = s2;
+            ramats[n_ramats].pc = (uint16_t)strtol(at + 1, NULL, 16);
+            ramats[n_ramats].fp = NULL;
+            n_ramats++;
         }
         else if (!strcmp(o, "-poke")) {
             NEED(o);
@@ -2498,6 +2532,7 @@ int main(int argc, char **argv)
     }
     if (opt_ramdump) write_ramdump(opt_ramdump);
     if (opt_statedump) write_statedump(opt_statedump);
+    for (int k = 0; k < n_ramats; k++) if (ramats[k].fp) fclose(ramats[k].fp);
     if (trace_fp) fclose(trace_fp);
     if (cpu_jammed) fprintf(stderr, "note: %d JAM opcode(s) executed\n", cpu_jammed);
     fprintf(stderr, "done: %ld frames, %llu cpu cycles\n",

@@ -147,6 +147,8 @@ var pad_held := 0
 
 func _init(level: SolLevel) -> void:
 	lvl = level
+	if level == null:
+		return                  # the drawing stand wants him without a level
 	stage = level.stage
 	x_min = int(level.camera["x_min"])
 	x_end = int(level.camera["x_end"])

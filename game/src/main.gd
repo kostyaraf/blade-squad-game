@@ -39,6 +39,7 @@ func _ready() -> void:
 	var sel := ""
 	var orbit := ""
 	var solplay := ""
+	var soloam := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -64,6 +65,7 @@ func _ready() -> void:
 		elif a.begins_with("--select="): sel = a.substr(9)
 		elif a.begins_with("--orbit="): orbit = a.substr(8)
 		elif a.begins_with("--solplay="): solplay = a.substr(10)
+		elif a.begins_with("--soloam="): soloam = a.substr(9)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -74,6 +76,10 @@ func _ready() -> void:
 		return
 	if orbit != "":
 		_run_orbit(orbit)
+		get_tree().quit()
+		return
+	if soloam != "":
+		_run_sol_oam(soloam)
 		get_tree().quit()
 		return
 	if solplay != "":
@@ -236,6 +242,47 @@ func _run_sol_play(path: String) -> void:
 				% [p.x, p.y, p.vx, p.vy, p.state, p.speed,
 				p.pose, p.scripted, p.step_t, p.step_i,
 				p.pic_lo, p.pic_hi, p.anim])
+	print("\n".join(out))
+
+
+## Э4.1 -- the hero laid out into the console's sprite table.  Each picture is
+## handed over whole: the hero as the cartridge had him just before $937A, the
+## place on screen, the table as it stood and the four cursors the drawing
+## carries.  The stand that holds it against the cartridge is
+## work/extract/verify_sol_oam.py.
+func _run_sol_oam(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var out := PackedStringArray()
+	for f in cfg["frames"]:
+		var p := SolPlayer.new(null)
+		p.state = int(f["state"])
+		p.timer = int(f["timer"])
+		p.step_t = int(f["step_t"])
+		p.step_i = int(f["step_i"])
+		p.pic_lo = int(f["pic_lo"])
+		p.pic_hi = int(f["pic_hi"])
+		p.hurt = int(f["hurt"])
+		p.suit = int(f["suit"])
+		p.flags = int(f["flags"])
+		p.jump_flags = int(f["jump_flags"])
+		p.clock = int(f["clock"])
+		p.face_left = bool(f["face_left"])
+		p._picture()
+		var t := SolSprites.Table.new()
+		t.count = int(f["count"])
+		t.turn = int(f["turn"])
+		t.fwd = int(f["fwd"])
+		t.back = int(f["back"])
+		var bk: Array = f["banks"]
+		for i in range(4):
+			t.banks[i] = int(bk[i])
+		var was: Array = f["oam"]
+		for i in range(256):
+			t.oam[i] = int(was[i])
+		SolSprites.hero(p, int(f["x"]), int(f["y"]), t)
+		out.append("%s %d %d %d %d %d %d %d %d" % [t.oam.hex_encode(),
+				t.count, t.turn, t.fwd, t.back,
+				t.banks[0], t.banks[1], t.banks[2], t.banks[3]])
 	print("\n".join(out))
 
 
