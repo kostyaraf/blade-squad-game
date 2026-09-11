@@ -29,10 +29,12 @@ COUNT = 15
 FIXED = 2
 PAIR = 8
 # $8044 -- the palette: eight records of four bytes, $0F and three colours.
+# Forty-seven of them: the pointers fill $811F..$817C and the records they
+# point at fill $817D..$82F4, up to the next table ($82F5).
 PAL_TBL = 0x811F
 PAL_LO = 0x82F5
 PAL_HI = 0x837D
-PAL_N = 16
+PAL_N = 47
 
 
 def stream(img14, img89, at):
