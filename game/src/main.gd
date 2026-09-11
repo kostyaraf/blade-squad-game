@@ -41,6 +41,7 @@ func _ready() -> void:
 	var solplay := ""
 	var soloam := ""
 	var solcam := ""
+	var solshot := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -68,6 +69,7 @@ func _ready() -> void:
 		elif a.begins_with("--solplay="): solplay = a.substr(10)
 		elif a.begins_with("--soloam="): soloam = a.substr(9)
 		elif a.begins_with("--solcam="): solcam = a.substr(9)
+		elif a.begins_with("--solshot="): solshot = a.substr(10)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -86,6 +88,10 @@ func _ready() -> void:
 		return
 	if solcam != "":
 		_run_sol_cam(solcam)
+		get_tree().quit()
+		return
+	if solshot != "":
+		await _run_sol_shot(solshot, stage)
 		get_tree().quit()
 		return
 	if solplay != "":
@@ -152,6 +158,7 @@ func _ready() -> void:
 		_start_play(stage, area)
 	else:
 		_load(game, stage, area)
+		_start_sol()
 	_apply()
 
 
@@ -496,8 +503,10 @@ func _apply() -> void:
 	else:
 		img = level_sol.map_image
 		size = Vector2(level_sol.width_tiles, level_sol.height_tiles)
-		# Solbrain draws no sprites here yet, so its own four are padded out.
-		banks = level_sol.banks + [0, 0, 0, 0]
+		# The hero's own four banks are settled a picture at a time, so until
+		# he is standing they are the ones the stage came in with.
+		banks = level_sol.banks + (Array(sol_table.banks)
+				if sol_table != null else level_sol.spr_banks)
 	m.set_shader_parameter("sheet", Nes.sheet(game))
 	map_tex = ImageTexture.create_from_image(img)
 	m.set_shader_parameter("map", map_tex)
@@ -517,6 +526,8 @@ func _apply() -> void:
 		# The hero's own bank and the sprite table are settled a picture at a
 		# time, so the last word on both is his, not the level's.
 		_show()
+	elif sol_hero != null:
+		_show_sol()
 	m.set_shader_parameter("scroll", Vector2(scroll - origin))
 	m.set_shader_parameter("view_top", float(origin.y))
 	m.set_shader_parameter("view_bottom", float(origin.y + view_h))
@@ -537,6 +548,9 @@ func _process(dt: float) -> void:
 	if world != null:
 		_show()
 		queue_redraw()
+	elif sol_hero != null:
+		_show_sol()
+		queue_redraw()
 
 
 func _step() -> void:
@@ -546,10 +560,97 @@ func _step() -> void:
 		_choice_step()
 		return
 	if world == null:
-		_walk_camera()
+		if sol_hero != null:
+			_step_sol()
+		else:
+			_walk_camera()
 		return
 	_step_pb2()
 	_bar_step()
+
+
+## Э4.1 -- Solbrain with a hero in it: he is set down where the stage says and
+## the view is put where the stage raises it.  Nothing else of the game is
+## here yet -- no things, no weapons, no bar -- so what this is good for is
+## walking, jumping and looking at him.
+func _start_sol() -> void:
+	sol_hero = SolPlayer.new(level_sol)
+	sol_hero.place(level_sol.start.x, level_sol.start.y)
+	sol_view = SolCamera.new(level_sol)
+	sol_view.place(level_sol.start.x, level_sol.start.y)
+	sol_table = SolSprites.Table.new()
+	for i in range(4):
+		sol_table.banks[i] = level_sol.spr_banks[i]
+	oam = PackedByteArray()
+	oam.resize(Pb2Sprites.OAM)
+	oam.fill(Pb2Sprites.HIDDEN)
+	var img := Image.create(Pb2Sprites.SPRITES, 1, false, Image.FORMAT_RGBA8)
+	oam_tex = ImageTexture.create_from_image(img)
+	bg.material.set_shader_parameter("oam", oam_tex)
+	scroll = Vector2i(sol_view.x >> 4, sol_view.y >> 4)
+
+
+## One picture: the view first, because $CD9C runs before the hero does, then
+## the hero, then what he puts into the sprite table.
+func _step_sol() -> void:
+	sol_view.step(sol_hero.vx, sol_hero.vy, sol_hero.x, sol_hero.y)
+	sol_hero.step(pads[0].held)
+	# A picture starts with an empty table: the game walks it from both ends
+	# every frame ($F4E2 forward, $F5E1 back) and nothing is kept.
+	sol_table.count = 0
+	sol_table.turn = 0
+	sol_table.fwd = 0
+	sol_table.back = SolSprites.BACK_WRAP
+	for i in range(sol_table.oam.size()):
+		sol_table.oam[i] = Pb2Sprites.HIDDEN
+	# $91C0 -- where he is, counted from the corner of the view.
+	SolSprites.hero(sol_hero, (sol_hero.x - sol_view.x) & 0xFFFF,
+			(sol_hero.y - sol_view.y) & 0xFFFF, sol_table)
+
+
+func _show_sol() -> void:
+	var m: ShaderMaterial = bg.material
+	scroll = Vector2i(sol_view.x >> 4, sol_view.y >> 4)
+	m.set_shader_parameter("scroll", Vector2(scroll - origin))
+	m.set_shader_parameter("banks",
+			PackedInt32Array(level_sol.banks + Array(sol_table.banks)))
+	m.set_shader_parameter("sprites_on", true)
+	var img := Image.create(Pb2Sprites.SPRITES, 1, false, Image.FORMAT_RGBA8)
+	for i in range(Pb2Sprites.SPRITES):
+		img.set_pixel(i, 0, Color8(sol_table.oam[i * 4],
+				sol_table.oam[i * 4 + 1], sol_table.oam[i * 4 + 2],
+				sol_table.oam[i * 4 + 3]))
+	oam_tex.update(img)
+
+
+## A look at Solbrain with a hero in it: --solshot=BUTTONS,FRAMES,FILE, where
+## BUTTONS is one pad byte in hex held the whole way.  Nothing but a look.
+func _run_sol_shot(spec: String, st: int) -> void:
+	var f := spec.split(",")
+	var pad := int("0x%s" % f[0])
+	var n := int(f[1])
+	_load("sol", st, 0)
+	_start_sol()
+	for _i in range(n):
+		sol_view.step(sol_hero.vx, sol_hero.vy, sol_hero.x, sol_hero.y)
+		sol_hero.step(pad)
+		sol_table.count = 0
+		sol_table.turn = 0
+		sol_table.fwd = 0
+		sol_table.back = SolSprites.BACK_WRAP
+		for i in range(sol_table.oam.size()):
+			sol_table.oam[i] = Pb2Sprites.HIDDEN
+		SolSprites.hero(sol_hero, (sol_hero.x - sol_view.x) & 0xFFFF,
+				(sol_hero.y - sol_view.y) & 0xFFFF, sol_table)
+	_apply()
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(f[2])
+	print("hero %04X %04X  view %04X %04X  state %d pic %d"
+			% [sol_hero.x, sol_hero.y, sol_view.x, sol_view.y,
+			sol_hero.state, sol_hero.draw_id])
+	print("count %d banks %s oam %s" % [sol_table.count,
+			str(Array(sol_table.banks)),
+			sol_table.oam.slice(0, 32).hex_encode()])
 
 
 ## Э1 left this here so that scrolling and the clock could be watched working,
@@ -1201,6 +1302,12 @@ var rot := 0
 ## drawing does not touch keeps what it said last time.
 var oam := PackedByteArray()
 var oam_tex: ImageTexture
+
+# Э4.1 -- Solbrain walking about for real: the hero, the view and the table
+# the console draws him out of.  Э4.3 will hand the same table to the things.
+var sol_hero: SolPlayer
+var sol_view: SolCamera
+var sol_table: SolSprites.Table
 ## $94 of the picture before: the scan reads last picture's slide, not this
 ## one's ($CF0E runs before $CF11).
 var slid := 0

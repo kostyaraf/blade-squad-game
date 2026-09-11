@@ -106,7 +106,7 @@ var jump := JUMP_FULL           # $05E8
 var gravity := GRAVITY          # $05E9
 var hold_max := HOLD_MAX        # $05EA
 var ground := GROUND_PLAIN      # $05CD
-var flags := OUT_OF_WATER       # $05CB
+var flags := 0                  # $05CB
 var jump_flags := 0             # $05C9
 var hurt := 0                   # $05C2
 var scripted := 0               # $05A5
@@ -179,6 +179,10 @@ func step(pad: int) -> void:
 	# ice stops being slippery on the frame he steps off it, not later.  A
 	# stage with neither never writes the byte at all.
 	ground = GROUND_PLAIN
+	# $CD79 -- and the same is true of the marks he is drawn with: the frame
+	# routine keeps only "upside down" and throws the rest away, so "not in
+	# water" has to be earned again every picture.
+	flags &= UPSIDE_DOWN
 	var held := pad
 	var pressed: int = pad & ~pad_held
 	# $9477: the frame's move starts at nothing every time, and is decided

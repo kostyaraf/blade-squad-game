@@ -17,6 +17,7 @@ var height_tiles: int = ROOMS * ROOM_TILES
 var map_image: Image
 var palette: PackedByteArray
 var banks: Array
+var spr_banks: Array
 var start: Vector2i                 # where the player comes in, in 1/16 px
 var camera: Dictionary
 var props: PackedByteArray          # per metatile: palette, alt flag, collision
@@ -31,6 +32,9 @@ func _init(stage_index: int) -> void:
 	var c: Array = _data["chr"]
 	banks = [int(c[0]) & 0xFE, (int(c[0]) & 0xFE) + 1,
 			 int(c[1]) & 0xFE, (int(c[1]) & 0xFE) + 1]
+	# $42..$45 -- the four the sprites come out of.  A picture may swap one of
+	# them for its own, so these are only what the stage is raised with.
+	spr_banks = [int(c[2]), int(c[3]), int(c[4]), int(c[5])]
 	start = Vector2i(int(_data["start"]["x"]), int(_data["start"]["y"]))
 	camera = _data["camera"]
 	props = PackedByteArray(_data["props"])
