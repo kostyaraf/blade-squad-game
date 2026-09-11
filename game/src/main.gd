@@ -38,6 +38,7 @@ func _ready() -> void:
 	var give := ""
 	var sel := ""
 	var orbit := ""
+	var solplay := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -62,6 +63,7 @@ func _ready() -> void:
 		elif a.begins_with("--give="): give = a.substr(7)
 		elif a.begins_with("--select="): sel = a.substr(9)
 		elif a.begins_with("--orbit="): orbit = a.substr(8)
+		elif a.begins_with("--solplay="): solplay = a.substr(10)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -72,6 +74,10 @@ func _ready() -> void:
 		return
 	if orbit != "":
 		_run_orbit(orbit)
+		get_tree().quit()
+		return
+	if solplay != "":
+		_run_sol_play(solplay)
 		get_tree().quit()
 		return
 	if hud != "":
@@ -157,6 +163,47 @@ func _run_shots(path: String) -> void:
 ## frame: the buttons held, the buttons pressed this frame, and where the
 ## camera was -- all taken off the real cartridge.  The engine must answer with
 ## the same positions.
+## Э4.1 -- Solbrain's hero alone, given a stage, a place and a list of buttons,
+## putting out where he stood on every frame.  The stand that holds him against
+## the cartridge is work/extract/verify_sol_player.py.
+func _run_sol_play(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_load("sol", int(cfg["stage"]), 0)
+	var p := SolPlayer.new(level_sol)
+	p.place(int(cfg["x"]), int(cfg["y"]))
+	if cfg.has("state"):
+		p.state = int(cfg["state"])
+	if cfg.has("speed"):
+		p.speed = int(cfg["speed"])
+	if cfg.has("jump"):
+		p.jump = int(cfg["jump"])
+	if cfg.has("face_left"):
+		p.face_left = bool(cfg["face_left"])
+	if cfg.has("timer"):
+		p.timer = int(cfg["timer"])
+	if cfg.has("hold"):
+		p.hold = int(cfg["hold"])
+	if cfg.has("rise"):
+		p.rise = int(cfg["rise"])
+	if cfg.has("ground"):
+		p.ground = int(cfg["ground"])
+	if cfg.has("hurt"):
+		p.hurt = int(cfg["hurt"])
+	if cfg.has("scripted"):
+		p.scripted = int(cfg["scripted"])
+	if cfg.has("suit"):
+		p.suit = int(cfg["suit"])
+	var out := PackedStringArray()
+	var was := 0
+	for f in cfg["pads"]:
+		var pad := int(f)
+		p.step(pad, pad & ~was)
+		was = pad
+		out.append("%d %d %d %d %d %d" % [p.x, p.y, p.vx, p.vy, p.state,
+				p.speed])
+	print("\n".join(out))
+
+
 func _run_replay(path: String) -> void:
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	_load("pb2", int(cfg["stage"]), int(cfg["area"]))

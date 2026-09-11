@@ -146,19 +146,25 @@ The rest are named as they are pinned down.
 
 ### The jump
 
-`$A2B5`/`$A2BE` starts it:
+`$A2B5`/`$A2BE` starts it, and starts it again on every frame the button is
+still held:
 
 ```
 A2BE   A = $05E8                 how hard this jump pushes
-A2C1   if A >= $B8: A -= $5B     a long jump is cut back
-A2CA   $05AD <- A ;  $05AE <- $FF      i.e. speed = -(256 - A)
+A2C1   if A >= $B8: A -= $5B     and every push after the first is weaker
+A2C7   $05E8 <- A
+A2CA   $05AD <- A ;  $05AE <- $FF      upward speed = A - 256
 A2D2   $05C9 bit 7 set
 A2D7   $05A2 <- 1
 ```
 
-`$05E8` is `$B2` for the ordinary jump, so the first push is **-78**, which is
-4.875 pixels a frame upward. `$9B18` sets it to `$F0` or `$D0` by `$05E9`, and
-`$9B39` to `$F8`, for the other kinds of jump.
+`$05E8` is **`$E0`** when he leaves the ground -- state 2 writes it as it hands
+back to state 0 (`$9ECD`) -- and `$5B` is **6**. So the pushes of one jump run
+`$DA $D4 $CE $C8 $C2 $BC $B6`, that is -38, -44, -50, -56, -62, -68, -74, and
+stop weakening once the byte is under `$B8`. It is not one impulse held for a
+while; it is seven of them, each a little stronger than the last, and letting go
+early stops the series where it stands. That is the whole of the tall jump and
+the short jump.
 
 `$A0BB` then pulls him down every frame while he is in the air:
 
@@ -166,26 +172,21 @@ A2D7   $05A2 <- 1
 A0BB   $05AD:$05AE += $05E9      gravity, 4 on foot
 A0CB   if $05CB bit 7 (upside down) the sign is turned round instead
 A0FA   $05B8:$05B9 += $05AD:$05AE
-A10C   falling and past $0060 -> clamped to $0060
+A10C   falling and past $0060 -> $05B8:$05B9 clamped to $0060
 ```
 
 - **Gravity: 4 sixteenths a frame**, a quarter of a pixel a frame each frame.
 - **Terminal fall: `$0060` = 6 pixels a frame.** Measured: a drop reaches it on
   the 24th frame and holds it.
-- **A held keeps the rise going for `$05EA` = 6 frames.** `$A005` counts them in
-  `$05AC` and calls the launch again each time, so the speed is put back to -78
-  before gravity takes its 4. Letting A go writes `$FF` into `$05AC` and the
-  count can never start again for that jump.
+- **`$05EA` = 6** is how many times the push may be repeated. `$A005` counts
+  them in `$05AC`; letting A go writes `$FF` there and the count can never start
+  again for that jump.
 
-So a tapped jump and a held jump differ by exactly the length of that window,
-and the whole arc is a straight line in speed:
-
-| frames held | rise lasts | height |
-|---|---|---|
-| 1-2 | 2 frames at -74 | 49.8 px |
-| 6 or more | 6 frames at -74 | 68.2 px |
-
-Both are measured, not computed.
+The order inside one airborne frame is: push again if it is still owed, then
+gravity on to `$05AD:$05AE`, then `$05B8:$05B9` takes that value, then the move.
+On the frame he actually leaves the ground the push is set but gravity does not
+run, so that frame he does not move vertically at all. Measured: pressing A at
+rest leaves y at 400.00 for one frame and then goes -2.5 px.
 
 ### On the ground
 
@@ -193,21 +194,59 @@ State 0 adds `$20` to the downward speed every frame (`$9EE9`) before the ground
 check `$A1B3` runs. That is the small constant push that keeps him on a floor
 and makes him walk down a step instead of stepping off it.
 
-`$A1B3` asks what is one sixteenth below his feet (`$93 = $83 + 1`, or `- 1`
-when `$05CB` says he is upside down) and hands `$90..$93` to **`$C00C`** in the
-fixed bank, which is the shared "what is at this point" routine. The answer
-comes back in A; `$A194` sorts it: `$60` is open, bit 6 set is one thing, `$A0`
-is another.
+`$A1B3` asks what is at **(x, y + 16 px)** -- `$93` is the *high* byte of y, so
+`INC $93` is a whole sixteen pixels, not one sixteenth. Upside down (`$05CB`
+bit 7) it goes the other way. The point goes to **`$C00C` -> `$D032` -> `$D09C`**
+in the fixed bank, the shared "what is at this world point" routine written up in
+`work/re/sol_level_format.md`, which answers with the metatile's property byte
+shifted left three places. So of the answer:
 
-## 5. What is still open
+| bit of the answer | bit of `props` | what it is |
+|---|---|---|
+| 7 | 4 | solid |
+| 6 | 3 | hurts -- `$A1A1` sends it to `$9FA5`, which sets `$05C2` |
+| 5 | 2 | a second kind, handled by `$963D` |
+
+`$A194` sorts them: exactly `$60` (bits 3 and 2, not solid) is nothing at all;
+bit 3 otherwise is damage; `$A0` (solid and bit 2) is the second kind.
+
+## 5. Where he touches the world
+
+His place is **not his feet**: it is sixteen pixels above them. Standing on the
+floor of stage one, whose first solid row begins at `y = 416`, he rests at
+`y = 400`.
+
+Three points, and only three:
+
+| probe | point | routine |
+|---|---|---|
+| the floor | `(x, y + 16 px)` | `$A1B3` |
+| a wall on the right | `(x + 8 px + vx, y + 14 px)` | `$A411` -> `$C00F` |
+| a wall on the left | `(x - 8 px + vx, y - 6 px)` | `$A381` -> `$C00F` |
+
+`$C00F` (`$D010`) is the same lookup as `$C00C` with this frame's horizontal
+speed added to the point first, so a wall is tested where he is about to be and
+not where he is.
+
+The two sides are not mirror images, and that is the cartridge and not a slip in
+the reading: `$A41F` is `ADC #$E0` where `$A390` is `SBC #$60`. Written as a
+16-bit offset the right-hand one would have wanted `$FFE0`; the high byte is
+`ADC #$00`, so it really does add 224 and the point lands fourteen pixels below
+him instead of two above. It is ported as it stands.
+
+Hitting a wall (`$A3FF`, `$A36F`) zeroes `$35` -- but only when he is facing
+that way -- and always zeroes `$05B6:$05B7`, so the frame's move is cancelled
+outright. Measured: running right along the floor of stage one he comes to rest
+at **x = 631.75**, and the first solid column there begins at 640.
+
+## 6. What is still open
 
 * The 17 unnamed states, and which button or event reaches each.
-* `$C00C` itself: the shape of the collision answer, and the hero's box.
 * The wire, the wall cling and the wall jump — `$94FA` and `$A172`.
 * `$05C5` and what each suit changes.
 * `$9689`'s first half (`$05C8`, `$0112`) — the afterimage trail.
 
-## 6. How to measure any of it again
+## 7. How to measure any of it again
 
 ```python
 import sys; sys.path.insert(0, 'work/tools')
