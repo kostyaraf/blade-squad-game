@@ -32,6 +32,7 @@ func _ready() -> void:
 	var water := ""
 	var oam := ""
 	var demo := ""
+	var timing := ""
 	var play := ""
 	var run := ""
 	var give := ""
@@ -54,6 +55,7 @@ func _ready() -> void:
 		elif a.begins_with("--water="): water = a.substr(8)
 		elif a.begins_with("--oam="): oam = a.substr(6)
 		elif a.begins_with("--demo="): demo = a.substr(7)
+		elif a.begins_with("--time="): timing = a.substr(7)
 		elif a.begins_with("--play="): play = a.substr(7)
 		elif a.begins_with("--run="): run = a.substr(6)
 		elif a.begins_with("--give="): give = a.substr(7)
@@ -108,6 +110,10 @@ func _ready() -> void:
 		return
 	if sel != "":
 		await _run_select(sel, stage)
+		get_tree().quit()
+		return
+	if timing != "":
+		_run_time(timing, stage, area)
 		get_tree().quit()
 		return
 	if demo != "":
@@ -237,6 +243,8 @@ func _bar_feed() -> void:
 	bar.charge = hero.charge
 	bar.boss_life = world.slots[Pb2Objects.NOISE_SLOT][Pb2Objects.F_LIFE]
 	bar.suit = status.suit
+	bar.score_hi = status.time_hi
+	bar.score_lo = status.time_lo
 
 
 ## The pieces and the numbers each of them is drawn from.
@@ -1008,13 +1016,19 @@ func _start_play(st: int, ar: int) -> void:
 	# What he carries from one area to the next, and from one life to the
 	# next: the suits, the energy, the tanks, the blade.  A new game makes it
 	# ($C9E1 wipes $48..$EF); an area does not.
+	var opened := false
 	if status == null:
 		status = Pb2Status.new()
+		opened = true
 	world.status = status
 	world.suit = status.suit
 	world.power = status.power_level
 	world.second = status.second_blade
 	world.extra = status.extra_shot
+	# $CE45 -- an area opened on its own is the top of a stage as far as the
+	# clock is concerned; a door goes through $1A := 6 and never touches it.
+	if opened:
+		status.restart_time(came, phase)
 	view.place(level_pb2.cam_start_page, level_pb2.cam_start_low, 0, 0)
 	hero.place(level_pb2.start_x, level_pb2.start_y, view.pos)
 	hero.face_left = level_pb2.start_face != 0
@@ -1061,7 +1075,14 @@ func _step_pb2() -> void:
 	# whichever one he has on.  While either has something to say the level
 	# itself does not run at all.
 	status.life = world.slots[0][Pb2Objects.F_LIFE]
-	status.stage = level_pb2.stage
+	# $53 is the stage the hero walked in from, not the table the room was
+	# built out of: a boss room is the seventh table and no stage at all.
+	status.stage = came
+	# $CEEC and $CA3A -- what the clock has to know: whose room this is, and
+	# whether the level is standing still.
+	status.boss = world.boss
+	status.area = world.area
+	status.frozen = world.frozen != 0
 	# Pad already keeps the console's own order of the eight, so what it
 	# reports is what $48 would hold.
 	var play: bool = status.step(pad.pressed)
@@ -1112,6 +1133,8 @@ func _step_pb2() -> void:
 		phase = world.phase
 		interludes += 1
 		_start_play(level_pb2.stage, world.area)
+		# $CE45 -- the other half of a stage is given its own time.
+		status.restart_time(came, phase)
 		_apply()
 		return
 	# $8E26 -- what is already in the air moves first, and only then does
@@ -1129,7 +1152,8 @@ func _step_pb2() -> void:
 				hero_shots_out(), world.extra)
 	view.decide(((hero.y if level_pb2.vertical else hero.x) >> 8) & 0xFF)
 	_mirror_hero()
-	if world.slots[0][Pb2Objects.F_LIFE] == 0:
+	# $A17A -- no health left, or no time left, and he dies either way.
+	if world.slots[0][Pb2Objects.F_LIFE] == 0 or status.out_of_time:
 		_die()
 		return
 	# $8038 -- and then the picture of it all.
@@ -1180,6 +1204,8 @@ func _die() -> void:
 	else:
 		lives = 2                                   # $D090: $18 := 2
 		_start_play(level_pb2.stage, 0)
+	# $D063 -- a life lost is a clock wound up again.
+	status.restart_time(came, phase)
 	_apply()
 
 
@@ -1332,6 +1358,38 @@ func _run_demo(spec: String, st: int, ar: int) -> void:
 	queue_redraw()
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png(parts[-1])
+
+
+## The clock, frame by frame, so that it can be set against the cartridge.
+## `spec` is clock:frames[:time] -- where the cartridge's own $1C stood when
+## the run began, how many pictures to play, and a time to start from instead
+## of the one the stage gives.  One line a picture: the time as the
+## bar would show it, and whether the bell is ringing.
+func _run_time(spec: String, st: int, ar: int) -> void:
+	var f := spec.split(":")
+	pads = [Pad.player_one(), Pad.player_two()]
+	_start_play(st, ar)
+	status.clock = int(f[0])
+	if f.size() > 2:
+		status.time_hi = (int(f[2]) >> 8) & 0xFF
+		status.time_lo = int(f[2]) & 0xFF
+		status.warn = 0
+	var out := PackedStringArray()
+	for n in range(int(f[1])):
+		pads[0].pressed = 0
+		pads[0].held = 0
+		var lost := died_count
+		_step_pb2()
+		_bar_step()
+		# The cartridge takes two hundred and fifty pictures to die and winds
+		# the clock up again at the end of them ($D063); the engine does the
+		# whole of it in the one picture, so the run stops here instead.
+		if died_count != lost:
+			out.append("%d out" % [n + 1])
+			break
+		out.append("%d %02X %02X %d" % [n + 1, status.time_hi, status.time_lo,
+				status.warn])
+	print("\n".join(out))
 
 
 ## A picture of the screen a stage is picked on, so that it can be argued with
@@ -1745,6 +1803,7 @@ func _pick(n: int) -> void:
 	status.stage = n
 	phase = 0                                       # $A08F -- a fresh stage
 	_start_play(n, 0)
+	status.restart_time(came, phase)                # $CE45
 	_apply()
 
 

@@ -15,6 +15,10 @@ class_name Pb2Status
 ##
 ## `work/re/pb2_suits.md` is the reading behind all of it.
 
+## $53 -- the last stage of all.  Its nought-th area is the last boss, and
+## $CEEC gives him no clock.
+const LAST_STAGE := 5
+
 ## $27 -- what the game is doing.  Three is playing; the other three that
 ## matter here are the two refills and the change of suit.
 const PLAY := 3
@@ -46,6 +50,22 @@ var refill_life := 0         ## $2F
 var refill_energy := 0       ## $30
 var clock := 0               ## $1C -- the frame count the refills tick on
 var stage := 0               ## $53
+var half := 0                ## $AD -- which half of the stage he is in
+## $79 and $9C -- the boss's room and which area, because the last boss of all
+## is fought without a clock ($CEEC).
+var boss := 0
+var area := 0
+## $2A/$58 -- while the level stands still the clock stands still with it.
+var frozen := false
+## $34 -- the bell the tick calls for once the time is short.  Whoever plays
+## the sounds takes it and puts it back.
+var bell := false
+## $95/$96 -- the time he is given, four binary-coded digits, going down.
+var time_hi := 0
+var time_lo := 0
+var warn := 0                ## $57 -- $0030 and under, and the bell rings
+## $A17A -- when both are nought the man is out of time and dies.
+var out_of_time := false
 ## Set whenever the suit changes, so that the picture knows to look again.
 var repaint := true
 ## $D768 -- the change of suit empties the five slots his throws live in.
@@ -77,6 +97,10 @@ func step(hit: int) -> bool:
 	if mode == REFILL_LIFE or mode == REFILL_ENERGY:
 		_refill()
 		return false
+	# $CEEC -- the clock, and the last boss of all is fought without one.
+	if boss != 0 or stage != LAST_STAGE or area != 0:
+		if time_step(frozen):
+			bell = true
 	_drain()                                # $CEFD
 	# $8003 -- the level's own frame runs for anything under five.  Four is
 	# the boss's meter filling: the hero still walks and the things still
@@ -105,6 +129,63 @@ func _menu(hit: int) -> void:
 		return
 	menu = 1
 	came_in = suit
+
+
+## $CE45 -- how long he is given.  It is read anew at the top of each half of
+## a stage and again every time he loses a life, and the bell is shut off.
+func restart_time(stage_: int, half_: int) -> void:
+	stage = stage_
+	half = half_
+	var word: int = int(cfg["time"][half][stage])
+	time_lo = word & 0xFF
+	time_hi = (word >> 8) & 0xFF
+	warn = 0
+	out_of_time = false
+
+
+## $CA3A -- one frame of the clock.  `frozen` is $58: while anything holds the
+## level still the clock holds too.  The answer is whether the bell is to ring
+## this frame ($34), which is the caller's to play.
+func time_step(frozen: bool) -> bool:
+	if frozen:
+		return false
+	if time_hi == 0 and time_lo == 0:
+		return false
+	if (clock & (int(cfg["time_every"]) - 1)) != 0:
+		return false
+	var bell: bool = warn != 0
+	_time_down()
+	if time_hi == 0 and time_lo == 0:
+		out_of_time = true
+	return bell
+
+
+## $CA59 -- one off four binary-coded digits, by hand, with the borrow carried
+## through all four of them.
+func _time_down() -> void:
+	var digit: int = (time_lo & 0x0F) - 1
+	if digit >= 0:
+		time_lo = (time_lo & 0xF0) | digit
+		# $CA6C -- and the bell is set the moment the whole of it reads $0030.
+		if time_hi == 0 and time_lo == int(cfg["time_warn"]):
+			warn = 1
+		return
+	time_lo = (time_lo & 0xF0) | 0x09
+	digit = (time_lo & 0xF0) - 0x10
+	if digit >= 0:
+		time_lo = (time_lo & 0x0F) | digit
+		return
+	time_lo = (time_lo & 0x0F) | 0x90
+	digit = (time_hi & 0x0F) - 1
+	if digit >= 0:
+		time_hi = (time_hi & 0xF0) | digit
+		return
+	time_hi = (time_hi & 0xF0) | 0x09
+	digit = (time_hi & 0xF0) - 0x10
+	if digit >= 0:
+		time_hi = (time_hi & 0x0F) | digit
+		return
+	time_hi = (time_hi & 0x0F) | 0x90
 
 
 ## $D259 -- UP for the next suit he owns, DOWN for the one before.  Index

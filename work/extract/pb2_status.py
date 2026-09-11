@@ -34,6 +34,9 @@ def export():
     def a14(addr, n=1):
         return b14[addr - 0xC000: addr - 0xC000 + n]
 
+    def word14(addr):
+        return a14(addr)[0] | (a14(addr + 1)[0] << 8)
+
     # $D8E4 asks for palette group $3D + $9A, and $8080 turns a group into
     # three colours through a pair of half-pointers.  Those three colours are
     # the whole of what one suit looks like: they go to sprite palette one.
@@ -86,12 +89,25 @@ def export():
         refill_tank=a14(0xD307)[0],
         # $EFE3 and $F009: a cell every fourth frame while it fills
         refill_every=b15[0xEFE4 - 0xE000] + 1,
+        # $CE45: how long the man is given.  Three tables at $CE67, one for
+        # each half of the stage ($AD), six stages apiece, and each entry four
+        # binary-coded digits -- $96 the lower two, $95 the upper.
+        time=[[a14(word14(0xCE67 + h * 2) + n * 2)[0]
+               | (a14(word14(0xCE67 + h * 2) + n * 2 + 1)[0] << 8)
+               for n in range(6)] for h in range(3)],
+        # $CA44: it goes down by one every sixty-four frames...
+        time_every=a14(0xCA47)[0] + 1,
+        # ...and at $0030 ($CA75) $57 goes up, and the tick starts calling
+        # for the sound $34 ($CA4E).
+        time_warn=a14(0xCA76)[0],
+        time_warn_sound=a14(0xCA4F)[0],
     )
     d = outdir('pb2')
     size = write_json(os.path.join(d, 'status.json'), out)
     print('status.json  %d bytes' % size)
     for k in ('own_mask', 'drain', 'drain_reload', 'chr_plain', 'chr_suit',
-              'suit_palette', 'stage_bit'):
+              'suit_palette', 'stage_bit', 'time', 'time_every',
+              'time_warn'):
         print('  %-16s %s' % (k, out[k]))
 
 
