@@ -181,16 +181,31 @@ var map_dirty := false
 ## `px` is the left of the cell and `py` its top, as $8AF3 and $8AF0 hand them
 ## over.
 func break_cell(px: int, py: int) -> void:
+	paint_cell(px, py, [0x00, 0x00], [0x00, 0x00])
+
+
+## $A48E -- lay four tiles into the background, two across and two down, the
+## way the moving block paints and erases itself.  The cartridge queues them as
+## two writes of two, the upper pair and then the pair eight below; here they
+## go in together.
+##
+## Because the engine keeps one store where the console kept two, writing the
+## tiles does what $C8AC and $C8A9 did to the class cache at $0680 as well: a
+## cell is as solid as its top left tile, and the block's own tiles are solid
+## while $00 is not.
+func paint_cell(px: int, py: int, top: Array, bot: Array) -> void:
 	var tx: int = (px >> 3) & ~1
 	var ty: int = (py >> 3) & ~1
 	for r in range(2):
+		var row: Array = top if r == 0 else bot
 		for c in range(2):
 			var x: int = tx + c
 			var y: int = ty + r
 			if x < 0 or y < 0 or x >= width_tiles or y >= height_tiles:
 				continue
-			tiles[y * width_tiles + x] = 0x00
-			map_image.set_pixel(x, y, Color8(0x00, map_image.get_pixel(x, y).g8,
+			var t: int = int(row[c])
+			tiles[y * width_tiles + x] = t
+			map_image.set_pixel(x, y, Color8(t, map_image.get_pixel(x, y).g8,
 					0, 255))
 	map_dirty = true
 
