@@ -30,6 +30,19 @@ uniform float view_top = 0.0;      // the lines the level owns
 uniform float view_bottom = 240.0;
 uniform bool sprites_on = false;
 
+// The picture unit is told where the picture stands once a frame, and a game
+// may tell it again half way down: the screen a stage is picked on scrolls its
+// sky and leaves its road standing.  Above `split_at` the picture stands where
+// `scroll` says and below it where `scroll2` does; a level never asks, so the
+// line is put out of reach.
+uniform float split_at = 1000.0;
+uniform vec2 scroll2 = vec2(0.0);
+
+// $2001 bits one and two -- the console can be told to leave the leftmost
+// eight points of the screen alone, and then what shows there is the backdrop.
+// The screen a stage is picked on is drawn that way.
+uniform float clip_left = 0.0;
+
 // Below the level is the status bar, which the console shows by handing the
 // picture unit a different address in the middle of the frame.  It is its own
 // little map -- thirty-two by eight -- drawn out of its own four banks.
@@ -47,7 +60,8 @@ int tile_colour(int bank, int index, int px, int py) {
 void fragment() {
     // Outside the level's window is the status bar's business.
     bool outside = FRAGCOORD.y < view_top || FRAGCOORD.y >= view_bottom;
-    vec2 world = floor(scroll + FRAGCOORD.xy);
+    vec2 world = floor((FRAGCOORD.y < split_at ? scroll : scroll2)
+                       + FRAGCOORD.xy);
     vec2 cell = floor(world / 8.0);
     int bg_c = 0;
     if (outside) {
@@ -111,5 +125,8 @@ void fragment() {
             COLOR = texelFetch(palette, ivec2(16 + (attr & 3) * 4 + c, 0), 0);
         }
         break;
+    }
+    if (FRAGCOORD.x < clip_left) {
+        COLOR = texelFetch(palette, ivec2(0, 0), 0);
     }
 }

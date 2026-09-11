@@ -35,6 +35,7 @@ func _ready() -> void:
 	var play := ""
 	var run := ""
 	var give := ""
+	var sel := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -56,6 +57,7 @@ func _ready() -> void:
 		elif a.begins_with("--play="): play = a.substr(7)
 		elif a.begins_with("--run="): run = a.substr(6)
 		elif a.begins_with("--give="): give = a.substr(7)
+		elif a.begins_with("--select="): sel = a.substr(9)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -103,6 +105,10 @@ func _ready() -> void:
 		return
 	if run != "":
 		_run_through(run, stage, area)
+		return
+	if sel != "":
+		await _run_select(sel, stage)
+		get_tree().quit()
 		return
 	if demo != "":
 		await _run_demo(demo, stage, area)
@@ -292,7 +298,13 @@ func _apply() -> void:
 	var img: Image
 	var size: Vector2
 	var banks: Array
-	if level_pb2 != null:
+	if select != null:
+		# The screen a stage is picked on owns the whole of the picture: no
+		# bar under it and no level behind it.
+		img = select.map_image
+		size = Vector2(Pb2Select.WIDTH, Pb2Select.HEIGHT)
+		banks = select.banks + select.spr_banks
+	elif level_pb2 != null:
 		img = level_pb2.map_image
 		size = Vector2(level_pb2.width_tiles, level_pb2.height_tiles)
 		# Eight banks go to the shader, not four: the four the background is
@@ -313,8 +325,14 @@ func _apply() -> void:
 	m.set_shader_parameter("sheet_size", Nes.sheet(game).get_size())
 	m.set_shader_parameter("banks", PackedInt32Array(banks))
 	m.set_shader_parameter("sprites_on", false)
+	# A level is handed one place to stand in and keeps it the whole frame,
+	# and it draws the leftmost eight points like any other.
+	m.set_shader_parameter("split_at", 1000.0)
+	m.set_shader_parameter("clip_left", 0.0)
 	_bar_show(m)
-	if world != null:
+	if select != null:
+		_choice_show()
+	elif world != null:
 		# The hero's own bank and the sprite table are settled a picture at a
 		# time, so the last word on both is his, not the level's.
 		_show()
@@ -330,6 +348,10 @@ func _process(dt: float) -> void:
 	for _i in range(clock.tick(dt)):
 		_step()
 	_bar_show(bg.material)
+	if select != null:
+		_choice_show()
+		queue_redraw()
+		return
 	bg.material.set_shader_parameter("scroll", Vector2(scroll - origin))
 	if world != null:
 		_show()
@@ -1224,6 +1246,27 @@ func _show() -> void:
 	oam_tex.update(img)
 
 
+## The picking screen's own picture: the ground where the ride has left it and
+## the two sprites -- the man and the sign over the stage he is standing at.
+func _choice_show() -> void:
+	var m: ShaderMaterial = bg.material
+	scroll = select.scroll()
+	m.set_shader_parameter("scroll", Vector2(scroll))
+	# $87 := 3 -- the screen is drawn in slices, and the road below the line is
+	# handed nought while the sky above it rides.
+	m.set_shader_parameter("split_at", float(Pb2Select.SPLIT))
+	m.set_shader_parameter("scroll2", Vector2(select.road()))
+	m.set_shader_parameter("clip_left", float(Pb2Select.CLIP_LEFT))
+	m.set_shader_parameter("banks",
+			PackedInt32Array(select.banks + select.spr_banks))
+	m.set_shader_parameter("sprites_on", true)
+	var img := Image.create(Pb2Sprites.SPRITES, 1, false, Image.FORMAT_RGBA8)
+	for i in range(Pb2Sprites.SPRITES):
+		img.set_pixel(i, 0, Color8(oam[i * 4], oam[i * 4 + 1],
+				oam[i * 4 + 2], oam[i * 4 + 3]))
+	oam_tex.update(img)
+
+
 ## The game playing itself with no picture at all: the same script of buttons
 ## as `--demo`, but what comes out is a line of numbers and not a screenshot.
 ## Headless Godot has no renderer to wait on, so this is the one that can be
@@ -1289,6 +1332,80 @@ func _run_demo(spec: String, st: int, ar: int) -> void:
 	queue_redraw()
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png(parts[-1])
+
+
+## A picture of the screen a stage is picked on, so that it can be argued with
+## from a script.  `spec` is cleared:owned,buttons:frames,...,path -- the same
+## button names the demo knows.
+func _run_select(spec: String, st: int) -> void:
+	var parts := spec.split(",")
+	var f := parts[0].split(":")
+	pads = [Pad.player_one(), Pad.player_two()]
+	status = Pb2Status.new()
+	status.cleared = int(f[0])
+	status.owned = int(f[1]) if f.size() > 1 else 0
+	# Where in the sprite table the writing starts ($28).  It is a running
+	# count the screen inherits from whatever was on before it, so a run that
+	# is set against the cartridge has to be handed the cartridge's own.
+	if f.size() > 2:
+		rot = (int(f[2]) - Pb2Sprites.ROTATE) & 0xFF
+	# The screen is opened as the game opens it: out of the area just left,
+	# because $46/$47 are that area's and the screen does not touch them.
+	came = st
+	# The picture is taken between one step and the next, and taking it costs
+	# a real frame or two: the game must not play itself in them.
+	set_process(false)
+	_start_play(st, 0)
+	_start_choice()
+	# The buttons, picture by picture, and then the pictures a shot is wanted
+	# at.  Frame nought is the screen as it stands before anything is pressed.
+	var bits := {"START": Pad.START, "LEFT": Pad.LEFT, "RIGHT": Pad.RIGHT}
+	var script := []
+	for i in range(1, parts.size() - 2):
+		var g := parts[i].split(":")
+		var down := 0
+		for nm in g[0].split("+"):
+			if bits.has(nm):
+				down |= int(bits[nm])
+		for _n in range(int(g[1])):
+			script.append(down)
+	var want := []
+	var last := 0
+	for w in parts[-2].split("+"):
+		want.append(int(w))
+		last = max(last, int(w))
+	var n := 0
+	while true:
+		if n in want:
+			_apply()
+			bg.z_index = -1
+			queue_redraw()
+			# One frame hands the shader what has just been set, and the next
+			# is the one that shows it.
+			await RenderingServer.frame_post_draw
+			await RenderingServer.frame_post_draw
+			var img := get_viewport().get_texture().get_image()
+			img.save_png("%s_%d.png" % [parts[-1], n])
+			if select != null:
+				print("%4d  step %2d  choice %d  scroll %3d  sign %3d  "
+						% [n, select.step_no, select.choice,
+						select.scroll().x, select.slots[1][Pb2Objects.F_X]]
+						+ "man %02X  left %s"
+						% [select.slots[0][Pb2Objects.F_KIND],
+						str(select.facing_left)])
+			else:
+				print("%4d  picked %d -- the level is up" % [n, status.stage])
+		if n >= last:
+			break
+		# The cartridge reads the pad and then takes its step, both inside the
+		# one picture, so the buttons written down for picture n are the ones
+		# that make the screen picture n is.
+		n += 1
+		var down: int = script[n] if n < script.size() else 0
+		pads[0].pressed = down & ~pads[0].held
+		pads[0].held = down
+		if select != null:
+			_choice_step()
 
 
 ## The pause menu, and nothing else: the bar itself is drawn where the
@@ -1557,6 +1674,8 @@ func _run_through(spec: String, from_stage: int = 0, from_area: int = 0) -> void
 
 var choosing := false
 var choice := 0                                     ## $22
+## Э3.10b -- the screen itself, while it is up.
+var select: Pb2Select = null
 
 
 ## $88F0 -> $18 := 5 -> the map -> $18/$19 := 3/20.  The stage the choice opens
@@ -1564,7 +1683,24 @@ var choice := 0                                     ## $22
 func _start_choice() -> void:
 	choosing = true
 	choice = came
+	# $88CE leaves $46/$47 alone, so the last two kilobytes of sprites are
+	# still whatever the area just left gave them.
+	select = Pb2Select.new(came, status.cleared, status.owned,
+			[level_pb2.spr_banks[2], level_pb2.spr_banks[3]])
+	pal_tex = Nes.palette_texture(select.palette)
+	# $8881 -- the screen is the whole of the picture: no bar and no level.
+	origin = Vector2i.ZERO
+	view_h = 240
+	bar = null
+	oam = PackedByteArray()
+	oam.resize(Pb2Sprites.OAM)
 	oam.fill(Pb2Sprites.HIDDEN)
+	var img := Image.create(Pb2Sprites.SPRITES, 1, false, Image.FORMAT_RGBA8)
+	oam_tex = ImageTexture.create_from_image(img)
+	bg.material.set_shader_parameter("oam", oam_tex)
+	oam = Pb2Sprites.build(select.slots, rot, oam)
+	rot = (rot + Pb2Sprites.ROTATE) & 0xFF
+	_apply()
 
 
 ## $8969 -- a stage is refused only when it is both finished ($5B) and its suit
@@ -1578,6 +1714,18 @@ func _may_pick(n: int) -> bool:
 ## five stages, and the fifth is only there once the first four are done
 ## ($5B == $0F); START takes the pick.
 func _choice_step() -> void:
+	if select != null:
+		# The screen keeps $22 itself, and the walk from one sign to the next
+		# is its own, so all it is given is the pad.
+		var took: int = select.step(pads[0].pressed)
+		choice = select.choice
+		# $8038 -- and then the picture of it all, written round and round
+		# from wherever the last picture left off.
+		oam = Pb2Sprites.build(select.slots, rot, oam)
+		rot = (rot + Pb2Sprites.ROTATE) & 0xFF
+		if took >= 0:
+			_pick(took)
+		return
 	var p: Pad = pads[0]
 	var last := 4 if (status.cleared & 0x0F) == 0x0F else 3
 	if p.pressed & Pad.RIGHT and choice < last:
@@ -1593,6 +1741,7 @@ func _pick(n: int) -> void:
 	if not _may_pick(n):
 		return
 	choosing = false
+	select = null
 	status.stage = n
 	phase = 0                                       # $A08F -- a fresh stage
 	_start_play(n, 0)
