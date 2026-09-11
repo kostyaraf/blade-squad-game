@@ -42,6 +42,7 @@ func _ready() -> void:
 	var soloam := ""
 	var solcam := ""
 	var solshot := ""
+	var solobj := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -70,6 +71,7 @@ func _ready() -> void:
 		elif a.begins_with("--soloam="): soloam = a.substr(9)
 		elif a.begins_with("--solcam="): solcam = a.substr(9)
 		elif a.begins_with("--solshot="): solshot = a.substr(10)
+		elif a.begins_with("--solobj="): solobj = a.substr(9)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -88,6 +90,10 @@ func _ready() -> void:
 		return
 	if solcam != "":
 		_run_sol_cam(solcam)
+		get_tree().quit()
+		return
+	if solobj != "":
+		_run_sol_objects(solobj)
 		get_tree().quit()
 		return
 	if solshot != "":
@@ -220,6 +226,53 @@ func _run_sol_cam(path: String) -> void:
 		view.step(p.vx, p.vy, p.x, p.y)
 		p.step(int(f))
 		out.append("%d %d %d" % [view.x, view.y, view.want])
+	print("\n".join(out))
+
+
+## Э4.2 -- who is in the sixteen slots and where, held against the cartridge
+## picture by picture.  The hero and the view are seeded and driven exactly as
+## the other two stands drive them; what is printed is the pool.  The stand is
+## work/extract/verify_sol_spawns.py.
+func _run_sol_objects(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var p := _seed_sol(cfg)
+	var view := SolCamera.new(level_sol)
+	view.x = int(cfg["cam_x"])
+	view.y = int(cfg["cam_y"])
+	view.map_kind = int(cfg["map_kind"]) if cfg.has("map_kind") else 0
+	view.hold = int(cfg["ride_hold"]) if cfg.has("ride_hold") else 0
+	view.fall = int(cfg["ride_fall"]) if cfg.has("ride_fall") else 0
+	p.vx = int(cfg["vx"])
+	p.vy = int(cfg["vy"])
+	var pool := SolObjects.new(level_sol)
+	pool.due = int(cfg["due"])
+	pool.col_due = int(cfg["col_due"])
+	pool.row_due = int(cfg["row_due"])
+	pool.seen_x = int(cfg["seen_x"])
+	pool.seen_y = int(cfg["seen_y"])
+	pool.room = int(cfg["room"])
+	for i in range(SolObjects.MARKS):
+		pool.mark[i] = int(cfg["mark"][i])
+	for i in range(SolObjects.SLOTS):
+		pool.id[i] = int(cfg["id"][i])
+		pool.x[i] = int(cfg["ox"][i])
+		pool.y[i] = int(cfg["oy"][i])
+	var out := PackedStringArray()
+	for f in cfg["pads"]:
+		# The order of one picture: what the background owed is paid at the
+		# top, then the view moves, then the hero, then the scroll is looked
+		# at again, then the room, then the scan, then the pool itself.
+		pool.drew()
+		view.step(p.vx, p.vy, p.x, p.y)
+		p.step(int(f))
+		pool.scrolled(view.x, view.y)
+		pool.room = pool.room_of(view.x, view.y)
+		pool.scan(view.x, view.y, p.x, p.state)
+		pool.step(view.x, view.y)
+		var row := PackedStringArray()
+		for i in range(SolObjects.SLOTS):
+			row.append("%d,%d,%d" % [pool.id[i], pool.x[i], pool.y[i]])
+		out.append(" ".join(row))
 	print("\n".join(out))
 
 

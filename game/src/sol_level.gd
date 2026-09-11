@@ -21,6 +21,8 @@ var spr_banks: Array
 var start: Vector2i                 # where the player comes in, in 1/16 px
 var camera: Dictionary
 var props: PackedByteArray          # per metatile: palette, alt flag, collision
+var room_group: PackedByteArray     # $9A -- per room, which object group it has
+var object_groups: Dictionary       # $9C -- the group's list of records
 var _metatile: PackedByteArray      # per 16x16 cell, the metatile it resolves to
 var _data: Dictionary
 
@@ -38,6 +40,14 @@ func _init(stage_index: int) -> void:
 	start = Vector2i(int(_data["start"]["x"]), int(_data["start"]["y"]))
 	camera = _data["camera"]
 	props = PackedByteArray(_data["props"])
+	# $AFAD -- a room names a group of objects, and the group is the list the
+	# spawner walks.  $FF for a room that has none.
+	room_group = PackedByteArray()
+	room_group.resize(256)
+	room_group.fill(0xFF)
+	for k in _data["room_objects"]:
+		room_group[int(k)] = int(_data["room_objects"][k])
+	object_groups = _data["object_groups"]
 	_build()
 
 
