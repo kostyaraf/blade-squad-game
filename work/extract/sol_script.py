@@ -51,11 +51,33 @@ ROWS = [
 ]
 
 
+# $E9B6..$E9CE and $C045..$C04B -- every place the script can point $20:$21
+# at.  What stands there is thirty two bytes of colour, and $F81E copies them
+# into the shadow at $0390.  They live in bank ten.
+PAL_BANK = 10
+PAL_AT = (0x8160, 0x8180, 0x81A0, 0x83E0, 0x8400, 0x8420, 0x8480, 0x84A0,
+          0x84C0)
+
+# $E626 -- the map record of a stage: $C965 says which bank, $E6E0 holds a
+# pointer per stage, the byte it points at is an offset, and twelve bytes from
+# $800D plus that offset are read into $10..$15, $1E, $1F and $16..$19.
+AREA_BANKS = 0xC965
+AREA_PTRS = 0xE6E0
+AREA_REC = 0x800D
+AREA_LEN = 12
+
+
 def main():
     with open(ROM_SOL, 'rb') as f:
         prg = f.read()[16:]
+
+    def bank(n):
+        return prg[n * 0x2000: (n + 1) * 0x2000]
+
     b8 = prg[8 * 0x2000: 9 * 0x2000]
     b9 = prg[9 * 0x2000: 10 * 0x2000]
+    b14 = bank(14)
+    b15 = bank(15)
 
     def rd(a):
         return b8[a - 0x8000] if a < 0xA000 else b9[a - 0xA000]
@@ -97,10 +119,36 @@ def main():
     tables = {'%04X' % a: [word(a + 2 * k) for k in range(n)]
               for a, n in sorted(second.items())}
 
+    # $F81E's palettes, and $E626's map records.
+    pal = bank(PAL_BANK)
+    palettes = {'%04X' % a: list(pal[a - 0x8000: a - 0x8000 + 32])
+                for a in PAL_AT}
+    areas = []
+    for st in range(STAGES):
+        bk = b14[AREA_BANKS - 0xC000 + st]
+        ptr = (b15[AREA_PTRS - 0xE000 + 2 * st]
+               | b15[AREA_PTRS - 0xE000 + 2 * st + 1] << 8)
+        lo, hi = bank(bk), bank(bk + 1)
+        off = b15[ptr - 0xE000]
+
+        def rd8(a, lo=lo, hi=hi):
+            return lo[a - 0x8000] if a < 0xA000 else hi[a - 0xA000]
+
+        areas.append({
+            'ptr': ptr,
+            'rec': [rd8(AREA_REC + off + i) for i in range(AREA_LEN)],
+        })
+
     out = {
         'stages': [order.index(s) for s in stages],
         'dispatch': dispatch,
         'tables': tables,
+        'palettes': palettes,
+        'areas': areas,
+        # $C992 reads $8000, which is the top byte of whatever bank stands
+        # there; inside the script that is bank eight, so this is what $46
+        # becomes every time the script maps a bank of its own.
+        'bank_top': prg[8 * 0x2000],
     }
     for name, at, n in ROWS:
         out[name] = [rd(at + i) for i in range(n)]

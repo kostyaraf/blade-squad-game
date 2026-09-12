@@ -87,20 +87,26 @@ def spots():
     script of several steps only shows one of them per visit, so each room is
     stood in three times with the step counters started in three different
     places.
+
+    The room the last picture stood in ($05EB) is poked along with the camera,
+    and to the room the camera is being put in.  Without it the script would
+    see the room change and put $7F back to nought before it dispatched, and
+    no step but the first of any script would ever run.
     """
     out = []
     for rep in range(3):
         i = 0
         for row in range(0, 0xD0, 0x10):
             for col in range(0x10):
-                out.append((col, row, rep * 3 + i % 3, (i + rep * 7) % 21))
+                out.append((col, row, (i + rep * 7) % 21,
+                            (i * 3 + rep * 5) % 21))
                 i += 1
     return out
 
 
-# One poke row is four bytes, and the emulator takes two hundred and fifty six
+# One poke row is five bytes, and the emulator takes two hundred and fifty six
 # pokes in a run, so a stage is walked in a handful of runs.
-PER_RUN = 60
+PER_RUN = 51
 
 
 def play(state, scratch, first, chunk, tag):
@@ -119,7 +125,8 @@ def play(state, scratch, first, chunk, tag):
         cmd += ['-poke', '0031=%02X@%d' % (col * 0x10, fr),
                 '-poke', '0033=%02X@%d' % (row, fr),
                 '-poke', '007F=%02X@%d' % (z7f, fr),
-                '-poke', '0058=%02X@%d' % (z58, fr)]
+                '-poke', '0058=%02X@%d' % (z58, fr),
+                '-poke', '05EB=%02X@%d' % ((row + col) & 0xFF, fr)]
         fr += 2
     r = subprocess.run(cmd, capture_output=True)
     if r.returncode != 0:

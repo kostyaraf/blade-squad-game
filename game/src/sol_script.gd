@@ -53,9 +53,9 @@ var xr := 0
 ## such guard -- it jumps to whatever the bytes past the table happen to spell
 ## -- so a picture that sets this is one no acceptance can be asked about.
 var wild := false
-## Set when a routine reaches one of the two calls out of the script that are
-## still owed: $C05A and $C05D, both of which load a whole screen of
-## background.  Everything else in those routines is here.
+## Set when a routine asks for a colour table or a map record the export has
+## never seen.  Nothing in the cartridge does, so a picture that sets this is
+## one the stand should not be asked about.
 var owed := false
 ## Every routine this picture went through, so that an acceptance can say how
 ## much of the script it has actually seen run.
@@ -538,15 +538,34 @@ func _xADC9() -> void:
 ## $9355 -- the walk out of a stage, four steps kept in $05FA: wait for the
 ## first slot to be empty, hold him still, count the burst down, and ask for
 ## the picking of the next stage.
+## $9365 -- `JSR $8025` with the list of places written into the code right
+## behind it.  $8025 pops the return address into $29:$2A, which is the last
+## byte of the JSR and so one before the list, picks the word at twice the
+## index out of it into $2B:$2C, and jumps through that.  All four bytes are
+## left standing, so the port leaves them standing too.
+const INLINE_9355 := 0x9367
+const INLINE_9355_TO := [0x9370, 0x9371, 0x9385, 0x9398]
+
+
 func _x9355() -> void:
 	if g(0x0600) != 0:
 		return
 	if g(0x05FA) == 0:
 		p(0x05FA, (g(0x05FA) + 1) & 0xFF)
-	match g(0x05FA):
-		1: _x9371()
-		2: _x9385()
-		3: _x9398()
+	p(0x29, INLINE_9355 & 0xFF)
+	p(0x2A, INLINE_9355 >> 8)
+	var i: int = g(0x05FA)
+	if i >= INLINE_9355_TO.size():
+		wild = true
+		return
+	var to: int = INLINE_9355_TO[i]
+	p(0x2B, to & 0xFF)
+	p(0x2C, to >> 8)
+	match to:
+		0x9370: pass                                       # only an RTS
+		0x9371: _x9371()
+		0x9385: _x9385()
+		0x9398: _x9398()
 
 
 func _x9371() -> void:
@@ -1522,7 +1541,7 @@ func _xAD01() -> void:
 	if g(0x05A2) != 0:
 		_xAAAE()
 		return
-	owed = true   # $C05A -- the strip of text the ending shows
+	_c05a()                                                # $AD06
 	p(0x73, 0x01)
 	p(0x77, 0x00)
 	p(0x75, 0x40)
@@ -1814,7 +1833,7 @@ func _x9B99() -> void:
 		p(0x39, 0xB0)
 		p(0x38, 0)
 		p(0x55, 0x10)
-		owed = true   # $C05D -- the screen the tower's top is drawn from
+		_c05d()                                            # $9BAD
 		p(0x40, 0x3C)
 		p(0x054D, 0xFF)
 		p(0x054E, 0xFF)
@@ -1889,7 +1908,7 @@ func _x9C6C() -> void:
 
 func _x9C73() -> void:
 	_beaten()                                              # $9CAA
-	owed = true   # $C05A -- the screen the ending is drawn from
+	_c05a()                                                # $9C76
 	p(0x0399, 0x05)
 	p(0x9D, 0x09)
 	_clear_at()
@@ -2464,6 +2483,61 @@ func _call(addr: int) -> void:
 		0xAE38: _xAE38()
 		0xAE4D: _xAE4D()
 		0xAE58: _xAE58()
+
+
+## $F81E, reached as $C05A -- thirty two bytes of colour, from wherever $20:$21
+## stands, into the shadow at $0390; and $20:$21 is left pointing at the shadow
+## itself.  The colours are in bank ten, which $C92A maps and $C998 puts back;
+## $C992 reads $8000 on the way, and inside the script that is the top byte of
+## bank eight, so $46 is left holding that.
+func _c05a() -> void:
+	p(0x46, int(data["bank_top"]))
+	var at: int = g(0x20) | g(0x21) << 8
+	if at < 0x0800:
+		# The pointer already stands in the shadow, which is where $F81E leaves
+		# it; copying it onto itself changes nothing.
+		for i in range(31, -1, -1):
+			p(0x0390 + i, g(at + i))
+	else:
+		var key := "%04X" % at
+		var pal: Dictionary = data["palettes"]
+		if not pal.has(key):
+			# No acceptance can be asked about a colour table the export has
+			# never seen, so the picture is marked instead of guessed at.
+			owed = true
+			return
+		var v: Array = pal[key]
+		for i in range(31, -1, -1):
+			p(0x0390 + i, int(v[i]))
+	p(0x20, 0x90)
+	p(0x21, 0x03)
+
+
+## $E626, reached as $C05D -- the map record of the stage named in $55.  The
+## stage picks a bank and a pointer, the byte the pointer stands at picks a
+## record of twelve bytes, and those go into $10..$15, $1E, $1F and $16..$19.
+## $7C is left holding the stage.
+func _c05d() -> void:
+	p(0x46, int(data["bank_top"]))
+	var st: int = g(0x55)
+	var areas: Array = data["areas"]
+	if st >= areas.size():
+		owed = true
+		return
+	var one: Dictionary = areas[st]
+	var ptr: int = int(one["ptr"])
+	p(0x90, ptr & 0xFF)
+	p(0x91, ptr >> 8)
+	var rec: Array = one["rec"]
+	# $E647..$E681 -- the order is the record's, not the memory's: six bytes
+	# into $10..$15, then two into $1E and $1F, then four into $16..$19.
+	for i in range(6):
+		p(0x10 + i, int(rec[i]))
+	p(0x1E, int(rec[6]))
+	p(0x1F, int(rec[7]))
+	for i in range(4):
+		p(0x16 + i, int(rec[8 + i]))
+	p(0x7C, st)
 
 
 ## ---------------------------------------------------------------------------
