@@ -94,3 +94,74 @@ static func first_names() -> Array:
 	for one in _d["names"]:
 		out.append([int(one[0]), int(one[1]), int(one[2])])
 	return out
+
+
+## $D4E2 -- the screen laid over BEST 5 while a name is typed: one of five, by
+## which of the lines the new count landed on.
+static func name_screen(line: int) -> int:
+	load_data()
+	return int(_d["name_screen"]) + line
+
+
+## $D60B -- where the cursor stands beside a line, and $D5EC -- how far along
+## it stands for the letter being typed.
+static func mark_y(line: int) -> int:
+	load_data()
+	return int(_d["mark_y"][line])
+
+
+static func mark_x(letter: int) -> int:
+	load_data()
+	return (int(_d["mark_x"]) + letter * int(_d["mark_step"])) & 0xFF
+
+
+static func mark_tile() -> int:
+	load_data()
+	return int(_d["mark_tile"])
+
+
+## $D619 -- the two banks the letters are drawn out of, turned over every
+## fourth picture.
+static func blink_at(i: int) -> Array:
+	load_data()
+	return [int(_d["blink"][0][i]), int(_d["blink"][1][i])]
+
+
+## $D69F -- how many lines each of the eight bands of the name screen is.
+static func split() -> Array:
+	load_data()
+	return _d["split"]
+
+
+## $D58F -- the place of a letter turned into the tile it is drawn as, and
+## $D5CD -- into the byte it is kept as.  The last of the thirty one is blank.
+static func letter_tile(place: int) -> int:
+	load_data()
+	var n: int = int(_d["letter_base"])
+	if place == int(_d["letter_blank"]):
+		return n + 0x3E
+	return n + place
+
+
+static func letter_byte(place: int) -> int:
+	load_data()
+	var one: int = (int(_d["letter_base"]) + place) & 0xFF
+	return int(_d["blank_tile"]) if one == 0x5F else one
+
+
+static func letter_n() -> int:
+	load_data()
+	return int(_d["letter_n"])
+
+
+static func letter_blank() -> int:
+	load_data()
+	return int(_d["letter_blank"])
+
+
+## $D54E -- a letter read back out of a name, turned into its place.
+static func letter_place(one: int) -> int:
+	load_data()
+	if one == int(_d["blank_tile"]):
+		return int(_d["letter_blank"])
+	return (one - int(_d["letter_base"])) & 0xFF

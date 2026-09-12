@@ -63,6 +63,37 @@ LETTERS = (0xE536, 0xE53B, 0xE540)
 SCORE_LO = 0xE545
 SCORE_MID = 0xE54A
 
+## NAME ENTRY.  $D4AD asks whether the count beats the lowest of the five; if
+## it does, the line it lands on is the one whose third letter is nought, and
+## screen $34 plus that line is laid over BEST 5.
+NAME_SCREEN = 0x34
+
+## $D60B -- where the cursor stands beside each of the five lines; $D5EC --
+## eight points to the right for each letter, from $A8.
+MARK_Y = 0xD60B
+MARK_X = 0xA8
+MARK_STEP = 8
+MARK_TILE = 0x1F
+
+## $D629 and $D62D -- the two banks the letters are drawn out of, turned over
+## every fourth picture ($0C >> 2).
+BLINK_A = 0xD629
+BLINK_B = 0xD62D
+BLINK_N = 4
+
+## $D69F -- how many lines each of the eight bands of the name screen is.  The
+## last two are the bytes of the routine that follows, which is what the
+## cartridge reads as well.
+SPLIT = 0xD69F
+SPLIT_N = 8
+
+## $D58F and $D5CD -- a letter is its place plus $41, and the last place of the
+## thirty one is the blank, which is written as $7F and drawn as $7F.
+LETTER_BASE = 0x41
+LETTER_N = 0x1F
+LETTER_BLANK = 0x1E
+BLANK_TILE = 0x7F
+
 
 def main():
     with open(ROM_SOL, 'rb') as f:
@@ -87,6 +118,17 @@ def main():
         'name_at': [w + NAME_AWAY for w in where],
         'names': [[rows[0][i], rows[1][i], rows[2][i]] for i in range(BEST_N)],
         'scores': [slo[i] | (smid[i] << 8) for i in range(BEST_N)],
+        'name_screen': NAME_SCREEN,
+        'mark_y': at(MARK_Y, BEST_N),
+        'mark_x': MARK_X,
+        'mark_step': MARK_STEP,
+        'mark_tile': MARK_TILE,
+        'blink': [at(BLINK_A, BLINK_N), at(BLINK_B, BLINK_N)],
+        'split': at(SPLIT, SPLIT_N),
+        'letter_base': LETTER_BASE,
+        'letter_n': LETTER_N,
+        'letter_blank': LETTER_BLANK,
+        'blank_tile': BLANK_TILE,
     }
     size = write_json(os.path.join(outdir('sol'), 'over.json'), data)
     print('%d plates, %d lines, %d bytes'

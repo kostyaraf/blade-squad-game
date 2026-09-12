@@ -1025,6 +1025,9 @@ func _run_sol_boot(spec: String) -> void:
 	var shots := {}
 	var start := {}
 	var bests: Array = []
+	# Turn -> the dumps asked for at it.  A turn may be asked for both its
+	# board and what the flow is holding, so one key holds a list.
+	var writes := {}
 	for k in range(1, f.size()):
 		var g := f[k].split(":")
 		if g[0] == "shot":
@@ -1037,9 +1040,15 @@ func _run_sol_boot(spec: String) -> void:
 		# N, written out raw.  It is what a stand compares against the
 		# cartridge's own dump when a picture says two screens differ and not
 		# where.
-		if g[0] == "board":
-			shots[int(g[1])] = "board:" + g[2]
+		if g[0] == "board" or g[0] == "state":
+			var at := int(g[1])
+			if not writes.has(at):
+				writes[at] = []
+			writes[at].append(g[0] + ":" + g[2])
 			continue
+		# `state:N:PATH` -- what the flow keeps in memory at turn N, written
+		# out as a little table.  It is the other half of a board dump: the
+		# board says what is written, this says what the mode is holding.
 		# `set:NAME:VALUE` -- the walk begun part way along instead of at the
 		# reset, which is how a mode only reached with a stage behind it is
 		# stood up: the cartridge is poked to the same place.
@@ -1093,15 +1102,30 @@ func _run_sol_boot(spec: String) -> void:
 		if sol_flow.mode != was:
 			was = sol_flow.mode
 			print("%d %02X %s" % [i, was, sol_flow.screen])
-		if shots.has(i) and str(shots[i]).begins_with("board:"):
-			_sol_screen_now()
-			var bf := FileAccess.open(str(shots[i]).substr(6),
-					FileAccess.WRITE)
-			bf.store_buffer(sol_screen.board)
-			# and the thirty two colours that stand with it, so a stand can
-			# tell a right board under a wrong fade from a right one.
-			bf.store_buffer(sol_flow.fade.out)
-			bf.close()
+		if writes.has(i):
+			for one in writes[i]:
+				var path: String = str(one).substr(6)
+				if str(one).begins_with("state:"):
+					var sf := FileAccess.open(path, FileAccess.WRITE)
+					sf.store_string(JSON.stringify(_sol_flow_state()))
+					sf.close()
+				else:
+					var bf := FileAccess.open(path, FileAccess.WRITE)
+					# A mode standing on no screen at all has no board: what
+					# goes out is two kilobytes of nought, and the state dump
+					# beside it says the screen is none.
+					if sol_flow.screen == "":
+						var none := PackedByteArray()
+						none.resize(0x0800)
+						bf.store_buffer(none)
+					else:
+						_sol_screen_now()
+						bf.store_buffer(sol_screen.board)
+					# and the thirty two colours that stand with it, so a
+					# stand can tell a right board under a wrong fade from a
+					# right one.
+					bf.store_buffer(sol_flow.fade.out)
+					bf.close()
 			continue
 		if shots.has(i) and shots[i] == "?":
 			print("dump %d banks %s" % [i, str(sol_table.banks)])
@@ -1579,6 +1603,43 @@ func flow_relay(numbers: Array) -> void:
 		return
 	_sol_screen_now()
 	sol_screen.relay(numbers)
+
+
+## $EF8C once more with nothing wiped -- one screen laid over what already
+## stands.  NAME ENTRY does that: BEST 5 is laid whole and then a sixth screen
+## goes on top of it, which is the panel a name is typed in.
+## What a stand compares besides the board: the bytes the flow holds.
+func _sol_flow_state() -> Dictionary:
+	var t := flow_table()
+	var names := []
+	for one in sol_flow.best_names:
+		names.append([int(one[0]), int(one[1]), int(one[2])])
+	var scores := []
+	for one in sol_flow.best_scores:
+		scores.append(int(one))
+	return {
+		"4c": sol_flow.z4c, "4d": sol_flow.z4d,
+		"4e": sol_flow.z4e, "4f": sol_flow.z4f,
+		"75": sol_flow.z75, "7d": sol_flow.z7d,
+		"010a": sol_flow.fade.out[0x0A],
+		"010b": sol_flow.fade.out[0x0B],
+		"25": sol_flow.fade.count, "26": sol_flow.fade.kind,
+		"27": sol_flow.fade.mask, "28": sol_flow.fade.pace,
+		"0740": Array(sol_flow.z0740),
+		"0750": Array(sol_flow.z0750),
+		"0760": Array(sol_flow.z0760),
+		"mark": [t.oam[4], t.oam[5], t.oam[6], t.oam[7]],
+		"names": names, "scores": scores,
+		"lives": sol_flow.lives, "score": sol_flow.score,
+		"screen": sol_flow.screen,
+	}
+
+
+func flow_lay_more(n: int) -> void:
+	if sol_flow.screen == "":
+		return
+	_sol_screen_now()
+	sol_screen.lay_more(n)
 
 
 ## The picture a screen makes: the scene built afresh whenever the mode has put

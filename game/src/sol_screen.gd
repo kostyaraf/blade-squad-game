@@ -87,6 +87,12 @@ static func make(scene_name: String) -> SolScreen:
 ## one of several screens by hand needs this and not `lay`: two of them written
 ## one over the other leave the first one's tiles wherever the second writes
 ## nothing at all.
+## One more screen laid over the board as it stands, wiping nothing.
+func lay_more(n: int) -> void:
+	lay(n)
+	build()
+
+
 func relay(numbers: Array) -> void:
 	board = PackedByteArray()
 	board.resize(0x0800)

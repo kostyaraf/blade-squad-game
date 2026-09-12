@@ -117,6 +117,21 @@ const BEST := 0x0E
 const BEST_WAIT := 0x0F
 const AGAIN := 0x47
 
+## $D4AD and what follows it -- the typing of a name into BEST 5.  The asking
+## is reached from seven modes, and each of the two that matter carries its own
+## three along: $43 goes on to $44, $45, $46 and then the opening, $55 to $56,
+## $57, $58 and then the lamp.
+const TOP_ASK := 0x43       # $D4AD -- did this game beat the lowest of five?
+const NAME_SLIDE := 0x44    # $D6A5 -- the five lines slide in from the side
+const NAME_PICK := 0x45     # $D525 -- and three letters are typed
+const NAME_DONE := 0x46     # $D648 -- and held for a while
+const TOP_ASK_END := 0x55   # the same four, reached from the end of the game
+const NAME_SLIDE_END := 0x56
+const NAME_PICK_END := 0x57
+const NAME_DONE_END := 0x58
+const LAMP := 0x59          # $D631 -- the screen walked out
+const LAMP_WAIT := 0x5A     # $D63B -- and the game begun again
+
 
 var mode := RAISE           # $02
 var stage := 0              # $55 -- which stage, and $E520 raises it
@@ -152,6 +167,22 @@ var best_names: Array = SolOver.first_names()
 ## the asking is over.
 var z0752 := 0
 var z0753 := 0
+
+## $F1 -- the second noise asked for, the one a screen makes for itself.  Kept
+## like $F0 and not made.
+var noise2 := 0
+
+## $0740, $0750 and $0760 -- the eight bands the beam is cut into: how many
+## lines each is, which page it shows, and how far along it stands.  The engine
+## does not cut the beam; what it keeps is the numbers, because the modes that
+## type a name move them and are judged by them.
+var z0740 := PackedByteArray([0, 0, 0, 0, 0, 0, 0, 0])
+var z0750 := PackedByteArray([0, 0, 0, 0, 0, 0, 0, 0])
+var z0760 := PackedByteArray([0, 0, 0, 0, 0, 0, 0, 0])
+
+## $75 -- what the beam's counter is set to.
+var z75 := 0
+
 var z58 := 0                # $58 -- how far into the maker's own code he is
 var z05a0 := 0              # $05A0 -- how many times round the opening has gone
 var z7d := 0                # $7D -- which of the beam's own tricks is asked for
@@ -271,6 +302,18 @@ func step(host) -> void:
 			_over_wait(host)
 		AGAIN:
 			_again(host)
+		TOP_ASK, TOP_ASK_END:
+			_top_ask(host)
+		NAME_SLIDE, NAME_SLIDE_END:
+			_name_slide(host)
+		NAME_PICK, NAME_PICK_END:
+			_name_pick(host)
+		NAME_DONE, NAME_DONE_END:
+			_name_done(host)
+		LAMP:
+			_lamp()
+		LAMP_WAIT:
+			_lamp_wait(host)
 		BEST:
 			_best(host)
 		BEST_WAIT:
@@ -1049,7 +1092,7 @@ func _over_wait(host) -> void:
 		return
 	if (hit & Pad.START) == 0:                    # $DA68
 		if (hit & Pad.SELECT) != 0:               # $DAB0
-			noise = 0x02                          # $DAB6 -- $F1
+			noise2 = 0x02                         # $DAB6 -- $F1
 			z4d = (z4d + 1) & 0xFF
 		_over_mark(host)                          # $DABC
 		return
@@ -1065,11 +1108,10 @@ func _over_wait(host) -> void:
 	z2d = 0                                       # $DA83 -- END: the game over
 	z05a0 = 0
 	stage = 0
-	z7d = 0x3F                                    # $DA8C -- $E105
+	z7d = 0                                       # $DA8C -- $E105
 	screen = ""                                   # $DA8F -- $C578 and $C5DA
 	noise = 0x10                                  # $DA95
-	mode = 0x43                                   # $DA9C -- the opening again
-	stuck = 0x43
+	mode = TOP_ASK                                # $DA9C -- the asking
 
 
 ## $C618 with bit two set -- every one of the sixty four sprites put out of
@@ -1100,6 +1142,7 @@ func _again(host) -> void:
 		_over_mark(host)
 		return
 	lives = 0x02                                  # $DA0B -- $F8B9
+	score = 0                                     # and $F8EC with it
 	if stage == 0x08:                             # $DA0E
 		stage = 0
 		mode = RAISE                              # $DA32 -- $1D
@@ -1109,7 +1152,7 @@ func _again(host) -> void:
 		if stage != 0x10:                         # $DA20
 			stage = 0x10 if stage == 0x13 else 0x0F
 		mode = RAISE                              # $DA32
-	z7d = 0x3F                                    # $DA3A -- $E105
+	z7d = 0                                       # $DA3A -- $E105
 	screen = ""                                   # $DA3D -- $C578 and $C5DA
 	noise = 0x10                                  # $DA3E
 
@@ -1121,7 +1164,13 @@ func _best(host) -> void:
 	_no_sprites(host)                             # $C5CC -- $C618 with $0C
 	screen = "best"                               # $D6D6 -- $EF8C A=$12
 	chr = PackedInt32Array()
-	mode = BEST_WAIT                              # $D6DE
+	# $D6DE -- one on from whatever asked, which is $0F after BEST 5 itself
+	# and $44 or $56 after the asking that types a name.
+	mode = (mode + 1) & 0xFF
+	# $D6E5 -- the thirty two stand at $83C0 in bank ten, and $C6E9 both
+	# copies them out and leaves $20:$21 on them, so the walk that puts the
+	# screen out again ($59) has them to walk from.
+	fade.name_table(0x83C0)
 	pal_direct = true                             # $D6E0 -- $C6E9 X=$1F
 	fade.full()
 	host.flow_relay([0x12] + SolOver.plate(stage))    # $D6DB -- $E237
@@ -1160,8 +1209,185 @@ func _best_wait(host) -> void:
 		if z4c != 0:
 			return
 	z05a0 = (z05a0 + 1) & 0xFF                    # $D794
-	z7d = 0x3F                                    # $D797 -- $E105
+	z7d = 0                                       # $D797 -- $E105
 	mode = CHOOSE                                 # $D79A
+
+
+## $D4AD, modes $09..$0D, $43 and $55 -- did this game beat the lowest of the
+## five?  If it did, the count goes in and three letters are typed for it; if
+## not, the opening comes round again.
+func _top_ask(host) -> void:
+	if score < int(best_scores[0]):               # $D4AD -- $075B less $05FF
+		if mode == TOP_ASK_END:                   # $D4D2
+			mode = LAMP                           # $D4D6
+			return
+		lives = 0x02                              # $D4DA -- $F8B9
+		score = 0                                 # and $F8EC with it
+		mode = CHOOSE                             # $D4DD
+		return
+	best_scores[0] = score                        # $D4E2 -- the lowest is taken
+	best_names[0] = [0, 0, 0]                     # $D4F4
+	# $D4FF -- $D6D0, which is BEST 5 whole: the screen, the plate, the five
+	# put in order and written out, and $02 one on.
+	_best(host)
+	_name_bands(host)                             # $D502 -- $D681
+	# $D505 -- the line the new count landed on is the one whose last letter
+	# is nought, and it is looked for from the bottom up.
+	var y := 4
+	while y > 0 and int(best_names[y][2]) != 0:
+		y -= 1
+	z4d = y                                       # $D50F
+	z4c = 0
+	z4e = 0
+	z4f = 0
+	host.flow_lay_more(SolOver.name_screen(y))    # $D51B -- $EF8C A = $34 + Y
+	noise = 0x0D                                  # $D51E
+
+
+## $D681 -- the beam cut into eight bands for the panel: each band as many
+## lines as the table says, every one showing the other page, and every one
+## still off the side.  $C618 with $80 wipes the page the five lines are kept
+## on first, all but the columns the five themselves stand in.
+func _name_bands(host) -> void:
+	z75 = 0x4F                                    # $D681
+	z7d = 0x54                                    # $D685
+	z0752 = 0                                     # $D689 -- $C618 with $80
+	z0753 = 0
+	var eight: Array = SolOver.split()            # $D690
+	for x in range(8):
+		z0740[x] = int(eight[x])
+		z0750[x] = 0xFF
+		z0760[x] = 0
+
+
+## $D672 -- the fifth band slides by itself, one point every fourth picture.
+func _band_five() -> void:
+	if (clock & 0x03) != 0:                       # $D672
+		return
+	z0760[5] = (z0760[5] + 1) & 0xFF              # $D678 -- $0765
+	if z0760[5] == 0:
+		z0750[5] = (z0750[5] + 1) & 0xFF          # $D67D -- $0755
+
+
+## $D615 and $D619 -- the two banks the letters are drawn out of.  $D525 turns
+## them over every fourth picture and $D648 every picture.
+func _letters_bank(i: int) -> void:
+	var two: Array = SolOver.blink_at(i)
+	fade.out[0x0A] = int(two[0])                  # $D61F -- $010A
+	fade.out[0x0B] = int(two[1])                  # $D625 -- $010B
+
+
+## $D6A5, modes $44 and $56 -- the five lines slide in, one after another,
+## sixteen points at a time.
+func _name_slide(_host) -> void:
+	_letters_bank((clock >> 2) & 0x03)            # $D6A5 -- $D615
+	var x: int = z4e                              # $D6A8
+	if (z0750[x] & 0x01) != 0:                    # $D6AA -- the bit the ROR
+		var n: int = z0760[x] + 0x10              # $D6B0 -- $0F and the carry
+		z0760[x] = n & 0xFF
+		if n > 0xFF:                              # $D6B8 -- all the way in
+			z0750[x] = (z0750[x] + 1) & 0xFF
+			z4e += 1
+			if z4e == 5:                          # $D6C1
+				mode = (mode + 1) & 0xFF
+	_band_five()                                  # $D6C7
+
+
+## $D5D6 -- the cursor beside the letter being typed, which shows for sixteen
+## pictures out of thirty two.
+func _name_mark(host) -> void:
+	_letters_bank((clock >> 2) & 0x03)            # $D5D6 -- $D615
+	var t = host.flow_table()
+	t.oam[4] = 0xF8                               # $D5D9
+	if (clock & 0x10) != 0:                       # $D5DE
+		return
+	t.oam[4] = SolOver.mark_y(z4d)                # $D5E6
+	t.oam[7] = SolOver.mark_x(z4c)                # $D5EC
+	t.oam[5] = SolOver.mark_tile()                # $D5F6
+	t.oam[6] = 0x00                               # $D5FB
+
+
+## $D525, modes $45 and $57 -- three letters typed.  UP and DOWN walk the
+## alphabet, A takes the letter, B goes back one.
+func _name_pick(host) -> void:
+	SolSprites.reset(host.flow_table(), tick)     # $D525 -- $C72D
+	_band_five()                                  # $D528
+	_name_mark(host)                              # $D52B
+	var hit: int = host.flow_pad_new()            # $D52E -- $C882
+	if (hit & Pad.UP) != 0:                       # $D531
+		z4f = (z4f - 1) & 0xFF
+	if (hit & Pad.DOWN) != 0:                     # $D539
+		z4f = (z4f + 1) & 0xFF
+	if z4c != 0 and (hit & Pad.B) != 0:           # $D541 -- one back
+		z4c -= 1
+		z4f = SolOver.letter_place(int(best_names[z4d][z4c]))
+	if (hit & Pad.A) != 0:                        # $D55E -- and one on
+		z4c += 1
+		noise2 = 0x0D
+		if z4c == 3:                              # $D56A -- all three typed
+			noise2 = 0x0E
+			z4c = 0
+			mode = (mode + 1) & 0xFF
+			return
+	if z4f >= 0x80:                               # $D579 -- past the first
+		z4f = SolOver.letter_blank()
+	elif z4f >= SolOver.letter_n():               # $D57D -- past the last
+		z4f = 0
+	# $D594 -- the letter is written into the screen every other picture, and
+	# kept in the name every one.
+	if (clock & 0x01) != 0:
+		host.flow_poke(int(SolOver.name_at()[z4d]) + z4c,
+				SolOver.letter_tile(z4f))
+	best_names[z4d][z4c] = SolOver.letter_byte(z4f)
+
+
+## $D648, modes $46 and $58 -- the name stands for a while and the screen is
+## done with.
+func _name_done(host) -> void:
+	_band_five()                                  # $D648
+	_letters_bank(clock & 0x03)                   # $D64B -- $D619 by $0C whole
+	host.flow_table().oam[4] = 0xF8               # $D650
+	z4c = (z4c - 1) & 0xFF                        # $D655
+	if z4c != 0:
+		return
+	z7d = 0                                       # $D659 -- $E105
+	if mode == NAME_DONE_END:                     # $D65E
+		mode = LAMP
+	else:
+		lives = 0x02                              # $D666 -- $F8B9
+		score = 0
+		mode = CHOOSE
+	noise = 0x10                                  # $D66D
+
+
+## $D631, mode $59 -- the screen walked out to black.
+func _lamp() -> void:
+	fade.ask(SolFade.DOWN, SolFade.ONCE)          # $D631 -- $F86D
+	mode = (mode + 1) & 0xFF                      # $D638
+
+
+## $D63B, mode $5A -- and once it is out, the game begins again from the top.
+func _lamp_wait(host) -> void:
+	if fade.kind != 0:                            # $D63B
+		fade.tick()                               # $D645 -- $F806
+		return
+	fade.blank()                                  # $D63F -- $C59C
+	_restart(host)                                # $D642 -- $F97F
+
+
+## $F97F -- the game begun again without the console being turned off: what a
+## game leaves behind is cleared, the five lines are not.
+func _restart(host) -> void:
+	stage = 0                                     # $F981
+	z2d = 0
+	scroll_x = 0                                  # $F985 -- $0A and $0B
+	scroll_y = 0
+	lives = 0x02                                  # $F98F -- $F8B9
+	score = 0
+	z4c = 0                                       # $D13E -- $D162
+	mode = MAKER                                  # $D153
+	screen = ""
+	host.flow_relay([])
 
 
 ## $97A7 -- the hero's last state, which is where a stage is left from.  It is
