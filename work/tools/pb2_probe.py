@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 EMU = os.path.join(ROOT, 'work', 'tools', 'nesemu')
@@ -33,7 +34,33 @@ SCRATCH = os.path.join(tempfile.gettempdir(), 'pb2work')
 
 def scratch(prefix):
     os.makedirs(SCRATCH, exist_ok=True)
+    _sweep_stale()
     return tempfile.mkdtemp(prefix=prefix, dir=SCRATCH)
+
+
+# A run that is killed outright -- the machine running out of memory, a Ctrl-C
+# in the wrong place -- never reaches its own `sweep`, and what it had written
+# down stays under the roof for good.  (That is where the gigabytes came from.)
+# So before a new one is opened, anything left there by a run that is no longer
+# alive goes.  A directory younger than an hour is left alone: a run that is
+# going on right now owns it.  The savestates kept here are files, not
+# directories, and are not touched -- they are the cache that makes a second
+# run of a stand quick.
+STALE = 3600
+
+
+def _sweep_stale():
+    now = time.time()
+    for name in os.listdir(SCRATCH):
+        one = os.path.join(SCRATCH, name)
+        if not os.path.isdir(one):
+            continue
+        try:
+            if now - os.path.getmtime(one) < STALE:
+                continue
+        except OSError:
+            continue
+        shutil.rmtree(one, ignore_errors=True)
 
 
 def sweep(path):

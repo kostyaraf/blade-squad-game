@@ -50,6 +50,12 @@ uniform bool sprites_on = false;
 uniform float split_at = 1000.0;
 uniform vec2 scroll2 = vec2(0.0);
 
+// Outside a stage the picture rides over the console's own two kilobytes of
+// name map put up four times, and it comes back round at the far edge: the
+// city the change is watched on slides a whole screen and a half sideways.  A
+// level does not wrap and leaves this at nought.
+uniform vec2 wrap = vec2(0.0);
+
 // $2001 bits one and two -- the console can be told to leave the leftmost
 // eight points of the screen alone, and then what shows there is the backdrop.
 // The screen a stage is picked on is drawn that way.
@@ -88,6 +94,9 @@ void fragment() {
     bool outside = FRAGCOORD.y < view_top || FRAGCOORD.y >= view_bottom;
     vec2 world = floor((FRAGCOORD.y < split_at ? scroll : scroll2)
                        + FRAGCOORD.xy);
+    if (wrap.x > 0.0) {
+        world = mod(mod(world, wrap) + wrap, wrap);
+    }
     vec2 cell = floor(world / 8.0);
     int bg_c = 0;
     if (outside) {
@@ -121,7 +130,10 @@ void fragment() {
     int here_x = int(FRAGCOORD.x);
     int here_y = int(FRAGCOORD.y);
     int on_line = 0;
-    for (int i = 0; sprites_on && !outside && i < 64; i++) {
+    // The console draws its sprites over the whole of the picture and not
+    // only over the level's window: while he arrives the four pieces come in
+    // across the bottom sixteen lines, which are the strip's.
+    for (int i = 0; sprites_on && i < 64; i++) {
         vec4 o = texelFetch(oam, ivec2(i, 0), 0);
         // The console puts a sprite one line below the number in the table.
         int line = here_y - (int(o.r * 255.0 + 0.5) + 1);

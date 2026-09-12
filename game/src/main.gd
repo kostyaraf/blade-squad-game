@@ -47,6 +47,8 @@ func _ready() -> void:
 	var solflow := ""
 	var solscript := ""
 	var solscene := ""
+	var solboot := false
+	var solwalk := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -80,6 +82,8 @@ func _ready() -> void:
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
 		elif a.begins_with("--solscript="): solscript = a.substr(12)
 		elif a.begins_with("--solscene="): solscene = a.substr(11)
+		elif a == "--solboot": solboot = true
+		elif a.begins_with("--solwalk="): solwalk = a.substr(10)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -94,6 +98,10 @@ func _ready() -> void:
 		return
 	if solscript != "":
 		_run_sol_script(solscript)
+		get_tree().quit()
+		return
+	if solwalk != "":
+		await _run_sol_boot(solwalk)
 		get_tree().quit()
 		return
 	if solscene != "":
@@ -186,6 +194,8 @@ func _ready() -> void:
 	bg.z_index = -1
 	if game == "pb2":
 		_start_play(stage, area)
+	elif solboot:
+		_start_sol_boot()
 	else:
 		_load(game, stage, area)
 		_start_sol()
@@ -831,8 +841,19 @@ class FlowStand:
 	func flow_tune() -> int:
 		return 0
 
+	func flow_palette() -> PackedByteArray:
+		var out := PackedByteArray()
+		out.resize(32)
+		return out
+
 	func flow_pad_new() -> int:
 		return 0
+
+	func flow_pad() -> int:
+		return 0
+
+	func flow_poke(_addr: int, _tile: int) -> void:
+		pass
 
 
 ## Э4.6 acceptance: --solflow=FILE, the four pieces he arrives as.
@@ -907,27 +928,8 @@ func _run_sol_flow(path: String) -> void:
 ## to the shader with the colours and the banks the cartridge had.
 func _run_sol_scene(spec: String) -> void:
 	var parts := spec.split(",")
-	var sc := SolScreen.make(parts[0])
-	var m: ShaderMaterial = bg.material
-	Nes.load_palette_table()
-	pal_tex = Nes.palette_texture(sc.palette)
-	map_tex = ImageTexture.create_from_image(sc.map_image)
-	m.set_shader_parameter("sheet", Nes.sheet("sol"))
-	m.set_shader_parameter("sheet_size", Nes.sheet("sol").get_size())
-	m.set_shader_parameter("map", map_tex)
-	m.set_shader_parameter("palette", pal_tex)
-	m.set_shader_parameter("map_size", Vector2(SolScreen.WIDE, SolScreen.TALL))
-	m.set_shader_parameter("banks", PackedInt32Array(sc.banks + sc.spr_banks))
-	m.set_shader_parameter("bands_on", true)
-	m.set_shader_parameter("band_at", sc.band_lines())
-	m.set_shader_parameter("band_bank", sc.band_banks())
-	m.set_shader_parameter("sprites_on", false)
-	m.set_shader_parameter("bar_on", false)
-	m.set_shader_parameter("split_at", 1000.0)
-	m.set_shader_parameter("clip_left", 0.0)
-	m.set_shader_parameter("view_top", 0.0)
-	m.set_shader_parameter("view_bottom", 240.0)
-	m.set_shader_parameter("scroll", Vector2(sc.scroll))
+	sol_screen = SolScreen.make(parts[0])
+	_show_sol_screen(sol_screen.scroll)
 	bg.z_index = -1
 	queue_redraw()
 	await RenderingServer.frame_post_draw
@@ -935,7 +937,170 @@ func _run_sol_scene(spec: String) -> void:
 	if parts.size() > 1:
 		get_viewport().get_texture().get_image().save_png(parts[1])
 	print("%s  %d bands  mirror %d  scroll %d,%d"
-			% [parts[0], sc.bands.size(), sc.mirror, sc.scroll.x, sc.scroll.y])
+			% [parts[0], sol_screen.bands.size(), sol_screen.mirror,
+			sol_screen.scroll.x, sol_screen.scroll.y])
+
+
+## The screen now up, handed to the shader.  A screen is not a level: it rides
+## over the console's own name map put up four times and wraps at the far edge,
+## it may swap the four kilobytes it is drawn out of as the beam goes down, and
+## it owns the whole of the picture -- no bar under it and no level behind it.
+##
+## What the mode has asked for since the screen went up is taken over the top:
+## the four kilobytes when it has named a pair of its own ($C925), and the few
+## bytes of the colour shadow the change writes itself.
+func _show_sol_screen(at: Vector2i) -> void:
+	var sc := sol_screen
+	var m: ShaderMaterial = bg.material
+	Nes.load_palette_table()
+	var colours := PackedByteArray(sc.palette)
+	var four: Array = sc.banks
+	if sol_flow != null:
+		# $0100 -- what the mode has walked the colours to.  The scene's own
+		# thirty two are only the ones the cartridge had when the scene was
+		# written down, and a mode that is walking them is past that.
+		colours = sol_flow.fade.out
+		if not sol_flow.chr.is_empty():
+			four = Array(sol_flow.chr)
+	pal_tex = Nes.palette_texture(colours)
+	map_tex = ImageTexture.create_from_image(sc.map_image)
+	m.set_shader_parameter("sheet", Nes.sheet("sol"))
+	m.set_shader_parameter("sheet_size", Nes.sheet("sol").get_size())
+	m.set_shader_parameter("map", map_tex)
+	m.set_shader_parameter("palette", pal_tex)
+	m.set_shader_parameter("map_size",
+			Vector2(SolScreen.WIDE_ALL, SolScreen.TALL_ALL))
+	m.set_shader_parameter("wrap", Vector2(SolScreen.WIDE_ALL * 8,
+			SolScreen.TALL_ALL * 8))
+	# $42..$45 -- the four the sprites come out of are the table's own, because
+	# every picture drawn may take one of them for itself; only where there is
+	# no table at all are the scene's used.
+	var spr: Array = Array(sol_table.banks) if sol_table != null else sc.spr_banks
+	m.set_shader_parameter("banks", PackedInt32Array(four + spr))
+	# A pair of its own is one band the whole way down; only where the mode has
+	# asked for nothing is the screen left the bands the cartridge had.
+	var own: bool = four == sc.banks
+	m.set_shader_parameter("bands_on", own)
+	if own and sol_flow != null and sol_flow.blank:
+		# $C14F -- the row of words put out, which is $C357 setting both of the
+		# background's pairs to the blank one and the beam's next stop putting
+		# the first of them back.
+		m.set_shader_parameter("band_at",
+				PackedInt32Array(SolScreen.BLANK_LINES))
+		m.set_shader_parameter("band_bank", sc.blank_banks())
+	else:
+		m.set_shader_parameter("band_at", sc.band_lines())
+		m.set_shader_parameter("band_bank", sc.band_banks())
+	m.set_shader_parameter("bar_on", false)
+	m.set_shader_parameter("split_at", 1000.0)
+	m.set_shader_parameter("clip_left", 0.0)
+	m.set_shader_parameter("view_top", 0.0)
+	m.set_shader_parameter("view_bottom", 240.0)
+	m.set_shader_parameter("scroll", Vector2(at))
+	m.set_shader_parameter("sprites_on", sol_table != null)
+	if sol_table != null:
+		var img := Image.create(Pb2Sprites.SPRITES, 1, false,
+				Image.FORMAT_RGBA8)
+		for i in range(Pb2Sprites.SPRITES):
+			img.set_pixel(i, 0, Color8(sol_table.oam[i * 4],
+					sol_table.oam[i * 4 + 1], sol_table.oam[i * 4 + 2],
+					sol_table.oam[i * 4 + 3]))
+		if oam_tex == null:
+			oam_tex = ImageTexture.create_from_image(img)
+			m.set_shader_parameter("oam", oam_tex)
+		else:
+			oam_tex.update(img)
+
+
+## Э4.6 acceptance: the chain of modes the game walks from the switch being
+## turned on.  The spec is how many pictures to walk and, after it, a button
+## and the picture it goes down on, over and over -- `1200,START:640`.  What
+## comes out is one line per change of mode, which is what the cartridge is
+## asked for as well ($02 written).
+func _run_sol_boot(spec: String) -> void:
+	var f := spec.split(",")
+	var n := int(f[0])
+	var down := {}
+	var up := {}
+	var shots := {}
+	var start := {}
+	for k in range(1, f.size()):
+		var g := f[k].split(":")
+		if g[0] == "shot":
+			shots[int(g[1])] = g[2]
+			continue
+		if g[0] == "dump":
+			shots[int(g[1])] = "?"
+			continue
+		# `set:NAME:VALUE` -- the walk begun part way along instead of at the
+		# reset, which is how a mode only reached with a stage behind it is
+		# stood up: the cartridge is poked to the same place.
+		if g[0] == "set":
+			start[g[1]] = int(g[2])
+			continue
+		var bit := 0
+		match g[0]:
+			"A": bit = Pad.A
+			"B": bit = Pad.B
+			"SELECT": bit = Pad.SELECT
+			"START": bit = Pad.START
+		var at := int(g[1])
+		down[at] = int(down.get(at, 0)) | bit
+		up[at + 4] = int(up.get(at + 4, 0)) | bit
+	pads = [Pad.player_one(), Pad.player_two()]
+	sol_walking = true
+	_start_sol_boot()
+	for k in start:
+		match k:
+			"mode": sol_flow.mode = int(start[k])
+			"stage": sol_flow.stage = int(start[k])
+			"clock": sol_flow.clock = int(start[k])
+			"lives": sol_flow.lives = int(start[k])
+	var held := 0
+	var was := -1
+	for i in range(n):
+		held |= int(down.get(i, 0))
+		held &= ~int(up.get(i, 0))
+		sol_pad_edge = held & ~sol_flow_was
+		sol_flow_was = held
+		sol_flow.step(self)
+		if sol_flow.mode != was:
+			was = sol_flow.mode
+			print("%d %02X %s" % [i, was, sol_flow.screen])
+		if shots.has(i) and shots[i] == "?":
+			print("dump %d banks %s" % [i, str(sol_table.banks)])
+			print("  fade kind=%02X mask=%02X pace=%d cnt=%d lv=%s out=%s" % [
+					sol_flow.fade.kind, sol_flow.fade.mask, sol_flow.fade.pace,
+					sol_flow.fade.count, str(sol_flow.fade.level),
+					sol_flow.fade.out.slice(0, 16).hex_encode()])
+			print("  4c=%02X 4d=%02X 4e=%02X 4f=%02X 0a=%02X clk=%02X" % [
+					sol_flow.z4c, sol_flow.z4d, sol_flow.z4e, sol_flow.z4f,
+					sol_flow.scroll_x, sol_flow.clock])
+			print("  fwd=%02X back=%02X cnt=%02X turn=%02X start=%02X" % [
+					sol_table.fwd, sol_table.back, sol_table.count,
+					sol_table.turn, sol_table.start])
+			if sol_hero != null:
+				print("  hero %04X %04X view %04X %04X home %04X %04X" % [
+						sol_hero.x, sol_hero.y, sol_view.x, sol_view.y,
+						sol_flow.home_x, sol_flow.home_y])
+				print("  px %s py %s z03=%02X z57=%02X" % [
+						str(sol_flow.piece_x), str(sol_flow.piece_y),
+						sol_flow.z03, sol_flow.z57])
+			for q in range(64):
+				if sol_table.oam[q * 4] != 0xF7:
+					print("  %d y=%d t=%02X a=%02X x=%d" % [q,
+							sol_table.oam[q * 4], sol_table.oam[q * 4 + 1],
+							sol_table.oam[q * 4 + 2], sol_table.oam[q * 4 + 3]])
+			continue
+		if shots.has(i):
+			_apply()
+			queue_redraw()
+			await RenderingServer.frame_post_draw
+			await RenderingServer.frame_post_draw
+			get_viewport().get_texture().get_image().save_png(shots[i])
+		if sol_flow.stuck >= 0:
+			print("stuck %02X at %d" % [sol_flow.stuck, i])
+			return
 
 
 func _run_sol_script(path: String) -> void:
@@ -1145,6 +1310,9 @@ func _bar_step() -> void:
 
 
 func _apply() -> void:
+	if sol_flow != null and (sol_flow.screen != "" or level_sol == null):
+		_sol_screen_frame()
+		return
 	var m: ShaderMaterial = bg.material
 	var img: Image
 	var size: Vector2
@@ -1166,6 +1334,13 @@ func _apply() -> void:
 	else:
 		img = level_sol.map_image
 		size = Vector2(level_sol.width_tiles, level_sol.height_tiles)
+		# $0100..$011F -- what a stage is drawn in is not its own table but
+		# where the walk of the colours stands: $CB96 blacks the background
+		# out while he arrives and $CCC5 walks it back up.
+		if sol_flow != null:
+			pal_tex = Nes.palette_texture(sol_flow.fade.out)
+			if sol_flow.wiped:
+				size = Vector2.ZERO
 		# The hero's own four banks are settled a picture at a time, so until
 		# he is standing they are the ones the stage came in with.
 		banks = level_sol.banks + (Array(sol_table.banks)
@@ -1202,9 +1377,23 @@ func _apply() -> void:
 func _process(dt: float) -> void:
 	if pads.is_empty():
 		return
-	# The logic runs on the console's clock, not the monitor's.
+	# The logic runs on the console's clock, not the monitor's.  While a walk
+	# is being taken picture by picture it owns the stepping and the monitor
+	# must not add any of its own, or the picture asked for at a given step
+	# would be the one a step or two later.
+	if sol_walking:
+		# A mode with no screen of its own is a stage: $19 raises it and $3E
+		# and $3F stand in it while he arrives, so what is drawn there is the
+		# level and its sprite table, not the dark of two screens changing.
+		_apply()
+		queue_redraw()
+		return
 	for _i in range(clock.tick(dt)):
 		_step()
+	if sol_flow != null and (sol_flow.screen != "" or level_sol == null):
+		_sol_screen_frame()
+		queue_redraw()
+		return
 	_bar_show(bg.material)
 	if select != null:
 		_choice_show()
@@ -1227,6 +1416,10 @@ func _step() -> void:
 		return
 	if world == null:
 		if sol_flow != null:
+			# $C882 -- the mode reads the pad itself, and what it reads is two
+			# bytes: $04 is what has just gone down and $06 what is held.
+			sol_pad_edge = pads[0].held & ~sol_flow_was
+			sol_flow_was = pads[0].held
 			sol_flow.step(self)
 		elif sol_hero != null:
 			_step_sol()
@@ -1295,6 +1488,12 @@ func flow_play() -> void:
 	_step_sol()
 
 
+## $E520 -- the thirty two the stage is drawn in, which the walk copies into
+## $0790 and reads from there on.
+func flow_palette() -> PackedByteArray:
+	return level_sol.palette
+
+
 func flow_hero() -> SolPlayer:
 	return sol_hero
 
@@ -1318,7 +1517,85 @@ func flow_tune() -> int:
 
 
 func flow_pad_new() -> int:
-	return pads[0].held & ~sol_pad_was
+	return sol_pad_edge
+
+
+## $06 -- and what is held.
+## $0300 -- what the typing of the tale hands the picture unit, which here is
+## written straight into the screen it is standing on.
+func flow_poke(addr: int, tile: int) -> void:
+	if sol_flow.screen == "":
+		return
+	_sol_screen_now()
+	sol_screen.poke(addr, tile)
+
+
+func flow_pad() -> int:
+	return pads[0].held if not pads.is_empty() else 0
+
+
+## The picture a screen makes: the scene built afresh whenever the mode has put
+## a different one up, and then handed over with where the mode says it stands.
+func _sol_screen_frame() -> void:
+	if sol_flow.screen == "":
+		_sol_dark()
+		return
+	_sol_screen_now()
+	_show_sol_screen(Vector2i(sol_flow.scroll_x, sol_flow.scroll_y))
+
+
+## The screen the mode is standing on, built if it is not built yet.  It is
+## asked for by the drawing and by the typing of the tale alike: a screen that
+## is written into must be the same one from the first letter to the last, and
+## a walk that only draws now and then would otherwise build it afresh at the
+## first picture it is asked for and lose everything typed before that.
+func _sol_screen_now() -> void:
+	if sol_screen != null and sol_screen.name == sol_flow.screen:
+		return
+	sol_screen = SolScreen.make(sol_flow.screen)
+	if sol_flow.pal_direct:
+		sol_flow.fade.out = PackedByteArray(sol_screen.palette)
+	# $42..$45 -- a screen arrives with the four the cartridge had when it
+	# was written down, and what is drawn on it takes them from there.
+	for i in range(4):
+		sol_table.banks[i] = int(sol_screen.spr_banks[i])
+
+
+## $C578 -- between two screens the picture is turned off, and a console with
+## its picture off shows nothing but black.  Which is what a map of no tiles at
+## all comes to: every point of it is outside, and outside is the backdrop.
+func _sol_dark() -> void:
+	var m: ShaderMaterial = bg.material
+	Nes.load_palette_table()
+	var black := PackedByteArray()
+	for _i in range(32):
+		black.append(0x0F)
+	pal_tex = Nes.palette_texture(black)
+	m.set_shader_parameter("palette", pal_tex)
+	m.set_shader_parameter("map_size", Vector2.ZERO)
+	m.set_shader_parameter("wrap", Vector2.ZERO)
+	m.set_shader_parameter("sprites_on", false)
+	m.set_shader_parameter("bands_on", false)
+	m.set_shader_parameter("bar_on", false)
+	m.set_shader_parameter("split_at", 1000.0)
+	m.set_shader_parameter("clip_left", 0.0)
+	m.set_shader_parameter("view_top", 0.0)
+	m.set_shader_parameter("view_bottom", 240.0)
+	m.set_shader_parameter("scroll", Vector2.ZERO)
+
+
+## Э4.6 -- the game from the switch being turned on.  Nothing is loaded: the
+## flow opens on the mode the reset leaves behind ($D153 puts $01 in $02) and
+## raises a stage itself when it gets that far.
+func _start_sol_boot() -> void:
+	game = "sol"
+	sol_flow = SolFlow.new()
+	sol_flow.mode = SolFlow.MAKER
+	sol_flow.lives = 0x02
+	sol_table = SolSprites.Table.new()
+	for i in range(0, SolSprites.FWD_START, 4):
+		sol_table.oam[i] = SolSprites.HIDDEN
+	bg.z_index = -1
 
 
 ## One picture, in the order $CDB0 keeps it, and the same order the object
@@ -2118,11 +2395,20 @@ var stage_sol := 0
 ## last time; the stands are handed the cartridge's own byte, the live game
 ## has to keep the one before itself.
 var sol_pad_was := 0
+## $04 -- what has just gone down, as the mode reads it.  A stage reads the pad
+## for itself and keeps its own $06; the screens read it through here.
+var sol_pad_edge := 0
+var sol_flow_was := 0
+## While `--solwalk` is walking, the monitor's own stepping is off.
+var sol_walking := false
 var sol_view: SolCamera
 var sol_table: SolSprites.Table
 ## $02 -- what the game is doing.  A stand that only wants one stage leaves it
 ## nought and steps the stage itself; a whole game hands the picture to this.
 var sol_flow: SolFlow
+## The screen now up, when the flow has one up: `SolFlow.screen` names it and
+## this is it built.
+var sol_screen: SolScreen
 ## Э4.5 -- the stage's own script, $93B5.  It keeps its own two kilobytes from
 ## one picture to the next, because a third of what it touches has no home in
 ## the engine at all.

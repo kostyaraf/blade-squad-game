@@ -48,6 +48,11 @@ class Table:
 
 	func _init() -> void:
 		oam.resize(256)
+		# The eight the bar owns are below $C72D's parking, so nothing puts
+		# them away: on the cartridge they are already out of sight when the
+		# bar is not there, and here they have to be put there.
+		for i in range(0, 256, 4):
+			oam[i] = HIDDEN
 
 
 static func load_data() -> void:
@@ -72,6 +77,14 @@ static func hero(p: SolPlayer, x: int, y: int, t: Table) -> void:
 ## $CF73 -- any picture at all, which is how an object puts itself in.
 static func picture(id: int, mark: int, x: int, y: int, t: Table) -> void:
 	_place(id, mark, x, y, t)
+
+
+## $F6E6, which $F3F9 is the door to -- the same laying out, but handed whole
+## pixels: the screens outside a stage do not go through the divider at $F43F
+## because what they draw stands on the screen and not in a level.
+static func plain(id: int, mark: int, x: int, y: int, t: Table) -> void:
+	load_data()
+	_put(id, mark, x, y, t)
 
 
 ## $F3DC -- the place is carried in sixteenths of a pixel and the console wants

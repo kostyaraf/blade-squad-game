@@ -66,17 +66,23 @@ def cartridge(name, cfg, into):
                    # picture of frame N is the one the dump of frame N+1 has.
                    '-vram', '%s@%d' % (out + '.vram', at + 1)]
         else:
-            _, mode, poke_at, at = how
+            mode, poke_at, at = how[1], how[2], how[3]
+            # A scene may need more than the mode poked into it -- AREA x is
+            # not drawn at all unless $55 names a stage -- and what else was
+            # poked when the scene was written down is written down with it.
+            also = how[4] if len(how) > 4 else []
             state = P.make_state(os.path.join(into, 'base'))
             open(inp, 'w').write('%d -\n' % (P.IN_LEVEL + 1))
             cmd = [P.EMU, P.ROM, '-loadstate', state, '-input', inp,
                    '-frames', str(at + 3),
-                   '-poke', '0002=%02X@%d' % (mode, poke_at),
-                   '-png', out, '-shot', str(at),
-                   # A picture is taken at the end of a frame and the dump at
-                   # the start of one, so the sprite table that stood in the
-                   # picture of frame N is the one the dump of frame N+1 has.
-                   '-vram', '%s@%d' % (out + '.vram', at + 1)]
+                   '-poke', '0002=%02X@%d' % (mode, poke_at)]
+            for one in also:
+                cmd += ['-poke', '%s@%d' % (one, poke_at)]
+            cmd += ['-png', out, '-shot', str(at),
+                    # A picture is taken at the end of a frame and the dump
+                    # at the start of one, so the sprite table that stood in
+                    # the picture of frame N is the dump of frame N+1's.
+                    '-vram', '%s@%d' % (out + '.vram', at + 1)]
         subprocess.run(cmd, check=True, capture_output=True)
         at = int(how[1]) if how[0] == 'walk' else int(how[3])
         return '%s_%d.png' % (out, at), out + '.vram'

@@ -228,9 +228,25 @@ D10E  LDY $2A / LDA ($18),Y     ; m = alt[m]
 D112  TAY / LDA ($16),Y         ; props of the substitute
 D115  ASL A / ASL A / ASL A / RTS
 
+D119  TYA / JSR $D124           ; bit 5 clear -- the same bitmap, other meaning
+D11D  BEQ $D123                 ; flag clear -> A = 0, the cell stops nothing
+D11F  LDY $2A / LDA $29 / RTS   ; flag set   -> the metatile as it stands
+
 D124  PHA / LSR A / LSR A / LSR A / TAX
 D129  LDA $0540,X / TAX / PLA / AND #$07 / TAY / TXA / AND $D136,Y
 ```
+
+So one bitmap, two readings, and bit 5 of `props` picks which.  With bit 5 set
+the metatile has a second face and clearing its bit swaps the face (and with it
+the collision, which is re-read from the substitute).  With bit 5 clear there is
+no second face: clearing the bit leaves the picture exactly as it was and takes
+the collision away altogether -- the cell still looks solid and is walked
+straight through.  `$E77E` fills the bitmap with `$FF`, so a stage starts with
+every bit set: every bit-5 metatile in its first face, every other one solid.
+
+The port does both halves in `SolLevel._settle()` (`game/src/sol_level.gd`),
+which builds `_shown[m]` and `_coll[m]` for all 256 at once whenever the bitmap
+changes, so `metatile_at` and `collision_at` are a single lookup.
 
 The renderer does the identical test at `$F0D8`.  `$E77E` fills the bitmap with
 `$FF`, so **on entering a stage every bit-5 metatile shows its `alt` form**.

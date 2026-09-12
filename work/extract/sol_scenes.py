@@ -38,9 +38,17 @@ WALK = 2300               # frames of the switch-on walk worth watching
 
 # What is on the walk, named by the screen the walk draws: how long after it is
 # drawn the picture has settled enough to be written down.
-WALKED = {0x0A: ('title', 480), 0x33: ('tale', 60), 0x30: ('select', 300)}
+WALKED = {0x0A: ('title', 480), 0x33: ('tale', 60), 0x30: ('select', 60)}
+# The city is waited on for sixty pictures and no more.  Wait longer and what
+# is written down is the change going off over it: mode $3A flashes three of
+# the colours white and $3D leaves them there, so a later picture has a screen
+# of white and says nothing about the city at all.
 
 # And what is not: the number that goes in $02, and the name of what it shows.
+## A screen and how long to wait for it: the number that goes in $02, the name
+## of what it shows, and, where the mode does not stand still, how many pictures
+## after the poke the board should be written down.  Where nothing is said the
+## usual wait is taken.
 MODES = (
     ('best', 0x0E),         # $D6CA -- BEST 5, the five high scores
     ('test', 0x24),         # $D79F -- TEST MODE, the maker's own menu
@@ -48,6 +56,13 @@ MODES = (
     ('over', 0x14),         # $D974 -- GAME OVER
     ('cleared', 0x1B),      # $E09C -- AREA x CLEARED
     ('staff', 0x4E),        # $E3E7 -- the names at the end
+    # $DAE3 -- the board STAGE SELECT is played on: five empty frames and the
+    # man below them.  It does not stand: $DBAE walks the board up the screen
+    # and then writes a picture into each frame, so the board has to be
+    # written down early, while it is still the screen and nothing else.  $55
+    # has to be something other than nought or $DAF2 goes straight on to $1D
+    # and draws nothing at all.
+    ('stages', 0x19, 40, ('0055=01',)),
 )
 
 POKE_AT = P.IN_LEVEL + 5
@@ -170,22 +185,28 @@ def walk(d, screens):
     return out
 
 
-def poked(d, screens, state, name, mode):
+def poked(d, screens, state, name, mode, wait=None, also=()):
     inp = os.path.join(d, 'p.inp')
     open(inp, 'w').write('%d -\n' % (P.IN_LEVEL + 1))
     log = os.path.join(d, name + '.log')
     out = os.path.join(d, name + '.bin')
-    subprocess.run([P.EMU, P.ROM, '-loadstate', state, '-input', inp,
-                    '-frames', str(SETTLED + 1),
-                    '-poke', '0002=%02X@%d' % (mode, POKE_AT),
-                    '-sample', '%04X=A' % DOOR, '-trace', log,
-                    '-tracefrom', '999999', '-traceto', '999999',
-                    '-vram', '%s@%d' % (out, SETTLED)],
-                   check=True, capture_output=True)
+    at = POKE_AT + wait if wait is not None else SETTLED
+    cmd = [P.EMU, P.ROM, '-loadstate', state, '-input', inp,
+           '-frames', str(at + 1),
+           '-poke', '0002=%02X@%d' % (mode, POKE_AT)]
+    for one in also:
+        cmd += ['-poke', '%s@%d' % (one, POKE_AT)]
+    cmd += ['-sample', '%04X=A' % DOOR, '-trace', log,
+            '-tracefrom', '999999', '-traceto', '999999',
+            '-vram', '%s@%d' % (out, at)]
+    subprocess.run(cmd, check=True, capture_output=True)
     drew = [n for fr, n in samples(log) if fr >= POKE_AT]
     one = vram(out)
+    # What is written down is everything the shot needs to be taken again:
+    # the mode poked, the picture it is poked on, the picture the board is
+    # read off, and whatever else had to be poked alongside it.
     return scene(name, drew, one, lay(screens, drew, one['mirror']),
-                 ['poke', mode, POKE_AT, SETTLED])
+                 ['poke', mode, POKE_AT, at, list(also)])
 
 
 def main():
@@ -196,8 +217,11 @@ def main():
     try:
         out = walk(d, screens)
         state = P.make_state(os.path.join(d, 'base'))
-        for name, mode in MODES:
-            out[name] = poked(d, screens, state, name, mode)
+        for one in MODES:
+            name, mode = one[0], one[1]
+            wait = one[2] if len(one) > 2 else None
+            also = one[3] if len(one) > 3 else ()
+            out[name] = poked(d, screens, state, name, mode, wait, also)
         size = write_json(os.path.join(outdir('sol'), 'scenes.json'),
                           {'scenes': out})
         print('%d scenes, %d bytes' % (len(out), size))

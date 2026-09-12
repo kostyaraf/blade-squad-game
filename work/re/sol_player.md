@@ -353,10 +353,38 @@ at **x = 631.75**, and the first solid column there begins at 640.
 
 ## 6. What is still open
 
-* `$05C5` and what each suit changes, and the suitless branch of `$937A`.
-* `$9689`'s first half (`$05C8`, `$0112`) — the afterimage trail.  It is
-  drawing: with a shield up, on a state whose flag byte at `$96EA` is nought
-  and with `$05FA` clear, `$0112` is written from `$96BC[(0C >> 1) & 3]`.
+* `$05C5` and what each suit changes.
+
+  The suitless branch of `$937A` is read.  `$937F` looks at `$05C5`; anything
+  other than nought goes to `$93CE`, the suited drawing.  With nought:
+
+  ```
+  9384  $05A3 < 6                     -> Y = $BA   ; the ordinary states
+  938D  $05A2 == 1 and $05AF == 0     -> Y = $C0   ; hit, and free to move
+  939D  $05A2 != 0                    -> Y = $BE
+  93A2  $05A3 != $FF                  -> Y = $BE
+        otherwise -- state $FF, $05A2 nought -- he is finished off here:
+  93A9  $05AB = $FF, $05A2 = $0C, $F8 = $0C
+  93B3  and if $060C is not nought: $060C = $FF, $062C = $20
+        -> Y = $BE
+  93C4  A = Y + (bit 7 of $05B2)      ; which way he faces
+  93CB  JMP $9472                     ; and that is the group drawn
+  ```
+* `$9689`'s first half (`$05C8`, `$0112`) — the shimmer of the shield.  Read:
+
+  ```
+  9689  $05C8 == 0                 -> nothing
+  968E  $96EA[$05A2 & $3F] != 0    -> nothing
+  9699  $05FA != 0                 -> nothing
+  969E  $0112 = $96BC[($0C >> 1) & 3]
+  ```
+
+  `$96BC` = `15 24 05 24`, and `$0112` is the third colour of the sprites'
+  first set, so with a shield up that colour walks `$15 $24 $05 $24` every
+  other picture and the suit shimmers.  `$96EA` is one byte a state, twenty
+  one of them; nought everywhere except states `$0D`, `$0F`, `$10` and `$11`,
+  which put the shimmer out.  The second half of `$9689` is the state's own
+  handler, taken from the table at `$96C0` (two bytes a state).
 * What the states hand on to but do not do themselves, all of it Э4.5's: which
   screen comes next (`$02`, `$2E`, `$97CD`), the stage's own bookkeeping that
   `$9751` reads out of `$0757` and `$07F0`, and the noises (`$F0`, `$F1`,
