@@ -279,6 +279,7 @@ func _run_sol_objects(path: String) -> void:
 	pool.seen_y = int(cfg["seen_y"])
 	pool.room = int(cfg["room"])
 	pool.z75 = int(cfg["z75"]) if cfg.has("z75") else 0
+	pool.z7c = int(cfg["z7c"]) if cfg.has("z7c") else 0
 	pool.z58 = int(cfg["z58"]) if cfg.has("z58") else 0
 	pool.z26 = int(cfg["z26"]) if cfg.has("z26") else 0
 	pool.letters = int(cfg["letters"]) if cfg.has("letters") else 0
@@ -423,7 +424,7 @@ func _run_sol_objects(path: String) -> void:
 		# $B862 -- one step of a handful of his animations strikes, and what it
 		# strikes with goes into slot fifteen while he is still the one running.
 		if p.punch >= 0:
-			SolSat.strike(pool, p.punch)
+			SolSat.strike(pool, p.punch, p.punch_x, p.punch_y)
 			p.punch = -1
 		# $923B -- the tail of $9159: the three letter boxes, and what a
 		# finished combination gives him.

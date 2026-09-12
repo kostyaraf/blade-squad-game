@@ -293,22 +293,60 @@ static func _wear(o: SolObjects, x: int, pic: int) -> void:
 
 
 ## $A8BA and $B933 -- the reach asks the stage whether it has hit something it
-## can break.  A wall is breakable only where its collision is under twelve and
-## its bottom two bits are two or three; everything else is left alone, and
-## $B9CD says so before anything is touched.
-##
-## What happens when one is broken -- the hole in the map, the bit put out in
-## $0540 and the rubble let into the pool -- belongs to Э4.4 and is not ported;
-## a reach that finds one is counted rather than acted on.
+## can break, and $B9CD answers ($0540 is marked and the face redrawn there).
+## What it leaves behind is a piece of rubble in the first free slot counting
+## down from eleven, and a second piece let out of that one by $8C83, counting
+## up from nought.  Which rubble is left depends on what gave way: two of the
+## four kinds leave one piece of the wall itself, and the third leaves a run
+## through an eight-long list, whose one marked entry asks the suit and the
+## hash which of the two harder pieces to leave.
+## $B9C5 -- eight kinds of rubble in turn.  The one with bit seven on is not a
+## kind at all: it means "ask the suit".
+const WALL := [0x05, 0x04, 0x80, 0x07, 0x04, 0x04, 0x05, 0x06]
+
+
 static func _break(o: SolObjects, x: int) -> void:
-	if o.row_due != 0 or o.col_due != 0:
-		return                                          # $B9CD
-	var v: int = o.probe(o.x[x], o.y[x]) >> 3           # $C01E, masked to $1F
-	if v >= 0x0C:
-		return                                          # $B9EB
-	if (v & 0x03) < 0x02:
-		return                                          # $B9FB
-	o.missed_sat(0xB9)                                  # $B9FD, Э4.4
+	var v: int = o.break_wall(o.x[x], o.y[x])           # $B93F
+	if v < 0:
+		return                                          # $B942
+	var f := -1
+	for i in range(0x0B, -1, -1):                       # $B944
+		if o.id[i] == 0:
+			f = i
+			break
+	if f < 0:
+		return                                          # $B94E
+	var m := 0
+	if v != 0x03:                                       # $B953
+		if o.hero_hurt != 0:                            # $05C2
+			m = 0x05                                    # $B95A
+		else:
+			m = 0x08 + (o.noise & 0x01)                 # $B95E
+	else:
+		m = WALL[o.z7c & 0x07]                          # $B96E
+		o.z7c = (o.z7c + 1) & 0xFF
+		if (m & 0x80) != 0:
+			if o.hero_suit >= 0x03 and (o.noise & 0x03) == 0:
+				m = 0x07                                # $B984
+			else:
+				m = 0x06                                # $B980
+	o.mind[f] = m                                       # $B986
+	o.life[f] = 0x10                                    # $B98B
+	o.x[f] = (o.x[x] & 0xFF00) | 0x80                   # $B98E
+	o.y[f] = (o.y[x] & 0xFF00) | 0x80
+	o.cool[f] = 0x80                                    # $B99C
+	o.id[f] = 0x80
+	o.left[f] = 0                                       # $8DCA
+	o.frame[f] = 0
+	o.anim_a[f] = 0
+	o.pic_lo[f] = 0                                     # $B9A5
+	o.pic_hi[f] = 0
+	o.a[f] = 0
+	o.kind[f] = 0
+	# $B9B1 -- the sound the punch makes ($F1 = $25) is not modelled.
+	o.hatch_up(o.x[f], o.y[f], 0x24)                    # $B9B7
+	if o.id[0x0F] != 0:                                 # $B9BA
+		o.cool[0x0F] = 0                                # $B9BF
 
 
 # ---------------------------------------------------------------------------
@@ -728,9 +766,9 @@ static func _flame(o: SolObjects, x: int) -> void:
 ##
 ## $B871 hands $B881 the hero's own place rather than a slot's, and the carry
 ## comes from the compare at $B864, so it is set here in the same order.
-static func strike(o: SolObjects, at: int) -> void:
-	o.z90 = o.hero_x                                    # $B871
-	o.z92 = o.hero_y
+static func strike(o: SolObjects, at: int, px: int, py: int) -> void:
+	o.z90 = px                                          # $B871
+	o.z92 = py
 	o.carry = 1 if at >= 0x10 else 0                    # $B864
 	_slash_into(o, at, LAST)
 	if at >= 0x10:

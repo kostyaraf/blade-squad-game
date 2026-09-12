@@ -156,6 +156,16 @@ var draw_mark := 0
 ## $B81E -- which reach of $B8F7 the animation has just asked to be struck
 ## with, or -1 for none.  $B862 empties it again on the same picture.
 var punch := -1
+## Where he stood when it asked.  $B834 jumps straight into $B862, which reads
+## $80..$83 there and then -- and $B7CE is reached from inside $9477, ahead of
+## the move at $94DB.  So the reach is laid out around the place the picture
+## started in, not around the place the step leaves him in.  While he stands
+## still the two are the same; while he is falling they are a step apart.
+var punch_x := 0
+var punch_y := 0
+## Where this picture found him, kept for the line above.
+var was_x := 0
+var was_y := 0
 ## $06 as it stood at the end of last frame -- masked, not raw.  $C88B works
 ## out what was newly pressed by comparing the pad against this, so a mask that
 ## blanked $06 makes a button that was never let go read as pressed again the
@@ -191,6 +201,8 @@ func place(px: int, py: int) -> void:
 ## counter moves on, and $C882 works out what was newly pressed.  Neither is
 ## inside $9477, so neither is skipped with it.
 func skip(pad: int) -> void:
+	was_x = x
+	was_y = y
 	clock = (clock + 1) & 0xFF
 	pad_held = pad
 
@@ -198,6 +210,8 @@ func skip(pad: int) -> void:
 ## $9477 -- one frame of him, start to finish.  `pad` is the controller as it
 ## stands; what was newly pressed is worked out here, the way $C882 does it.
 func step(pad: int) -> void:
+	was_x = x
+	was_y = y
 	# The frame counter the whole game shares has already moved on by the time
 	# the hero is asked to run: ice reads it, and reads it after the step.
 	clock = (clock + 1) & 0xFF
@@ -677,7 +691,9 @@ func _reel(id: int) -> void:
 	if id < SolSprites.loop.size():
 		var v: int = int(SolSprites.loop[id])
 		if (v & 0x80) == 0 and (v & 0x0F) == step_i:
-			punch = (v & 0x70) >> 1
+			punch = (v & 0x70) >> 1          # $B833
+			punch_x = was_x                  # $B871
+			punch_y = was_y
 
 
 ## $A2B5 -- a push up, unless this jump has already been spent and the button

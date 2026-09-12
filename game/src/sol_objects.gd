@@ -130,6 +130,7 @@ var cam_y := 0                      # $32:$33
 var hero_vx := 0                    # $05B6:$05B7
 var hero_face := 0                  # $05B2 -- bit 7 set means he looks left
 var z34 := 0                        # $34 -- how fast a carrying map drags down
+var z7c := 0                        # $7C -- which piece of rubble comes next
 var z75 := 0                        # $75 -- the height a lift keeps for the rest
 var z58 := 0                        # $58 -- how many are still on the ride
 var hero_suit := 0                  # $05C5 -- which suit is on
@@ -185,6 +186,7 @@ var _anims: Array
 var _anims3: Array
 var _anims1: Array
 var _hatch: PackedByteArray
+var _hatch2: PackedByteArray
 var _steps: PackedByteArray
 var _arctan: PackedByteArray
 var _born: PackedByteArray
@@ -215,6 +217,7 @@ func _init(lvl: SolLevel) -> void:
 	_anims3 = t["anims3"]
 	_anims1 = t["anims1"]
 	_hatch = PackedByteArray(t["hatch"])
+	_hatch2 = PackedByteArray(t["hatch2"])
 	_steps = PackedByteArray(t["steps"])
 	_arctan = PackedByteArray(t["arctan"])
 	var h: Dictionary = Nes._load_json("%s/sol/hits.json" % Nes.DATA)
@@ -722,6 +725,41 @@ func hatch_left(s: int, tpl: int) -> int:
 	return hatch(x[s] - 0x0100, y[s] + 0x0100, tpl)
 
 
+## $8C83 -- the other way of letting something out, and the only one that
+## counts upward: the free slot is looked for from nought to eleven, and the
+## nine bytes come from a table of their own.  Everything else about it is as
+## $AB10 has it.
+func hatch_up(px: int, py: int, tpl: int) -> int:
+	var f := -1
+	for i in range(0x0C):
+		if id[i] == 0:
+			f = i
+			break
+	if f < 0:
+		return 0xFF
+	x[f] = px & 0xFFFF
+	y[f] = py & 0xFFFF
+	id[f] = 0x80
+	mind[f] = _hatch2[tpl]
+	pic_lo[f] = _hatch2[tpl + 1]
+	pic_hi[f] = _hatch2[tpl + 2]
+	a[f] = _hatch2[tpl + 3]
+	b[f] = _hatch2[tpl + 4]
+	c[f] = _hatch2[tpl + 5]
+	d[f] = _hatch2[tpl + 6]
+	kind[f] = _hatch2[tpl + 7]
+	life[f] = _hatch2[tpl + 8]
+	carry = 1                           # $8CF5 -- which way the new one looks
+	_sbc(hero_x & 0xFF, x[f] & 0xFF)
+	face[f] = _sbc((hero_x >> 8) & 0xFF, (x[f] >> 8) & 0xFF)
+	frame[f] = 0
+	left[f] = 0
+	anim_a[f] = 0
+	anim_b[f] = 0
+	cool[f] = 0xFF                      # $8D0E
+	return f
+
+
 ## $810D -- face the hero, but only when he is a whole picture away or more;
 ## nearer than that the slot keeps what it had.  Answers the facing either way.
 func face_hero_far(s: int) -> int:
@@ -808,6 +846,33 @@ func smash_list(s: int, list: Array) -> int:
 		i += 2
 		smash(mx, my)
 	return 0xFF                         # $BF37
+
+
+## $B9CD -- the harder question the hero's own punch asks of the stage: not
+## "may this give way" but "is this worth punching at all".  A place gives way
+## only where what it stops is under twelve and its bottom two bits are two or
+## three, and nothing gives way at all on a picture the background still owes a
+## row or a column.  The answer is those two bits ($60), or a negative number
+## where nothing was broken.
+func break_wall(px: int, py: int) -> int:
+	if row_due != 0 or col_due != 0:
+		return -1                       # $B9D1
+	z90 = px & 0xFF00                   # $B9D6 -- the low bytes are dropped
+	z92 = py & 0xFF00
+	var m: int = level.raw_at(((px >> 8) & 0xFF) << 4, ((py >> 8) & 0xFF) << 4)
+	if m < 0:
+		return -1
+	var v: int = level.props[m] & 0x1F  # $B9E7
+	if v >= 0x0C:
+		return -1                       # $B9EB
+	z60 = v & 0x03                      # $B9F7
+	if z60 < 0x02:
+		return -1                       # $B9FB
+	if not level.whole(m):
+		return -1                       # $BA01
+	level.smash(m)                      # $BA0F
+	z5f0 = 0xFF                         # $BAEB
+	return z60
 
 
 func missed(m: int, done: bool) -> void:
