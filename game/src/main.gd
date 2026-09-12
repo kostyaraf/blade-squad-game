@@ -46,6 +46,7 @@ func _ready() -> void:
 	var sollive := ""
 	var solflow := ""
 	var solscript := ""
+	var solscene := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -78,6 +79,7 @@ func _ready() -> void:
 		elif a.begins_with("--sollive="): sollive = a.substr(10)
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
 		elif a.begins_with("--solscript="): solscript = a.substr(12)
+		elif a.begins_with("--solscene="): solscene = a.substr(11)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -92,6 +94,10 @@ func _ready() -> void:
 		return
 	if solscript != "":
 		_run_sol_script(solscript)
+		get_tree().quit()
+		return
+	if solscene != "":
+		await _run_sol_scene(solscene)
 		get_tree().quit()
 		return
 	if solflow != "":
@@ -893,6 +899,45 @@ func _run_sol_flow(path: String) -> void:
 ## console's memory as it stood the moment $93B5 was entered.  The engine seeds
 ## its own shadow from each in turn, runs the script once, and hands the two
 ## kilobytes back; what is compared is picked on the other side.
+## Э4.5 -- one screen of Solbrain that is not a stage, photographed.
+##
+## The spec is the name of the scene and where to write the picture; the names
+## are `data/sol/scenes.json`'s own.  The screen is built the way the cartridge
+## builds it -- a wiped board, then each of its screens laid on -- and handed
+## to the shader with the colours and the banks the cartridge had.
+func _run_sol_scene(spec: String) -> void:
+	var parts := spec.split(",")
+	var sc := SolScreen.make(parts[0])
+	var m: ShaderMaterial = bg.material
+	Nes.load_palette_table()
+	pal_tex = Nes.palette_texture(sc.palette)
+	map_tex = ImageTexture.create_from_image(sc.map_image)
+	m.set_shader_parameter("sheet", Nes.sheet("sol"))
+	m.set_shader_parameter("sheet_size", Nes.sheet("sol").get_size())
+	m.set_shader_parameter("map", map_tex)
+	m.set_shader_parameter("palette", pal_tex)
+	m.set_shader_parameter("map_size", Vector2(SolScreen.WIDE, SolScreen.TALL))
+	m.set_shader_parameter("banks", PackedInt32Array(sc.banks + sc.spr_banks))
+	m.set_shader_parameter("bands_on", true)
+	m.set_shader_parameter("band_at", sc.band_lines())
+	m.set_shader_parameter("band_bank", sc.band_banks())
+	m.set_shader_parameter("sprites_on", false)
+	m.set_shader_parameter("bar_on", false)
+	m.set_shader_parameter("split_at", 1000.0)
+	m.set_shader_parameter("clip_left", 0.0)
+	m.set_shader_parameter("view_top", 0.0)
+	m.set_shader_parameter("view_bottom", 240.0)
+	m.set_shader_parameter("scroll", Vector2(sc.scroll))
+	bg.z_index = -1
+	queue_redraw()
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	if parts.size() > 1:
+		get_viewport().get_texture().get_image().save_png(parts[1])
+	print("%s  %d bands  mirror %d  scroll %d,%d"
+			% [parts[0], sc.bands.size(), sc.mirror, sc.scroll.x, sc.scroll.y])
+
+
 func _run_sol_script(path: String) -> void:
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	var sc := SolScript.new()
@@ -1133,6 +1178,9 @@ func _apply() -> void:
 	m.set_shader_parameter("sheet_size", Nes.sheet(game).get_size())
 	m.set_shader_parameter("banks", PackedInt32Array(banks))
 	m.set_shader_parameter("sprites_on", false)
+	# Only a screen outside a level swaps the background's banks as the beam
+	# goes down; a level has the four it has.
+	m.set_shader_parameter("bands_on", false)
 	# A level is handed one place to stand in and keeps it the whole frame,
 	# and it draws the leftmost eight points like any other.
 	m.set_shader_parameter("split_at", 1000.0)

@@ -26,6 +26,18 @@ uniform vec2 sheet_size = vec2(1024.0, 512.0); // the sheet, in pixels
 uniform int banks[8];                          // the eight 1 KB banks: four for the
                                                // background, four for the sprites
 uniform float sheet_tiles_w = 128.0;
+
+// A screen outside a level -- the title, GAME OVER, the picking of a stage --
+// is drawn out of more than one set of tiles: the cartridge counts the lines
+// as the beam goes down and swaps the background's four banks part way, which
+// is how the title has its own letters under the mark.  `band_at` is the first
+// line of each band, in order, and `band_bank` its four banks; a band whose
+// first line is past the screen is not there.  With `bands_on` off nothing of
+// this is looked at and `banks` is the whole answer, which is what a level
+// wants.
+uniform bool bands_on = false;
+uniform int band_at[4];
+uniform int band_bank[16];
 uniform float view_top = 0.0;      // the lines the level owns
 uniform float view_bottom = 240.0;
 uniform bool sprites_on = false;
@@ -49,6 +61,20 @@ uniform float clip_left = 0.0;
 uniform sampler2D bar : filter_nearest;        // R = tile, G = palette
 uniform bool bar_on = false;
 uniform int bar_banks[4];
+
+// Which of the background's four banks stands on this line.
+int bg_bank(int which, int line) {
+    if (!bands_on) {
+        return banks[which];
+    }
+    int pick = 0;
+    for (int i = 1; i < 4; i++) {
+        if (band_at[i] <= line && band_at[i] > band_at[pick]) {
+            pick = i;
+        }
+    }
+    return band_bank[pick * 4 + which];
+}
 
 int tile_colour(int bank, int index, int px, int py) {
     int idx = bank * 64 + index;
@@ -85,7 +111,8 @@ void fragment() {
         int tile = int(m.r * 255.0 + 0.5);
         int pal = int(m.g * 255.0 + 0.5);
         ivec2 inner = ivec2(mod(world, 8.0));
-        bg_c = tile_colour(banks[tile / 64], tile % 64, inner.x, inner.y);
+        bg_c = tile_colour(bg_bank(tile / 64, int(FRAGCOORD.y)), tile % 64,
+                inner.x, inner.y);
         // Colour zero of every palette is the same backdrop colour, exactly as
         // the console wires it.
         int slot = bg_c == 0 ? 0 : pal * 4 + bg_c;
