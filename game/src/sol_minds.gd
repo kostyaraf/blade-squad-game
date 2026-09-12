@@ -80,7 +80,10 @@ static func _live(o: SolObjects, s: int, m: int) -> void:
 			_8e86(o, s)
 		0x0E:
 			_ac73(o, s)
-		0x21:
+		0x21, 0x2D:
+			# $9DE7 is $9E12 word for word -- the same preamble and the same
+			# sixteen-word table.  What tells them apart is read out of $0650
+			# inside the turns themselves ($9E92, $9EFC).
 			_9e12(o, s)
 		0x24:
 			_9d41(o, s)
@@ -148,6 +151,8 @@ static func _live(o: SolObjects, s: int, m: int) -> void:
 			_9975(o, s)
 		0x31:
 			_9588(o, s)
+		0x32:
+			SolStage.chain(o, s)            # $921C -> $C07E -> $86C8
 		0x0F:
 			_acb5(o, s, 0xFF)              # $ACB9
 		0x11:
@@ -272,6 +277,8 @@ static func _dead(o: SolObjects, s: int, m: int) -> void:
 			_9975(o, s)
 		0x31:
 			_9588(o, s)
+		0x32:
+			SolStage.chain(o, s)            # $921C -> $C07E -> $86C8
 		0x3F:
 			_pickup_dead(o, s)
 		_:

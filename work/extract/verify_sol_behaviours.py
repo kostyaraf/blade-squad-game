@@ -52,6 +52,17 @@ def spot(rows, ticks):
 def main():
     only = [int(a, 0) for a in sys.argv[1:] if not a.startswith('--')]
     places = [a.split('=')[1] for a in sys.argv[1:] if a.startswith('--place=')]
+    # --kinds=NN holds one behaviour still and sweeps $0690 instead: several
+    # of the numbers are whole families, and $3F is the largest of them.
+    ask = [a.split('=')[1] for a in sys.argv[1:] if a.startswith('--kinds=')]
+    ask = int(ask[0], 0) if ask else None
+    # A family's table is only as long as the cartridge wrote it; past its end
+    # the cartridge jumps into whatever follows, so how far to sweep and with
+    # what stride is asked for rather than guessed.
+    upto = [a.split('=')[1] for a in sys.argv[1:] if a.startswith('--upto=')]
+    upto = int(upto[0], 0) if upto else 0x3F
+    step = [a.split('=')[1] for a in sys.argv[1:] if a.startswith('--step=')]
+    step = int(step[0], 0) if step else 1
     tables = [0x00, 0x80]
     if '--live' in sys.argv:
         tables = [0x00]
@@ -86,8 +97,11 @@ def main():
             print('%-6s %s, slot %d from frame %d' % (label, way, slot, at))
             sys.stdout.flush()
             for top in tables:
-                for m in range(0x40):
-                    if only and m not in only:
+                jobs = ([(ask, k) for k in range(0, upto + 1, step)]
+                        if ask is not None
+                        else [(m, 0x00) for m in range(0x40)])
+                for m, kd in jobs:
+                    if only and (kd if ask is not None else m) not in only:
                         continue
                     total += 1
                     # The whole slot is written, not only the behaviour, so
@@ -95,7 +109,7 @@ def main():
                     put = [(0x0650 + slot, top | m),
                            (0x0610 + slot, 0x00), (0x0620 + slot, 0x00),
                            (0x0630 + slot, 0x00), (0x0640 + slot, 0x00),
-                           (0x0690 + slot, 0x00), (0x06A0 + slot, 0x00),
+                           (0x0690 + slot, kd), (0x06A0 + slot, 0x00),
                            (0x06B0 + slot, 0x00), (0x06C0 + slot, 0x00),
                            (0x06D0 + slot, 0x00), (0x06E0 + slot, 0x00),
                            (0x06F0 + slot, 0x08)]
@@ -136,19 +150,21 @@ def main():
                             where, kind = i, 'mark'
                             break
                     name = '%s $%02X' % ('dead' if top else 'live', m)
+                    if ask is not None:
+                        name = '%s/$%02X' % (name, kd)
                     if where is None:
-                        print('%-6s %-10s ok, %d frames' % (label, name, n))
+                        print('%-6s %-14s ok, %d frames' % (label, name, n))
                         sys.stdout.flush()
                         continue
                     if label in SCRIPTED:
                         known += 1
-                        print('%-6s %-10s %s differs on frame %d'
+                        print('%-6s %-14s %s differs on frame %d'
                               ' -- the stage has a script of its own'
                               % (label, name, kind, where))
                         sys.stdout.flush()
                         continue
                     bad += 1
-                    print('%-6s %-10s %s differs on frame %d'
+                    print('%-6s %-14s %s differs on frame %d'
                           % (label, name, kind, where))
                     if os.environ.get('BEH_DUMP'):
                         for i in range(max(at, where - 6), min(n, where + 2)):

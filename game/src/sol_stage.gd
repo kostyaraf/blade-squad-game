@@ -176,3 +176,68 @@ static func _85e8(o: SolObjects, s: int, n: int) -> void:
 	o.s_y[i] = ylo | (o._adc((o.y[s] >> 8) & 0xFF, 0x00) << 8)
 	SolShots.put(o, i, 0x8C)                # $8621
 	o.s_b[i] = 0xA0                         # $8626
+
+
+## $8782 -- how far below the head each link of the tail hangs, read by the
+## clock a half-step at a time and mirrored back up again.
+const TAIL := [0x00, 0x08, 0x10, 0x18, 0x18, 0x20, 0x20, 0x20,
+		0x20, 0x20, 0x20, 0x20, 0x18, 0x18, 0x10, 0x08]
+
+
+## $86C8 -- the tail.  $921C in bank 2 is the only mind that asks for it, and
+## it does not go through $8081: $C07E jumps straight at the first entry of the
+## table.  Link nought takes a step of its own; every other link is hung off
+## the head, a quarter turn further round for each, and the head's own heading
+## picks which of three pictures the whole tail wears.
+static func chain(o: SolObjects, s: int) -> void:
+	if o.kind[s] == 0x00:
+		_8748(o, s)                             # $870C
+		_872a(o, o.a[s], 0xE0)                  # $8723
+		_8712(o)
+		o.move(s)                               # $848D
+		return
+	o.face[s] = o.face[0]                       # $873E
+	o.y[s] = o.y[0]
+	o.x[s] = o.x[0]
+	var sp: int = o.a[0] & 0xF0                 # $86D9
+	o.carry = 1
+	o.a[s] = o._sbc(o.a[s], 0x04)               # $86E1
+	_872a(o, o.a[s], sp)                        # $86E9
+	_8712(o)                                    # $86EC
+	o.move(s)                                   # $848D
+	var p := 0x1E                               # $86F2
+	if o.a[0] < 0xD0:
+		p = 0x20
+		if o.a[0] < 0xB0:
+			p = 0x22
+	o.pic_lo[s] = p                             # $8708
+
+
+## $8748 -- the link is put where the head is, and a little below or above it.
+static func _8748(o: SolObjects, s: int) -> void:
+	var t: int = o.clock >> 1
+	var d: int = TAIL[t & 0x0F]
+	if (t & 0x10) != 0:
+		o.carry = 1                             # $8754
+		var lo: int = o._sbc(o.y[0] & 0xFF, d)
+		o.y[s] = lo | o._sbc((o.y[0] >> 8) & 0xFF, 0x00) << 8
+	else:
+		o.carry = 0                             # $8765
+		var lo2: int = o._adc(o.y[0] & 0xFF, d)
+		o.y[s] = lo2 | o._adc((o.y[0] >> 8) & 0xFF, 0x00) << 8
+	o.face[s] = o.face[0]                       # $8773
+	o.x[s] = o.x[0]
+
+
+## $872A -- the step, four times over: $C07B is the same $8FF6 the rest of the
+## game reads, and both halves are shifted up twice after it.
+static func _872a(o: SolObjects, dir: int, speed: int) -> void:
+	o.spin(dir, speed)                          # $C07B
+	o.z90 = (o.z90 << 2) & 0xFFFF               # $872D
+	o.z92 = (o.z92 << 2) & 0xFFFF               # $8735
+
+
+## $8712 -- and the step is taken over as this picture's own.
+static func _8712(o: SolObjects) -> void:
+	o.z50 = o.z90
+	o.z52 = o.z92
