@@ -210,20 +210,24 @@ func _run_sol_play(path: String) -> void:
 	print("\n".join(out))
 
 
-## A look at the whole live Solbrain picture: --sollive=BUTTONS,FRAMES, where
-## BUTTONS is one pad byte in hex held the whole way.  What is printed is how
+## A look at the whole live Solbrain picture: --sollive=BUTTONS,FRAMES[,LETTERS],
+## where BUTTONS is one pad byte in hex held the whole way and LETTERS, when it
+## is given, is a set of the three letters put straight into $05A4 so the
+## satellite is handed over without having to be walked to.  What is printed is how
 ## much of the frame is actually filled -- how many object slots are alive, how
 ## many shots and how many things the satellite has thrown, and how many
 ## sprites the table came out holding.  It is a smoke test, not a stand: the
 ## stands compare against the cartridge, this only says the parts are wired.
 func _run_sol_live(spec: String, st: int) -> void:
 	var f := spec.split(",")
-	var pad := int("0x%s" % f[0])
+	var pad: int = f[0].hex_to_int()
 	var n: int = int(f[1])
 	pads = [Pad.player_one(), Pad.player_two()]
 	pads[0].held = pad
 	_load("sol", st, 0)
 	_start_sol()
+	if f.size() > 2:
+		sol_pool.letters = f[2].hex_to_int()
 	var slots := 0
 	var shot := 0
 	var wep := 0
