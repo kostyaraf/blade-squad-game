@@ -254,6 +254,15 @@ func _poke_pool(pool: SolObjects, a: int, v: int) -> void:
 		0x06D0: pool.frame[s] = v
 		0x06E0: pool.cool[s] = v
 		0x06F0: pool.life[s] = v
+		# $0780 -- the other pool, which the shot stand writes by hand
+		0x0780: pool.s_kind[s] = v
+		0x0790: pool.s_x[s] = (pool.s_x[s] & 0xFF00) | v
+		0x07A0: pool.s_x[s] = (pool.s_x[s] & 0x00FF) | (v << 8)
+		0x07B0: pool.s_y[s] = (pool.s_y[s] & 0xFF00) | v
+		0x07C0: pool.s_y[s] = (pool.s_y[s] & 0x00FF) | (v << 8)
+		0x07D0: pool.s_a[s] = v
+		0x07E0: pool.s_b[s] = v
+		0x07F0: pool.s_life[s] = v
 
 
 ## Э4.2 -- who is in the sixteen slots and where, held against the cartridge
@@ -282,6 +291,7 @@ func _run_sol_objects(path: String) -> void:
 	pool.z7c = int(cfg["z7c"]) if cfg.has("z7c") else 0
 	pool.z58 = int(cfg["z58"]) if cfg.has("z58") else 0
 	pool.z26 = int(cfg["z26"]) if cfg.has("z26") else 0
+	pool.z399 = int(cfg["z399"]) if cfg.has("z399") else 0
 	pool.letters = int(cfg["letters"]) if cfg.has("letters") else 0
 	pool.hero_bonus = int(cfg["bonus"]) if cfg.has("bonus") else 0
 	pool.z5ab = int(cfg["z5ab"]) if cfg.has("z5ab") else 0
@@ -444,6 +454,14 @@ func _run_sol_objects(path: String) -> void:
 		# the whole byte of it, not only the bit that says which way he looks.
 		p.face = pool.hero_face
 		SolShots.step(pool)                              # $CDDA
+		# $B984 -- the shot that turns the world over writes his own numbers,
+		# so they are taken back out of the pool once the shots have run.
+		p.flags = pool.hero_flags
+		p.rise = pool.hero_rise - 0x10000 \
+				if pool.hero_rise >= 0x8000 else pool.hero_rise
+		p.jump = pool.hero_jump
+		p.gravity = pool.hero_grav
+		p.hold_max = pool.hero_hold_max
 		pool.step(view.x, view.y)                        # $CDDD
 		var row := PackedStringArray()
 		for i in range(SolObjects.SLOTS):
@@ -515,6 +533,10 @@ func _hero_into(pool: SolObjects, p: SolPlayer) -> void:
 	pool.hero_fuel = p.fuel
 	pool.hero_pose = p.pose
 	pool.hero_step_t = p.step_t
+	pool.hero_rise = p.rise & 0xFFFF
+	pool.hero_jump = p.jump
+	pool.hero_grav = p.gravity
+	pool.hero_hold_max = p.hold_max
 	pool.hero_hurt = p.hurt
 	pool.hero_shield = p.shield
 	pool.z5ab = p.burst

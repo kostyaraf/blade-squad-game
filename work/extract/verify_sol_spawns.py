@@ -153,6 +153,10 @@ def seed(base):
     cfg['z7c'] = base[0x7C]
     cfg['z58'] = base[0x58]
     cfg['z26'] = base[0x26]
+    # $0399 -- the first of the three numbers of the tile set the screen is
+    # next owed.  $B966 is the only thing that reads it back, and it does so to
+    # ask whether the world is already the other way up.
+    cfg['z399'] = base[0x0399]
     cfg['letters'] = base[0x05C4]
     cfg['z5ab'] = base[0x05AB]
     cfg['z5fa'] = base[0x05FA]

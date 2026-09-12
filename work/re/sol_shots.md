@@ -64,7 +64,8 @@ twenty-three of them straight to `$BD4F`, which simply frees the slot.
 | `$BCD1` | spread `$07E0` into `$92:$93` | `down` |
 | `$BCC0` | both | `_spread` |
 | `$BC77` | `$BCC0` then `$BC7A` | `drift` |
-| `$BCA1` | `$90..$93 += the slot's own place` | inside `under` |
+| `$BCA1` | `$90..$93 += the slot's own place` | `under_at` |
+| `$B8E8` | `$BCA1` then the map there, with the offset already in `$90`/`$92` | `under_at` |
 | `$BCFA` | kill when the width past the view reaches `$10` pages | `on_screen_x` |
 | `$BD55` | the same for the height | `on_screen_y` |
 | `$BCF7` | height then width | `on_screen` |
@@ -78,12 +79,24 @@ twenty-three of them straight to `$BD4F`, which simply frees the slot.
 | `$A1C2` | the new shot starts where the thing is | `place_at` |
 | `$A1D7` | ...plus an offset, with the caller's carry | `place` |
 | `$8FF6` (bank 12) | an angle byte into `$90:$91` and `$92:$93` | `SolObjects.aim` |
+| `$BD69` | the width again, but half a screen left of the view and two to the right of it | `on_screen_wide` |
+| `$B5A6` | `$07E0 += 4`, held at `$7F`, then `$BC77` and `$BCDF`; answers whether the slot is still there | `_gain_step` |
+| `$B832` | `$07E0 += 2` and the ring's own step for it (`$C078` is `$8FF6`) | `_ring_step` |
+| `$B822` | `$BCC3` over the ring's step along, then `$BC7A`, `$BD55`, `$BD69` | `_ring_move` |
+| `$B6B1` | half the speed the other way about; the carry says whether four is left | `_bounce_off` |
+| `$BC54` | the packed step: top nibble along, bottom nibble shifted up for down | `_nibble_step` |
 
 **`$BCF7` is not a pair of early returns.**  `$BD64 BCS $BD4F` is a branch, and
 `$BD4F`'s own `RTS` lands back inside `$BCFA`, so the width is still asked even
 after the height has freed the slot.  `on_screen` therefore evaluates both.
 
-## The behaviours read so far
+## The behaviours, all forty eight of them
+
+The flying table is forty eight entries wide and the burning-out one the same,
+but the two lean on the same handful of routines: twenty three of the
+burning-out entries are `$BD4F`, which simply lets the slot go, and most of the
+rest point straight at the flying entry of the same number.  Read out of the
+ROM they come to twenty six routines in all.
 
 | index | address | what it is |
 |---|---|---|
@@ -92,17 +105,59 @@ after the height has freed the slot.  `on_screen` therefore evaluates both.
 | `03` | `$B8A1` | a bubble: rises, wanders, and lives only while the map around it is still water |
 | `04` | `$BB9E` | the same packed step, until the map it reaches is solid — then it breaks into four (`$BBE6` with `$EE`, `$F9`, `$07`, `$12`) and burns out |
 | `05` | `$BB5B` | a thrown thing: keeps its step along, gains two a picture downwards, `$7F` when the byte would turn over |
+| `06` | `$BA5C` | it crawls along the wall: four ways tried in an order of its own, the first open one taken |
 | `07` | `$BA22` | one of a ring: it hangs where it is while slot **zero** is still on turn `$04` with under three pictures of its walk gone, and they all fly off together the moment that turn is over |
+| `08`, `09` | `$B953` | the one that turns the world over — see below |
 | `0A` | `$B8F5` | it counts `$07E0` down and is gone when the count runs out |
 | `0B` | `$B918` | the plainest: both bytes are the step |
+| `0C`, `26` | `$B896`, `$BC47` | `$B5A6` alone: four more downwards a picture, held at `$7F`, then the plain move |
+| `0D`, `10`, `11` | `$B7F2`, `$B86F`, `$B87A` | `$B81F`: two further round the ring every picture, the step down out of the ring and the step along out of `$07D0` |
+| `0E`, `0F`, `13`, `14`, `18`, `19` | `$B859`… | it sits still until its count is out and then takes up `$90`, `$91`, `$95`, `$96`, `$9A`, `$9B` |
+| `12`, `15`, `16` | `$B788`, `$B7A9`, `$B7B4` | `$B7FD`: the same ring, lifted a tile and a half |
+| `17`, `1A`, `1B` | `$B7BD`, `$B7DE`, `$B7E9` | `$B80E`: the same ring, dropped by the same |
 | `1C` | `$B638` | a plain falling shot: half a tile a picture, gone the moment the map below is solid |
+| `1D` | `$B760` | it sinks a sixteenth of a tile a picture, and goes in a puff where the map under it is solid |
+| `1E` | `$B5C3` | the borer — see below |
+| `1F` | `$B618` | a whole tile down a picture and nothing else |
+| `20` | `$B740` | `$B5A6` until the map under it is solid, and then the puff |
+| `21`, `22` | `$B721`, `$B70F` | along by `$07D0`, the view asked first |
+| `23` | `$B65B` | the bouncing one: `$B6B1` halves its speed and turns it round, and under four it gives up |
+| `24` | `$B6CB` | it waits its count out and then sinks by `$07D0` |
+| `25` | `$B6F0` | the same wait, and then it travels along |
+| `27` | `$B564` | the carried one: `$07D0` names a slot of the **object** pool and that slot's `$0610`/`$0620` are its step |
+| `28` | `$B506` | thrown out sideways by the down byte laid on its side, and when the count is out that byte starts going two down a picture with a floor at `$80` |
+| `29`, `2D` | `$B4CC`, `$B4A2` | along by `$07D0`, the move first |
+| `2A`, `2B` | `$B4BC`, `$B4AF` | the plain move, as `$0B` |
+| `2C` | `$BD0E` | it sinks and turns as it goes, one step of four every fourth picture, skipping the fourth |
+| `2E` | `$B451` | along by `$07D0`, and half a tile upwards a picture where `$34` says the map drags |
 | `2F` | `$B3E6` | let go from the top of the picture: it sinks, leans towards the hero while its count runs, and on the stage that scrolls down does not lean at all |
 
-Of the burning-out table, `04` (`$BB7B`) and `0A` (`$B8F5`) count down the same
-way, and `03` is the bubble again.
+Of the burning-out table, `1D`, `20`, `23` and `2F` go to `$B752` — a `$BD`
+left where the shot stood and the slot given up — and the rest are either
+`$BD4F` or the flying routine of the same number.
 
-Everything else is counted, not guessed: `SolObjects.missed_shot` records the
-index and the stand prints `shot behaviours not read yet: <index> x<count>`.
+### `$B953` — the one that turns the world over
+
+While the map lets it through it sinks by `$07E0` and nothing more.  Where it
+stops, and only while `$26` is nought or six, up becomes down: `$05CB` bit 7
+turns, `$BA0A` turns the fall at `$05AD:$05AE` round with it — taking the
+borrow `$B966`'s own `CMP #$05` left standing — and the three numbers a jump is
+made of (`$05E8`, `$05E9`, `$05EA`) are rewritten to `$00`, `$04`, `$06`.  The
+tile set asked for lands in `$0399:$039B` out of the table at `$B9EA`, and
+`$0399` is read back next time to ask whether the world is already the other
+way up.  Either way a `$87` is left where it stopped.
+
+The four rolls at `$B987` under a `AND #$04` come out as bit 7 of the new flag
+and nothing else, so it is the flag itself that picks the row of the table.
+
+### `$B5C3` — the borer
+
+It sinks `$60` a picture and breaks whatever it passes through, and it does the
+breaking by hand: the high bytes of its place are written into slot **thirteen**
+(`$BD` and `$DD`), that slot's `$061D` is cleared, and `$A93C` is called with
+one list of one cell (`$BF43` = `00 00 80`).  Slot thirteen's own numbers are
+trodden on to do it.  Where the map it has reached is solid it is gone and a
+`$24` is left standing there.
 
 ## Where shots come from
 
@@ -155,9 +210,12 @@ wrong was what kept the last object script failing.
 
 ## What is still owed
 
-* the remaining 44 flying behaviours and 23 burning-out ones, as the stands ask
-  for them;
 * `$88F6` / `$8918` — a shot against an object, not the hero;
 * the hero's own pool at `$0700` (`$869C`), which is a separate sixteen slots;
-* bank 6's entry `$79` (from `$A5BF` in bank 3), and the four entries `$86C8`,
-  `$8269`, `$8180`, `$80D3` that no known call site names.
+* bank 6's entry `$79` (from `$A5BF` in bank 3), and the three entries
+  `$8269`, `$8180`, `$80D3` that no known call site names (`$86C8` is the boss
+  tail and is read).
+
+Both tables themselves are now read out of the ROM whole: the stand
+`work/extract/verify_sol_shotkinds.py` pokes each of the forty eight behaviours
+into a slot of its own, in both tables, and answers **0 of 96**.

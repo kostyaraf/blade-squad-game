@@ -122,6 +122,12 @@ var noise := 0                      # $0E -- the hash of the RAM $CD57 stirs
 var six := 0                        # $06 -- the other stirred byte
 var z7f := 0                        # $7F -- how far the stage's own script is
 var z26 := 0                        # $26 -- what the screen is still owed
+## $0399:$039B -- the three numbers of the tile set the screen is next owed.
+## Only the first is ever read back ($B966 asks whether the world is already
+## the other way up), so only the first has anything leaning on it.
+var z399 := 0
+var z39a := 0
+var z39b := 0
 var push := 0                       # $05A8:$05A9 -- what a belt does to the hero
 var wants := 0                      # $05F7 -- what an object asks the hero for
 var score := 0                      # $05FD..$05FF
@@ -143,6 +149,10 @@ var hero_fuel := 0                  # $05AF -- what the wire has left
 var hero_pose := 0                  # $05B5 -- the walk the state itself asks
 var hero_step_t := 0                # $05A4 -- how far into that walk he is
 var z5ab := 0                       # $05AB -- the burst of the doubled weapon
+var hero_rise := 0                  # $05AD:$05AE -- the fall he has built up
+var hero_jump := 0                  # $05E8 -- and the three numbers a jump
+var hero_grav := 0                  # $05E9    is made of, which the one that
+var hero_hold_max := 0              # $05EA    turns the world over rewrites
 var hero_hurt := 0                  # $05C2 -- frames of being left alone
 var hero_shield := 0                # $05C8
 var z5fa := 0                       # $05FA -- set while the stage is ending
