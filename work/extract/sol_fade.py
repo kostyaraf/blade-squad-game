@@ -35,18 +35,29 @@ BRIGHT_N = 64
 COLOURS = 0x8645          # sixteen hues by eight brightnesses
 COLOURS_N = 128
 
+## Not every table is in bank ten.  The title ($D1D1) and the three screens of
+## TEST MODE ($D7BA, $D87B) name tables that stand in the fixed bank, and a
+## screen that takes only some of a table leaves the rest as the table before
+## it wrote them -- so the one before has to be here as well.
+FIXED_BANK = 14
+FIXED = (0xD485, 0xD499)
+
 
 def main():
     with open(ROM_SOL, 'rb') as f:
         prg = f.read()[16:]
     lo = prg[BANK * 0x2000:(BANK + 1) * 0x2000]
+    fixed = prg[FIXED_BANK * 0x2000:(FIXED_BANK + 2) * 0x2000]
 
     def at(a, n):
         return list(lo[a - 0x8000:a - 0x8000 + n])
 
+    tables = {'%04X' % a: at(a, 32) for a in range(FIRST, LAST, 32)}
+    for a in FIXED:
+        tables['%04X' % a] = list(fixed[a - 0xC000:a - 0xC000 + 32])
+
     data = {
-        'tables': {'%04X' % a: at(a, 32)
-                   for a in range(FIRST, LAST, 32)},
+        'tables': tables,
         'bright': at(BRIGHT, BRIGHT_N),
         'colours': at(COLOURS, COLOURS_N),
     }

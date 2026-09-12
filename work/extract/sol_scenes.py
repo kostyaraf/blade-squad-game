@@ -53,6 +53,7 @@ MODES = (
     ('best', 0x0E),         # $D6CA -- BEST 5, the five high scores
     ('test', 0x24),         # $D79F -- TEST MODE, the maker's own menu
     ('bgm', 0x2A),          # $D863 -- BGM TEST
+    ('sound', 0x33),       # $D8C7 -- the sound test
     ('over', 0x14),         # $D974 -- GAME OVER
     ('cleared', 0x1B),      # $E09C -- AREA x CLEARED
     ('staff', 0x4E),        # $E3E7 -- the names at the end

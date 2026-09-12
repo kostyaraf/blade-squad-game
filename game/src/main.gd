@@ -1098,7 +1098,18 @@ func _run_sol_boot(spec: String) -> void:
 		held &= ~int(up.get(i, 0))
 		sol_pad_edge = held & ~sol_flow_was
 		sol_flow_was = held
+		# $06 -- what is held, which the maker's code on the title reads as
+		# well as what went down this turn.  A walk has no keyboard behind it,
+		# so the pad itself is written.
+		pads[0].held = held
+		pads[0].pressed = sol_pad_edge
 		sol_flow.step(self)
+		# The picture is drawn every turn in the game, and it is the drawing
+		# that hands a screen its own thirty two ($C6E9 with X = $1F).  A walk
+		# that only draws now and then would leave the colours of a screen it
+		# never drew standing when the next screen takes only some of them.
+		if sol_flow.screen != "":
+			_sol_screen_now()
 		if sol_flow.mode != was:
 			was = sol_flow.mode
 			print("%d %02X %s" % [i, was, sol_flow.screen])
@@ -1629,6 +1640,13 @@ func _sol_flow_state() -> Dictionary:
 		"0750": Array(sol_flow.z0750),
 		"0760": Array(sol_flow.z0760),
 		"mark": [t.oam[4], t.oam[5], t.oam[6], t.oam[7]],
+		# TEST MODE's own: the cursor is the first sprite and not the fifth,
+		# the number under test is the second pair of kilobytes ($41), and
+		# the screen that dying returns to is $0D.
+		"cur": [t.oam[0], t.oam[1], t.oam[2], t.oam[3]],
+		"2e": sol_flow.z2e, "59": sol_flow.z59, "0d": sol_flow.z0d,
+		"41": (int(sol_flow.chr[2]) if sol_flow.chr.size() > 2 else 0),
+		"stage": sol_flow.stage,
 		"names": names, "scores": scores,
 		"lives": sol_flow.lives, "score": sol_flow.score,
 		"screen": sol_flow.screen,

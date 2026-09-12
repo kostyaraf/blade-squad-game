@@ -122,6 +122,29 @@ func full() -> void:
 	run()
 
 
+## $C6E9 -- a table named and so many of its bytes put straight into the
+## thirty two.  $F861 sets the pace to eight, $F83D puts every level back to
+## nought and writes out the table that was standing, and only then are the
+## first `n` bytes of the new one copied raw over that.  So a mode that names
+## fewer than thirty two does not leave the rest as they looked: it leaves
+## them as the table before it, written out through the walk -- which for a
+## screen that copied its own raw is not the same thing at all.
+##
+## $C711 then writes the new table's first byte into every fourth of the
+## thirty two, which is the backdrop the console shows behind everything.
+func take(at: int, n: int) -> void:
+	for i in range(8):
+		level[i] = 0                      # $F83D
+	at_pace(8)                            # $F861
+	ask(ONCE, ONCE)
+	run()                                 # $F812 -- the table that was standing
+	name_table(at)                        # $C6FC -- $20:$21 on the new one
+	for i in range(n):                    # $C709
+		out[i] = table[i]
+	for i in range(0, 32, 4):             # $C716 -- the loop leaves Y at $FF
+		out[i] = table[0]                 # and the INY makes it nought again
+
+
 ## $F806 -- one picture, which $CA9A calls.  A walk only steps every `pace`
 ## pictures; between them nothing happens at all.
 func tick() -> void:

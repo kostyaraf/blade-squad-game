@@ -40,8 +40,18 @@ const PICK := 0x19          # $DAE3 -- the stage picked, on the way in
 const CHOSEN := 0x1A        # $DBAE -- STAGE SELECT, the five and the one
 const AREA := 0x32          # $DB4A -- the mark of the one picked flashed up
 const RAISE := 0x1D         # $E520 -- raise the stage named in $55
-const ASK := 0x24           # $D79F -- CONTINUE?
-const ASKING := 0x25        # $D7C2 -- and what waits there
+## $D79F -- TEST MODE, the maker's own menu, opened by sixteen buttons in a row
+## on the title.  Its nine lines are the two tests and seven stages, and those
+## seven are the only door in the game to the rooms the bosses stand in.
+const TEST_LAY := 0x24      # $D79F -- the menu drawn
+const TEST_MENU := 0x25     # $D7C2 -- and walked
+const TEST_BACK := 0x26     # $D842 -- straight back to the menu
+const BGM := 0x2A           # $D863 -- BGM TEST drawn
+const BGM_WAIT := 0x2B      # $D880 -- and walked
+const SOUND := 0x33         # $D8C7 -- the sound test drawn
+const SOUND_WAIT := 0x34    # $D8E4 -- and walked
+## $CA7D..$CA91 and $D930 -- a stage named and asked for, and nothing else.
+const STAGE_STUB := [0x30, 0x41, 0x42, 0x48, 0x49, 0x4A, 0x4B]
 const RIDE := 0x2C          # $E9D2 -- the view lifted before he arrives
 const RIDING := 0x2D        # $E9E3 -- and the wait while it settles
 ## $CC33 -- the sixteen the sprites are drawn in while he arrives.  They are
@@ -75,6 +85,11 @@ const INTO := 0x5B          # $D45C -- and in he goes
 const CODE := [0x80, 0x80, 0x80, 0x80, 0x40, 0x40, 0x40, 0x40,
 		0x80, 0x40, 0x80, 0x40, 0x80, 0x40, 0x80, 0x40]
 
+## $D1D1 -- the table the title's twenty colours are copied out of.  It is
+## named here and not only drawn, because the screen after it takes fewer than
+## thirty two and what it leaves alone is this table written out ($C6E9).
+const TITLE_TABLE := 0xD499
+
 ## $D44B -- the change itself: how many pictures each drawing of him is held
 ## for and which drawing it is, to a byte with bit seven set.  Past the end the
 ## last drawing is left standing and shown every other picture.
@@ -106,9 +121,10 @@ const RIDE_WAIT := 0x41
 ## $CCCF and $EA02 -- and how far it is walked back each of them.
 const RIDE_STEP := 0x0080
 
-## $97BC and $97C0 -- where a death with no try left goes.  $0D is set the
-## first time CONTINUE is offered and is what decides between the two.
-const DEATH_ASK := ASK
+## $97BC and $97C0 -- where a death with no try left goes.  $0D is set when
+## TEST MODE is drawn and is what decides between the two: once the maker's own
+## menu has been opened, dying goes back to it.
+const DEATH_ASK := TEST_LAY
 const DEATH_OVER := OVER
 
 ## $D6CA and $D77E -- the five high scores, shown and then waited on; $DA02 --
@@ -253,7 +269,7 @@ func step(host) -> void:
 		CHOOSE:
 			_choose()
 		TITLE:
-			_title()
+			_title(host)
 		TITLE_WAIT:
 			_title_wait(host)
 		TALE_HOLD, TALE_HOLD2:
@@ -292,10 +308,22 @@ func step(host) -> void:
 			_chosen(host)
 		AREA:
 			_area(host)
-		ASK:
-			_ask()
-		ASKING:
-			_asking(host)
+		TEST_LAY:
+			_test_lay(host)
+		TEST_MENU:
+			_test_menu(host)
+		TEST_BACK:
+			mode = TEST_LAY                       # $D842
+		BGM:
+			_test_draw(host, true)
+		BGM_WAIT:
+			_test_wait(host, true)
+		SOUND:
+			_test_draw(host, false)
+		SOUND_WAIT:
+			_test_wait(host, false)
+		0x30, 0x41, 0x42, 0x48, 0x49, 0x4A, 0x4B:
+			_test_stage()
 		OVER:
 			_over(host)
 		OVER_WAIT:
@@ -345,13 +373,15 @@ func _choose() -> void:
 ## kilobytes it is drawn out of, draws screen $0A and hands the colours over;
 ## screen $3B is the words under the mark.  Then the game is put back to the
 ## start: no stage, no tries spent, the plain suit.
-func _title() -> void:
+func _title(host) -> void:
+	_no_sprites(host)                             # $D1BD -- $C5C9, $C618 $0C
 	_screen("title", 0x04, 0x06)                  # $D1BD -- $C925 A=4 Y=6
 	# $C6E9 -- the title's colours are written straight into $0100 out of a
 	# table of the mode's own, and with them the pace of eight and every level
 	# put back to nought.  Whoever draws hands the scene's own thirty two over,
 	# because they are that table written out.
 	pal_direct = true
+	fade.name_table(SolFlow.TITLE_TABLE)          # $D1D1 -- $20:$21 on it
 	fade.full()
 	z7d = 0x13                                    # $D1D5
 	mode = TITLE_WAIT                             # $D1A5
@@ -411,8 +441,8 @@ func _code(host) -> void:
 	if z58 != 0x10:                               # $D23B
 		return
 	noise = 0x11                                  # $D23F
-	mode = ASK                                    # $D243 -- TEST MODE
-	z05a0 = ASK
+	mode = TEST_LAY                               # $D243 -- TEST MODE
+	z05a0 = TEST_LAY
 	z7d = 0
 	z58 = 0
 
@@ -1013,34 +1043,118 @@ func _area(host) -> void:
 		SolSprites.plain(p, 0x00, 0x80, 0xB0, t)
 
 
-## $D79F, mode $24 -- CONTINUE?, and $D7C2, mode $25 -- waiting on it.  The
-## letters are not ported; what is kept is that the offer is remembered in $0D,
-## so a second death with no tries left ends the game instead of asking again.
-func _ask() -> void:
-	z0d = 0x19                                    # $D7A5
-	z2e = 0                                       # $D7AF
-	z59 = (z59 + 1) & 0xFF                        # $D7B3
+## $D79F, modes $10, $11 and $24 -- TEST MODE laid out: the picture blanked,
+## the four kilobytes it is drawn out of taken, screen $19 drawn and twenty
+## colours of the mode's own written straight in.  $0D is set here, and dying
+## with no try left reads it: once the menu has been opened, a death goes back
+## to it instead of to GAME OVER.
+func _test_lay(host) -> void:
+	# $D79F -- $C5C9, which writes the thirty two black and then puts every
+	# one of the sixty four sprites out of the picture.  The black does not
+	# stand: $C6E9 below writes the table that was standing back over it.
+	_no_sprites(host)                             # $C5CF -- $C618 with $0C
+	_screen("test", 0x00, 0x02)                   # $D7A2 -- $D81F, $D7A9
+	z0d = SolTest.screen()                        # $D7A5, which dying reads
+	z2e = 0                                       # $D7AF -- $DAD8
 	z4c = 0
-	mode = ASKING
+	z4d = 0
+	z4e = 0
+	z4f = 0
+	mode = TEST_MENU                              # $D7B1
+	z59 = (z59 + 1) & 0xFF                        # $D7B3
+	# $D7B7 -- $C6E9 with X = $13: twenty out of the table at $D485 and the
+	# twenty first as the backdrop, so nine of the thirty two are left as the
+	# title wrote them.  The screen's own are not taken.
+	pal_direct = false
+	fade.take(SolTest.table(), SolTest.menu_n())
+	z7d = 0                                       # $D7BC -- $E105
 
 
-func _asking(host) -> void:
-	var pad: int = host.flow_pad_new()
-	if (pad & Pad.SELECT) != 0:                   # $D7DF
-		z4c += 1                                  # $D7E9
-		if z4c >= 0x09:
-			z4c = 0                               # $D7F1
+## $D7C2, mode $25 -- the menu walked.  SELECT steps the cursor down the nine
+## lines and round again, START takes the line it stands on.
+func _test_menu(host) -> void:
+	var t = host.flow_table()
+	t.oam[0] = 0xF7                               # $D7C2 -- the cursor away
+	var pad: int = host.flow_pad_new()            # $D7C7 -- $C882
+	if (pad & Pad.START) != 0:                    # $D7CA
+		# $D7D0 -- $C5C9, which is not only the thirty two written black:
+		# $C5DA wipes both name tables as well, so the board stands empty
+		# until whatever the line leads to lays its own.
+		fade.blank()
+		screen = ""
+		mode = SolTest.goes(z4c)                  # $D7D8 -- $D816
+	elif (pad & Pad.SELECT) != 0:                 # $D7DF
+		noise2 = 0x02                             # $D7E5 -- $F1
+		z4c += 1
+		if z4c >= SolTest.lines():                # $D7ED
+			z4c = 0
+	# $D7F5 -- and the cursor put back, on the line it now stands on.  It is
+	# put back even on the turn the line was taken.
+	t.oam[0] = SolTest.cursor_y(z4c)
+	t.oam[3] = SolTest.cursor_x()
+	t.oam[1] = SolTest.cursor_tile()
+	t.oam[2] = 0x00
+
+
+## $CA7D..$CA91 and $D930, modes $30, $41, $42 and $48..$4B -- a stage named
+## and asked for.  Seven of the nine lines of the menu are nothing else.
+func _test_stage() -> void:
+	stage = SolTest.stage_of(mode)                # $CA91 -- $55
+	mode = RAISE                                  # $1D
+
+
+## $D847 -- the number a test stands on, written into the board as two digits,
+## and the same number taken as the second pair of kilobytes the screen is
+## drawn out of.
+func _test_number(host) -> void:
+	var n: int = z4c & 0x7F
+	_chr(chr[0], n)                               # $D84B -- $41
+	var at: int = SolTest.number_at()
+	host.flow_poke(at, SolOver.digits(n / 10)[5])
+	host.flow_poke(at + 1, SolOver.digits(n % 10)[5])
+
+
+## $D863 and $D8C7, modes $2A and $33 -- the two tests drawn: BGM TEST on
+## screen $1B and the sound test on screen $2F.
+func _test_draw(host, bgm: bool) -> void:
+	_no_sprites(host)                             # $D863 -- $C5C9
+	_screen("bgm" if bgm else "sound", 0x00, 0x02)
+	z2e = 0                                       # $DAD8
+	z4c = 0
+	z4d = 0
+	z4e = 0
+	z4f = 0
+	_test_number(host)                            # $D847
+	mode = (mode + 1) & 0xFF                      # $D875
+	# $D876 -- $C6E9 with X = $0F: sixteen out of the same table and the
+	# seventeenth as the backdrop.
+	pal_direct = false
+	fade.take(SolTest.table(), SolTest.test_n())
+
+
+## $D880 and $D8E4, modes $2B and $34 -- a test walked.  A and B walk the
+## number, SELECT asks for what it names, START goes back to the menu.
+func _test_wait(host, bgm: bool) -> void:
+	var pad: int = host.flow_pad_new()            # $D883 -- $C882
+	if (pad & Pad.START) != 0:
+		mode = TEST_LAY                           # $D889
 		return
-	if (pad & Pad.START) == 0:
-		return
-	# $D7D8 -- what each of the nine lines on the screen leads to.  Only the
-	# first is ported: the game is taken up again from the stage it was left
-	# in, with the tries put back.
-	if z4c == 0:
-		lives = 0x02
-		mode = RAISE
-		return
-	stuck = ASKING
+	if (pad & (Pad.A | Pad.B)) != 0:              # $D88E
+		if (pad & Pad.A) != 0:
+			z4c = (z4c + 1) & 0xFF                # $D896
+		else:
+			z4c = (z4c - 1) & 0xFF                # $D89B -- $FF goes round
+		if z4c >= (SolTest.bgm_n() if bgm else SolTest.sound_n()):
+			z4c = 0                               # $D8A3
+		_screen("bgm" if bgm else "sound", 0x00, 0x02)   # $D8A7 -- $C5C9
+		_test_number(host)
+		pal_direct = false                        # $D8B2 -- $C6E9 X = $0F
+		fade.take(SolTest.table(), SolTest.test_n())
+	if (pad & Pad.SELECT) != 0:                   # $D8BC
+		if bgm:
+			noise = z4c                           # $D8C2 -- $F0
+		else:
+			noise2 = z4c                          # $D926 -- $F1
 
 
 ## $D974, mode $14 -- no tries left.  The screen is drawn, the two counts are

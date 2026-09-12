@@ -41,6 +41,7 @@ ALLOW = {
     'staff': 0,
     'test': 0,
     'bgm': 100,         # the two digits of the tune being counted
+    'sound': 100,       # and the two of the sound being counted
     'over': 2400,       # the two scores
     'best': 2500,       # five scores and five names
     'cleared': 2700,    # the score and the tries
