@@ -108,6 +108,30 @@ static func _live(o: SolObjects, s: int, m: int) -> void:
 			_8aa2(o, s)
 		0x38:
 			_8f8d(o, s)
+		0x34:
+			_90ca(o, s)
+		0x33:
+			_9127(o, s)
+		0x03:
+			_b0dc(o, s)
+		0x06:
+			_b255(o, s)
+		0x07:
+			_b26b(o, s)
+		0x08:
+			_b2aa(o, s, 0x44)               # $B2AA
+		0x09:
+			_b2aa(o, s, 0x46)               # $B2AE
+		0x0A:
+			_b0ec(o, s)
+		0x10:
+			_8bba(o, s)
+		0x14:
+			_b0cd(o, s)
+		0x1F:
+			_a047(o, s)
+		0x20:
+			_a031(o, s)
 		0x3F:
 			_pickup(o, s)
 		_:
@@ -192,6 +216,30 @@ static func _dead(o: SolObjects, s: int, m: int) -> void:
 			_8f85(o, s, 0x0A)               # $8F7B
 		0x3E:
 			_8f85(o, s, 0x64)               # $8F7F
+		0x10:
+			_8993(o, s)
+		0x3D:
+			_8f1c(o, s)
+		0x34:
+			_90ca(o, s)
+		0x33:
+			_9127(o, s)
+		0x28:
+			_8996(o, s)
+		0x35:
+			_899c(o, s)
+		0x03:
+			_b0dc(o, s)
+		0x06:
+			_b255(o, s)
+		0x07:
+			_b26b(o, s)
+		0x14:
+			_b0cd(o, s)
+		0x1F:
+			_a047(o, s)
+		0x20:
+			_a031(o, s)
 		0x3F:
 			_pickup_dead(o, s)
 		_:
@@ -3466,3 +3514,302 @@ static func _897e(o: SolObjects, s: int) -> void:
 static func _8f85(o: SolObjects, s: int, score: int) -> void:
 	o.id[s] = o.id[s] & 0xBF                # $906C
 	_af31(o, s, score)
+
+# ------------------------------------------- three endings that sink and go
+
+## $8C1B -- pinned to the height the lift keeps.  $75 holds that height; twelve
+## bits of it, counted from the top of the view, is where the thing is put, and
+## $52 takes the lift's own fall so that it goes down with the floor rather
+## than through it.  The sum takes the carry whatever jumped here left: nought
+## from either dispatch ($81D9 and $826C both shift a byte whose top bit is
+## already off), but $8BF7 can arrive with it up, so it is asked for.  The four
+## shifts that follow leave none of their own, because $90 starts empty.
+static func _8c1b(o: SolObjects, s: int, cin := 0) -> void:
+	var v: int = ((o.z75 + 0x18 + cin) & 0xFF) << 4     # $8C21
+	o.carry = 0                                         # $8C2C leaves none
+	var lo: int = o._adc(v & 0xFF, o.cam_y & 0xFF)      # $8C2F
+	var hi: int = o._adc((v >> 8) & 0xFF, (o.cam_y >> 8) & 0xFF)
+	o.y[s] = lo | hi << 8
+	o.z52 = (o.z52 & 0xFF00) | (o.z34 & 0xFF)           # $8C39
+	o.move(s)                                           # $813F
+
+
+## $8993 -- [$10 dead] it is carried down with the lift it was riding, and only
+## then does it go off.
+static func _8993(o: SolObjects, s: int) -> void:
+	_8c1b(o, s)
+	_8996(o, s)
+
+
+## $8996 -- [$28 dead] the same ending without the lift: it sinks at eight a
+## picture of its own.
+static func _8996(o: SolObjects, s: int) -> void:
+	o.z52 = 0x08                                        # $8998
+	_89a1(o, s)
+
+
+## $899C -- [$35 dead] and the same again, standing still and wearing the
+## seventh picture set.
+static func _899c(o: SolObjects, s: int) -> void:
+	o.anim_second(s, 0x07)                              # $904B
+	_89a1(o, s)
+
+
+## $89A1 -- the ending all three share.  For the first $50 pictures it goes on
+## sinking and smokes every eighth; then it waits; and on the hundredth it
+## comes apart into three, lets go of whatever held it and is given up.
+static func _89a1(o: SolObjects, s: int) -> void:
+	o.a[s] = (o.a[s] + 1) & 0xFF                        # $89A1
+	if o.a[s] < 0x50:                                   # $89A9
+		o.move(s)                                       # $89C9
+		_927e(o, s)                                     # $89CC
+		return
+	if o.a[s] < 0x64:
+		return                                          # $89AD
+	_8319(o, s, 2)                                      # $89B1
+	if (o.mind[s] & 0x3F) != 0x10:                      # $89B9
+		o.id[s] = o.id[s] & 0xBF                        # $906C
+	# $89C0 -- the noise it makes ($F1 = $21) is not modelled.
+	_a989(o, s, 0x32)                                   # $89C6
+
+## $90A9 -- one of the three last shots.  It goes up and a little sideways, and
+## how far sideways is $94 turned round and doubled twice; the shifts leave the
+## carry $A1D7 then adds the place with.
+static func _90a9(o: SolObjects, s: int, j: int, b: int, w: int) -> void:
+	o.s_b[j] = b                                        # $90A9
+	o.carry = 1                                         # $90B6
+	var a: int = o._sbc(0x00, w)                        # $90BB
+	o.carry = (a >> 7) & 0x01                           # $90BD
+	a = (a << 1) & 0xFF
+	o.carry = (a >> 7) & 0x01                           # $90BE
+	a = (a << 1) & 0xFF
+	o.s_a[j] = a                                        # $90BF
+	# $90C2 -- a step to the left borrows out of the high byte.
+	var dx: int = 0x0080 if a < 0x80 else 0xFF80
+	SolShots.place(o, s, j, dx, 0xFE80, o.carry)        # $A1D7
+
+
+## $8F1C -- [$3D dead] it spits three last shots upward, one straight and two
+## to the sides, and on the picture after that it bursts.
+static func _8f1c(o: SolObjects, s: int) -> void:
+	if o.a[s] == 0x02:
+		_8f85(o, s, 0x0A)                               # $8F7B
+		return
+	if o.a[s] == 0x00:
+		# $8F26 -- the noise it makes ($F1 = $2B) is not modelled.
+		o.a[s] = (o.a[s] + 1) & 0xFF                    # $8F2A
+	o.cool[s] = 0x0F + (o.clock & 0x01)                 # $80F2
+	o.anim_second(s, 0x69)                              # $904B
+	if o.left[s] != 0xFF:
+		return                                          # $80E0
+	o.a[s] = (o.a[s] + 1) & 0xFF                        # $8F3A
+	# $8F3D, $8F46 and $8F4D -- three of them, and a full pool only costs the
+	# one it could not have.
+	for pair in [[0x00, 0xA0], [0x04, 0xA8], [0xFC, 0xA8]]:
+		var j: int = SolShots.free_slot(o)              # $ADBA
+		if j < 0:
+			continue                                    # $8F58
+		_90a9(o, s, j, int(pair[1]), int(pair[0]))
+		SolShots.put(o, j, 0xA6)                        # $907B
+
+## $90CA -- [$34] four steps, chosen out of $0690 by the table lying right
+## behind the jump at $90CD.
+static func _90ca(o: SolObjects, s: int) -> void:
+	o.carry = 0                                         # $8012
+	match o.kind[s]:
+		0x00:
+			_90d8(o, s)
+		0x01:
+			_90f5(o, s, 0x9E)
+		0x02:
+			_9116(o, s)
+		0x03:
+			_90f5(o, s, 0x9F)
+
+
+## $90D8 -- step nought: three pictures in four it simply moves on to one of
+## the other three, and the hash says which.  On the fourth it drops to a
+## height the hash picks as well, and turns into $33 instead.
+static func _90d8(o: SolObjects, s: int) -> void:
+	var v: int = o.noise & 0x03                         # $90DA
+	if v != 0:
+		o.kind[s] = v                                   # $90F1
+		return
+	o.y[s] = (o.y[s] & 0x00FF) | (((o.noise & 0x1F) + 0x20) << 8)
+	o.c[s] = 0xB8                                       # $8163
+	o.d[s] = 0xFF
+	o.b[s] = 0xFF
+	o.mind[s] = 0x33                                    # $90ED
+
+
+## $90F5 and $90FF -- steps one and three: a shot of its own is left where it
+## stands, and the slot itself is given up for it ($8121 leaves a nought in A,
+## and $9110 writes that nought into the slot).
+static func _90f5(o: SolObjects, s: int, kind: int) -> void:
+	var j: int = SolShots.free_slot(o)                  # $ADBA
+	if j < 0:
+		return
+	o.s_kind[j] = kind                                  # $9107
+	o.s_life[j] = kind                                  # $910A -- the same byte
+	o.id[s] = 0                                         # $9110
+	SolShots.place(o, s, j, 0x0000, 0x0000, 0)          # $A1D7
+
+
+## $9116 -- step two: the one picture, and $80 of sinking a picture.
+static func _9116(o: SolObjects, s: int) -> void:
+	o.pic_lo[s] = 0x34                                  # $911A
+	o.pic_hi[s] = 0x03                                  # $911F
+	o.z52 = 0x0080                                      # $9122
+	o.move(s)                                           # $813F
+
+
+## $9127 -- [$33] what $90CA turns into: it falls.  On its first picture the
+## hash gives it its step sideways and how fast it is already going down; both
+## sums borrow, because the jump before them leaves no carry.
+static func _9127(o: SolObjects, s: int) -> void:
+	if o.kind[s] == 0x00:
+		o.kind[s] = (o.kind[s] + 1) & 0xFF              # $912C
+		o.carry = 0                                     # $81D9, $826C
+		o.c[s] = o._sbc(o.c[s], o.noise & 0x3F)         # $9138
+		o.carry = o.noise & 0x01                        # $913F LSR
+		o.a[s] = o._sbc(o.noise >> 1, 0x40)             # $9140
+	# $9148 -- the step sideways, spread over both bytes by hand.
+	o.z50 = o.a[s] | (0xFF00 if o.a[s] >= 0x80 else 0)
+	o.fall(s, 0x04)                                     # $B2BB
+	o.anim_second(s, 0x08, 3)                           # $8985
+	o.move(s)                                           # $813F
+
+## $B0CD -- [$14] it wears the one animation out and is then given up.
+static func _b0cd(o: SolObjects, s: int) -> void:
+	o.anim_second(s, 0x0A, 3)                           # $99DB
+	if o.left[s] != 0xFF:
+		return                                          # $80E0
+	_a989(o, s, 0x05)                                   # $B0D7
+
+
+## $B0DC -- [$03] the same, out of a picture of its own, and looked at only
+## every other picture -- which one depending on the slot it sits in.
+static func _b0dc(o: SolObjects, s: int) -> void:
+	if ((s ^ o.clock) & 0x01) == 0:
+		return                                          # $B0DF
+	o.anim_second(s, 0x07, 3)                           # $99DB
+	if o.left[s] != 0xFF:
+		return
+	_a989(o, s, 0x05)                                   # $B0D7
+
+
+## $B2AA and $B2AE -- [$08] and [$09] wear one picture and do nothing else.
+static func _b2aa(o: SolObjects, s: int, pic: int) -> void:
+	o.pic_lo[s] = pic                                   # $B2B0
+	o.pic_hi[s] = 0x00                                  # $B2B5
+
+
+## $B0EC -- [$0A] what is left behind once something is picked up.  It counts
+## down in $0690; when the count runs out it pays what it was worth into the
+## bonus and finishes itself off.  Either way it falls, faces its step and
+## wears whatever picture its own $0610 names.
+static func _b0ec(o: SolObjects, s: int) -> void:
+	o.kind[s] = (o.kind[s] - 1) & 0xFF                  # $B0EC
+	if o.kind[s] == 0x00:
+		# $B0F4 -- the compare leaves the carry the sum below then takes in,
+		# so the larger of the two is really worth one more than it says.
+		o.carry = 1 if o.a[s] >= 0x02 else 0
+		var v: int = 0x05 if o.a[s] < 0x02 else 0x13
+		var lo: int = o._adc(v, o.hero_bonus & 0xFF)    # $B0FC
+		var hi: int = (o.hero_bonus >> 8) & 0xFF
+		if o.carry != 0:
+			hi = (hi + 1) & 0xFF                        # $B104
+		o.hero_bonus = lo | hi << 8
+		# $B107 -- the noise it makes ($F1 = $0F) is not modelled.
+		o.finish(s)                                     # $80BF
+	o.fall(s, 0x03)                                     # $B2BB
+	o.move_facing(s)                                    # $813A
+	o.anim_second(s, o.a[s], 3)                         # $8985
+
+## $B255 -- [$06] lights its fuse the first time it is looked at and then does
+## nothing but wear one picture until the fuse runs out.
+static func _b255(o: SolObjects, s: int) -> void:
+	if o.kind[s] == 0x00:
+		o.kind[s] = (o.kind[s] + 1) & 0xFF              # $B25A
+		o.a[s] = 0x80                                   # $B25F
+	o.anim_second(s, 0x03, 3)                           # $8985
+	_b239(o, s)                                         # $B267
+
+
+## $B26B -- [$07] the same in three parts: it waits out $20 pictures wearing
+## one, then wears another until that one is worn out and is given up.
+static func _b26b(o: SolObjects, s: int) -> void:
+	var k: int = o.kind[s]
+	if k == 0x00:
+		o.kind[s] = (k + 1) & 0xFF                      # $B270
+		o.a[s] = 0xE0                                   # $B275
+		return
+	if k == 0x01:
+		o.a[s] = (o.a[s] + 1) & 0xFF                    # $B29C
+		if o.a[s] == 0x00:
+			o.kind[s] = (o.kind[s] + 1) & 0xFF          # $B2A1
+		o.anim_second(s, 0x04, 3)                       # $B2A4
+		return
+	o.anim_second(s, 0x08, 3)                           # $B27D
+	# $B282 -- the noise it makes ($F1 = $21) is not modelled.
+	if o.left[s] != 0xFF:
+		return                                          # $B292
+	_a989(o, s, 0x00)                                   # $B299
+
+## $A031 -- [$20] a fuse with no picture of its own: it flashes by having its
+## wait set to one thing on the pictures its slot makes odd and to another on
+## the rest, and is gone when $0610 runs out.
+static func _a031(o: SolObjects, s: int) -> void:
+	o.cool[s] = 0xFE if ((s ^ o.clock) & 0x01) != 0 else 0x0F
+	o.a[s] = (o.a[s] - 1) & 0xFF                        # $A03E
+	if o.a[s] == 0x00:
+		o.id[s] = 0                                     # $80B9
+
+
+## $A047 -- [$1F] one animation, worn once, and then it is gone.
+static func _a047(o: SolObjects, s: int) -> void:
+	o.anim_second(s, 0x20, 4)                           # $99D9
+	if o.left[s] == 0xFF:
+		o.id[s] = 0                                     # $80B9
+
+## $8BFA -- one of the two it lets go as it turns: a whole page down the screen
+## from itself, and either up or down from that.
+static func _8bfa(o: SolObjects, s: int, b: int) -> void:
+	o.z94 = b                                           # $8BFA
+	var j: int = SolShots.free_slot(o)                  # $ADBA
+	if j < 0:
+		return                                          # $8BFF
+	o.s_b[j] = o.z94                                    # $8C03
+	o.s_a[j] = 0x20                                     # $8C08
+	SolShots.put(o, j, 0xA8)                            # $907B
+	o.z90 = 0                                           # $8121
+	o.z92 = 0x0100                                      # $8C13
+	# The compare that sent us here left the carry up, and $A1D7 adds with it.
+	SolShots.place(o, s, j, o.z90, o.z92, 1)            # $A1D7
+
+
+## $8BBA -- [$10] the one that rides the lift.  It wears one long animation and
+## lets a shot go on the sixth and eighth pictures of it, one up and one down.
+## Then it walks along until it reaches the side it is walking towards, turns
+## round, and is pinned back onto the lift's height by $8C1B.
+static func _8bba(o: SolObjects, s: int) -> void:
+	o.anim_second(s, 0x6B)                              # $904B
+	var fr: int = o.frame[s]                            # $80E6
+	# $8BC4 -- the noise it makes ($F1 = $32) is not modelled.
+	if fr == 0x05:
+		_8bfa(o, s, 0x08)                               # $8BCA
+	elif fr == 0x07:
+		_8bfa(o, s, 0xF8)                               # $8BD0
+	var cin := 0
+	if (o.d[s] & 0x01) == 0:                            # $8BD9
+		o.z50 = (o.z50 & 0xFF00) | 0x08                 # $8BDE
+		cin = 1 if ((o.x[s] >> 8) & 0xFF) >= 0x3F else 0
+		if cin == 1:
+			o.d[s] = (o.d[s] + 1) & 0xFF                # $8BF4
+	else:
+		o.z50 = (o.z50 & 0xFF00) | 0xF8                 # $8BE8
+		o.z50 = (o.z50 - 0x0100) & 0xFFFF               # $8BEC
+		cin = 1 if ((o.x[s] >> 8) & 0xFF) >= 0x31 else 0
+		if cin == 0:
+			o.d[s] = (o.d[s] + 1) & 0xFF                # $8BF4
+	_8c1b(o, s, cin)                                    # $8BF7
