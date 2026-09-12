@@ -81,6 +81,14 @@ func ask(what: int, which: int) -> void:
 	mask = which
 
 
+## $DCE5, $DD02 and $DD22 -- a walk asked for over whatever is already asked
+## for: the palettes named are added to the ones already walking instead of
+## replacing them.
+func ask_more(what: int, which: int) -> void:
+	mask |= which
+	kind = what
+
+
 ## $F861 and $F865 -- how many pictures one step of a walk takes.
 func at_pace(n: int) -> void:
 	pace = n

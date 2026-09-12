@@ -87,6 +87,27 @@ static func plain(id: int, mark: int, x: int, y: int, t: Table) -> void:
 	_put(id, mark, x, y, t)
 
 
+## $F6E2 -- the same again, but laid out walking forwards whichever turn it
+## is: $F761 is a shorter walk of its own that knows nothing of the two ends
+## taking turns, and only the pointer of STAGE SELECT goes through it.
+static func forward(id: int, mark: int, x: int, y: int, t: Table) -> void:
+	load_data()
+	if id >= pictures.size():
+		return
+	var e: Dictionary = pictures[id]
+	var m: int = (mark ^ int(e["flags"])) & 0xFF     # $F717
+	var bank: int = int(e["chr"])
+	if (bank & 0x80) != 0:                           # $F725 -- not drawn
+		return
+	if bank != 0:                                    # $F728
+		t.banks[(m >> 2) & 3] = bank
+	var parts: Array = e["parts"]
+	if parts.is_empty():
+		return
+	t.fwd = _walk(parts, m, (m & 0x40) != 0, (m & 0x80) != 0, x, y, t,
+			t.fwd, true)
+
+
 ## $F3DC -- the place is carried in sixteenths of a pixel and the console wants
 ## whole ones, so both are shifted four down before the picture is laid out.
 static func _place(id: int, mark: int, x: int, y: int, t: Table) -> void:

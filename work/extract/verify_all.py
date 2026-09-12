@@ -39,6 +39,7 @@ STANDS = [
     ('hudscreen',  'Э3.7', 'verify_hud_screen.py', ['--all-areas']),
     ('run',        'Э3.8', 'verify_run.py',        []),
     ('solplayer',  'Э4.1', 'verify_sol_player.py', []),
+    ('solboard',   'Э4.7', 'verify_sol_board.py',  []),
 ]
 
 # Every stand ends on a line that counts what differs.  Two shapes are in use:

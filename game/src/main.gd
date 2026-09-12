@@ -1044,6 +1044,10 @@ func _run_sol_boot(spec: String) -> void:
 			"B": bit = Pad.B
 			"SELECT": bit = Pad.SELECT
 			"START": bit = Pad.START
+			"UP": bit = Pad.UP
+			"DOWN": bit = Pad.DOWN
+			"LEFT": bit = Pad.LEFT
+			"RIGHT": bit = Pad.RIGHT
 		var at := int(g[1])
 		down[at] = int(down.get(at, 0)) | bit
 		up[at + 4] = int(up.get(at + 4, 0)) | bit
@@ -1056,6 +1060,7 @@ func _run_sol_boot(spec: String) -> void:
 			"stage": sol_flow.stage = int(start[k])
 			"clock": sol_flow.clock = int(start[k])
 			"lives": sol_flow.lives = int(start[k])
+			"done": sol_flow.z2d = int(start[k])
 	var held := 0
 	var was := -1
 	for i in range(n):

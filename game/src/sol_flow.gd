@@ -94,6 +94,11 @@ const PIECE_VY := [0x0040, 0x0040, -0x0040, -0x0040]
 ## in Y, and Y is the high half of the number of the picture, not a mark: what
 ## is asked for is $022E and not $2E.
 const PIECE_PIC := [0x022E, 0x022F, 0x0230, 0x0231]
+
+## $DBD6 and $DD48 -- the man below the board, in two pictures, and the
+## pointer that stands over the frame picked.
+const MAN := 0x0E
+const MARK := 0x0B
 ## $E9D5 -- how far the view is pushed along, and $E9DE -- over how many
 ## pictures it is walked back.
 const RIDE_LIFT := 0x2000
@@ -128,6 +133,8 @@ var pal_direct := false
 var z4d := 0                # $4D -- a second clock the screens keep
 var z4e := 0                # $4E -- how long the drawing of him is held
 var z4f := 0                # $4F -- and which drawing it is
+var z2d := 0                # $2D -- which stages are done with, a bit each
+var z05ab := 0              # $05AB -- how long STAGE SELECT waits to pick
 var z58 := 0                # $58 -- how far into the maker's own code he is
 var z05a0 := 0              # $05A0 -- how many times round the opening has gone
 var z7d := 0                # $7D -- which of the beam's own tricks is asked for
@@ -229,6 +236,8 @@ func step(host) -> void:
 			_borning(host)
 		PICK:
 			_pick(host)
+		CHOSEN:
+			_chosen(host)
 		AREA:
 			_area(host)
 		ASK:
@@ -712,6 +721,7 @@ func _pick(host) -> void:
 	fade.at_pace(8)                               # $DB19 -- $F861
 	for i in range(3):                            # $DB1C -- $05BA..$05BC
 		fade.level[i] = SolFade.BRIGHT
+	z05ab = 0xFE                                  # $DB27 -- $05AB
 	fade.ask(0xFE, 0xFE)                          # $DB2C -- $F849, A still $FE
 	fade.run()
 	# $DB34 -- which of the two noises is asked for turns on $2D, which the
@@ -719,6 +729,189 @@ func _pick(host) -> void:
 	# the last asks for is $0C.
 	noise = 0x0C
 	scroll_y = 0xEF                               # $DB43 -- $0B, which $C535 writes
+
+
+## $DBAE, mode $1A -- STAGE SELECT.  The board comes up the screen out of $0B,
+## a picture drops into each of the five frames in turn, and then either the
+## game picks the next stage itself -- which is what it does while there are
+## stages left undone -- or, once all five are done with, the player picks.
+##
+## $2D is which stages are done with, a bit apiece, and $DD7D asks whether all
+## five are.  Nothing in the port sets it yet: the end of a stage is the
+## stage's own script, and no script is ported, so the port always plays the
+## half of this the game plays on the way to the next stage.
+func _chosen(host) -> void:
+	SolBoard.load_data()
+	_ca9a(host)                                   # $DBAE
+	# $DD65 -- while a stage is left undone the whole picture is tinted, by
+	# putting three bits of $0C into $09, the byte the picture unit is shown.
+	# The engine has no such byte and the tint is not ported.
+	var t = host.flow_table()
+	# $DBB7 -- the man below the board, at $80 across and $B0 down plus an
+	# eighth of how far the board still has to come; which of his two pictures
+	# is drawn turns on $0C.
+	SolSprites.plain(MAN + ((clock >> 1) & 1), 0x00,
+			0x80, (0xB0 + (scroll_y >> 3)) & 0xFF, t)
+	if z4f != 0:                                  # $DBDF -- already picking
+		_board_run(host)
+		return
+	if _all_done():                               # $DBE3 -- $DD7D
+		# Every stage done with: the board picks for itself, over a wait the
+		# cartridge keeps in $05AB.  While one is left the player picks, and
+		# the walk falls straight through to the START below.
+		if (clock & 0x01) != 0:                   # $DBE8
+			_board_wait(host)
+			return
+		z05ab = (z05ab - 1) & 0xFF                # $DBED
+		if z05ab != 0:
+			_board_wait(host)
+			return
+		z05ab = (z05ab + 1) & 0xFF                # $DBF2
+		if scroll_y == 0:
+			_board_run(host)
+			return
+	if (host.flow_pad_new() & Pad.START) == 0:    # $DBF9
+		_board_wait(host)
+		return
+	if scroll_y == 0:                             # $DBFF
+		# $DC1B -- START on a stage already done with does nothing at all.
+		if ((z2d >> z4c) & 1) == 0:
+			_board_run(host)
+		else:
+			_board_mark(host)
+		return
+	if scroll_y >= 0x20 and not _all_done():      # $DC03 and $DC07
+		fade.ask_more(0x06, 0xE0)                 # $DC0C -- $DCE5
+		scroll_y = 0x20                           # $DC11
+	_board_mark(host)                             # $DC15
+
+
+## $DD7D -- whether every one of the five stages is done with.
+func _all_done() -> bool:
+	return (z2d & 0x1F) == 0x1F
+
+
+## $DC28 and $DC47 -- the picking itself, once it has been set off.  $4F counts
+## it: the five frames are written over one at a time, then the tune is changed
+## and the colours walked, and at the end the mode goes on to the flash.  Once
+## every stage is done with the count only moves one picture in sixty four and
+## the whole thing is a good deal slower; while one is left it moves every
+## picture and the walk is over in a fifth of the turns.
+func _board_run(host) -> void:
+	var done := _all_done()
+	if done and (clock & 0x3F) != 0:              # $DC2D
+		return
+	var pic := (z4c + 1) & 0xFF                   # $DC33 and $DC47
+	z4f = (z4f + 1) & 0xFF
+	if z4f < 0x06:                                # $DC3A and $DC4E
+		z4d = pic                                 # $DC5D
+		_board_write(host, z4f, pic)
+		return
+	if not done and z4f == 0x06:                  # $DC52
+		noise = 0x0F                              # $DC62
+		_board_names()
+		return
+	if z4f == (0x0A if done else 0x20):           # $DC40 and $DC56
+		fade.at_pace(8)                           # $DC6D -- $F861
+		fade.ask(0x03, 0x08)                      # $F86D 3/8
+		return
+	if z4f >= (0x0E if done else 0xC0):           # $DC44 and $DC5A
+		mode = AREA                               # $DC77
+
+
+## $DD1B -- the names above the board, which is the table at $8340 walked in
+## over the seven palettes the board itself is not drawn in.
+func _board_names() -> void:
+	fade.name_table(0x8340)                       # $E9B1 A=$40 Y=$83
+	fade.ask_more(0x06, 0x17)                     # $DD22
+
+
+## $DC80 -- nothing asked for.  While the board is still coming up there is
+## nothing to do but walk it; once it is up, and while a stage is left to pick,
+## the pad moves the pointer about the five.
+func _board_wait(host) -> void:
+	if scroll_y != 0:                             # $DC80
+		_board_mark(host)
+		return
+	if _all_done():                               # $DC84
+		z4e = 0x06                                # $DC89 -- the sixth of $DD5E
+		_board_mark(host)
+		return
+	var hit: int = host.flow_pad_new()            # $DC8F
+	var by := 0
+	if (hit & Pad.SELECT) != 0:                   # $DC91
+		by = 1
+	elif (hit & Pad.RIGHT) != 0:                  # $DC9B
+		by = 1
+	elif (hit & Pad.LEFT) != 0:                   # $DCA0
+		by = -1
+	elif (hit & Pad.DOWN) != 0:                   # $DCA5
+		by = 3
+	elif (hit & Pad.UP) != 0:                     # $DCAA
+		by = -3
+	else:
+		_board_mark(host)
+		return
+	var to: int = (z4e + by) & 0xFF               # $DCB1
+	if to < 0x06:
+		z4e = to
+	_board_mark(host)
+
+
+## $DCBB -- which frame the pointer is on, which stage that is, and one step of
+## the board's walk up the screen.
+func _board_mark(host) -> void:
+	z4c = int(SolBoard.pick[z4e])                 # $DCBD
+	stage = int(SolBoard.stage[z4c])              # $DCC2
+	z2e = 0                                       # $DCC7
+	if scroll_y == 0:                             # $DCCB
+		_board_fill(host)
+		return
+	var was := scroll_y
+	scroll_y = (scroll_y - 1) & 0xFF              # $DCCF
+	if was == 0xEF:                               # $DCD1
+		fade.ask_more(0x06, 0xE0)                 # $DCE5
+	elif was == 0x20:                             # $DCD9
+		fade.at_pace(4)                           # $DCDD -- $F865
+		fade.ask_more(0x06, 0x0F)
+
+
+## $DCEE -- the board is up, and the five frames fill one at a time: a step of
+## the colours, then a frame, then a step again.
+func _board_fill(host) -> void:
+	if z4d == 0x05:                               # $DCEE
+		_board_pointer(host)
+		return
+	if fade.kind != 0:                            # $DCF4 -- one at a time
+		return
+	if fade.pace != 0x01:                         # $DCF8
+		fade.at_pace(1)                           # $DCFE
+		fade.ask_more(0x03, 0x07)                 # $DD02
+		return
+	z4d = (z4d + 1) & 0xFF                        # $DD0D
+	_board_write(host, z4d, z4d)
+	if z4d == 0x05:                               # $DD17
+		_board_names()
+
+
+## $DD2D -- the pointer over the frame it stands on, blinking every other pair
+## of pictures.  Once every stage is done with there is nothing left to pick
+## and no pointer is drawn.
+func _board_pointer(host) -> void:
+	if _all_done():                               # $DD2D
+		return
+	if (clock & 0x02) != 0:                       # $DD32
+		return
+	SolSprites.forward(MARK, 0x00, int(SolBoard.mark_x[z4e]),
+			int(SolBoard.mark_y[z4e]), host.flow_table())
+
+
+## $DD84 -- one frame written over.  $DDDE looks at $2D by way of $4D: a frame
+## whose stage is done with is given the empty picture instead of its own.
+func _board_write(host, n: int, pic: int) -> void:
+	if z4d > 0 and ((z2d >> (z4d - 1)) & 1) != 0:
+		pic = 0
+	SolBoard.write(host, n, pic)
 
 
 ## $DB4A, mode $32 -- the mark of the stage picked flashed up, which is what
