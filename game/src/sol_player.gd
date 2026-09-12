@@ -809,6 +809,13 @@ func _dead() -> void:
 	if pool == null or pool.z26 != 0:
 		return                                  # $97AF
 	var left: int = pool.w_x[0x0C] & 0xFF       # $071C
+	if pool.flow != null:
+		# $97B3 -- with a flow to hand it to, the whole of the rest of $97A7
+		# is the flow's: the try is spent there and the mode is named there.
+		pool.flow.lives = left
+		pool.flow.died()
+		pool.w_x[0x0C] = (pool.w_x[0x0C] & 0xFF00) | (pool.flow.lives & 0xFF)
+		return
 	if left != 0:
 		pool.w_x[0x0C] = (pool.w_x[0x0C] & 0xFF00) | ((left - 1) & 0xFF)
 

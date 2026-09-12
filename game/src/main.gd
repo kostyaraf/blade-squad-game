@@ -44,6 +44,7 @@ func _ready() -> void:
 	var solshot := ""
 	var solobj := ""
 	var sollive := ""
+	var solflow := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -74,6 +75,7 @@ func _ready() -> void:
 		elif a.begins_with("--solshot="): solshot = a.substr(10)
 		elif a.begins_with("--solobj="): solobj = a.substr(9)
 		elif a.begins_with("--sollive="): sollive = a.substr(10)
+		elif a.begins_with("--solflow="): solflow = a.substr(10)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -84,6 +86,10 @@ func _ready() -> void:
 		return
 	if orbit != "":
 		_run_orbit(orbit)
+		get_tree().quit()
+		return
+	if solflow != "":
+		_run_sol_flow(solflow)
 		get_tree().quit()
 		return
 	if soloam != "":
@@ -237,7 +243,8 @@ func _sol_bar(pool: SolObjects) -> void:
 		sol_table.oam[at + 3] = (i * 8 + 0x18) & 0xFF    # $9227
 
 
-## A look at the whole live Solbrain picture: --sollive=BUTTONS,FRAMES[,LETTERS],
+## A look at the whole live Solbrain picture, run through $02 from the stage
+## being raised: --sollive=BUTTONS,FRAMES[,LETTERS][,PNG][,KILL],
 ## where BUTTONS is one pad byte in hex held the whole way and LETTERS, when it
 ## is given, is a set of the three letters put straight into $05A4 so the
 ## satellite is handed over without having to be walked to.  A fourth field is
@@ -253,19 +260,39 @@ func _run_sol_live(spec: String, st: int) -> void:
 	var n: int = int(f[1])
 	pads = [Pad.player_one(), Pad.player_two()]
 	pads[0].held = pad
-	_load("sol", st, 0)
-	_start_sol()
-	if f.size() > 2:
-		sol_pool.letters = f[2].hex_to_int()
+	# The whole game and not one stage: $02 raises the stage, flies the four
+	# pieces in and only then starts playing it, and a death raises it again.
+	sol_flow = SolFlow.new()
+	sol_flow.stage = st
+	sol_flow.lives = 0x02
+	sol_flow.mode = SolFlow.RAISE
+	var letters: int = f[2].hex_to_int() if f.size() > 2 else -1
+	# A fifth field is the picture on which he is killed, which is how the
+	# whole of $97A7 -- the try spent, the stage raised again -- is walked
+	# without having to find something in the stage that can do it.
+	var kill: int = int(f[4]) if f.size() > 4 else -1
 	var slots := 0
 	var shot := 0
 	var wep := 0
 	var drawn := 0
+	var born := -1
 	for i in range(n):
 		# The buttons that are read on the press and not on the hold are let
 		# go every eighth picture, or nothing would ever be fired twice.
 		pads[0].held = pad if ((i >> 3) & 1) == 0 else pad & ~0xC0
-		_step_sol()
+		if i == kill and sol_hero != null:
+			sol_hero.state = 0x0C                        # $978A, dying
+		sol_flow.step(self)
+		if sol_flow.stuck >= 0:
+			print("stage %d  the flow stopped at mode %02X on picture %d"
+					% [st, sol_flow.stuck, i])
+			return
+		if sol_pool == null:
+			continue
+		if born < 0 and sol_flow.mode == SolFlow.PLAY:
+			born = i
+			if letters >= 0:
+				sol_pool.letters = letters
 		var a := 0
 		for k in range(SolObjects.SLOTS):
 			if sol_pool.id[k] != 0:
@@ -285,9 +312,11 @@ func _run_sol_live(spec: String, st: int) -> void:
 		shot = maxi(shot, b)
 		wep = maxi(wep, c)
 		drawn = maxi(drawn, d)
-	print("stage %d  slots %d  shots %d  weapons %d  sprites %d  hero %04X %04X"
-			% [st, slots, shot, wep, drawn, sol_hero.x, sol_hero.y])
-	if f.size() > 3:
+	print(("stage %d  he arrives on %d  tries %d  slots %d  shots %d"
+			+ "  weapons %d  sprites %d  state %02X fuel %02X hero %04X %04X")
+			% [st, born, sol_flow.lives, slots, shot, wep, drawn,
+			sol_hero.state, sol_hero.fuel, sol_hero.x, sol_hero.y])
+	if f.size() > 3 and f[3] != "":
 		_apply()
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(f[3])
@@ -760,6 +789,98 @@ func _seed_sol(cfg: Dictionary) -> SolPlayer:
 ## place on screen, the table as it stood and the four cursors the drawing
 ## carries.  The stand that holds it against the cartridge is
 ## work/extract/verify_sol_oam.py.
+## What the flow stand hands `SolFlow` in place of a whole game: a hero, a view
+## and a sprite table, and nothing that steps a stage.  The run stops the
+## moment the flow asks for a stage or for a picture of one.
+class FlowStand:
+	var hero := SolPlayer.new(null)
+	var view := SolCamera.new(null)
+	var table := SolSprites.Table.new()
+	var asked := ""
+
+	func flow_hero() -> SolPlayer:
+		return hero
+
+	func flow_view() -> SolCamera:
+		return view
+
+	func flow_table() -> SolSprites.Table:
+		return table
+
+	func flow_pool():
+		return null
+
+	func flow_play() -> void:
+		asked = "play"
+
+	func flow_raise(st: int) -> void:
+		asked = "raise %d" % st
+
+	func flow_tune() -> int:
+		return 0
+
+	func flow_pad_new() -> int:
+		return 0
+
+
+## Э4.6 acceptance: --solflow=FILE, the four pieces he arrives as.
+##
+## The file holds one picture of the cartridge as it stood at $CC77, and the
+## engine answers with every picture from the next one on: the mode, the two
+## counts the arriving keeps, where the four pieces are, where the view is and
+## the whole sprite table.
+func _run_sol_flow(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var h := FlowStand.new()
+	var f := SolFlow.new()
+	f.mode = int(cfg["mode"])
+	f.z03 = int(cfg["z03"])
+	f.z57 = int(cfg["z57"])
+	f.z2e = int(cfg["z2e"])
+	f.stage = int(cfg["stage"])
+	f.lives = int(cfg["lives"])
+	f.home_x = int(cfg["home_x"])
+	f.home_y = int(cfg["home_y"])
+	var px: Array = cfg["px"]
+	var py: Array = cfg["py"]
+	for i in range(4):
+		f.piece_x[i] = int(px[i])
+		f.piece_y[i] = int(py[i])
+	h.hero.x = int(cfg["hero_x"])
+	h.hero.y = int(cfg["hero_y"])
+	h.hero.hurt = int(cfg["hurt"])
+	h.hero.state = int(cfg["state"])
+	h.view.x = int(cfg["cam_x"])
+	h.view.y = int(cfg["cam_y"])
+	h.table.count = int(cfg["count"])
+	h.table.turn = int(cfg["turn"])
+	h.table.fwd = int(cfg["fwd"])
+	h.table.back = int(cfg["back"])
+	h.table.start = int(cfg["start"])
+	var bk: Array = cfg["banks"]
+	for i in range(4):
+		h.table.banks[i] = int(bk[i])
+	var was: Array = cfg["oam"]
+	for i in range(256):
+		h.table.oam[i] = int(was[i])
+	var ticks: Array = cfg["ticks"]
+	var out := PackedStringArray()
+	for i in range(ticks.size()):
+		# $C72D reads $00, which is not a count the engine keeps; the stand
+		# hands over the cartridge's own for each picture.
+		f.tick = int(ticks[i])
+		f.step(h)
+		out.append("%02X %02X %02X %d %d %d %d %d %d %d %d %d %d %s %d %d %d %d"
+				% [f.mode, f.z03, f.z57,
+				f.piece_x[0], f.piece_x[1], f.piece_x[2], f.piece_x[3],
+				f.piece_y[0], f.piece_y[1], f.piece_y[2], f.piece_y[3],
+				h.view.x, h.view.y, h.table.oam.hex_encode(),
+				h.table.count, h.table.turn, h.table.fwd, h.table.back])
+		if h.asked != "":
+			break
+	print("\n".join(out))
+
+
 func _run_sol_oam(path: String) -> void:
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	var out := PackedStringArray()
@@ -1026,7 +1147,9 @@ func _step() -> void:
 		_choice_step()
 		return
 	if world == null:
-		if sol_hero != null:
+		if sol_flow != null:
+			sol_flow.step(self)
+		elif sol_hero != null:
 			_step_sol()
 		else:
 			_walk_camera()
@@ -1077,6 +1200,46 @@ func _start_sol() -> void:
 	oam_tex = ImageTexture.create_from_image(img)
 	bg.material.set_shader_parameter("oam", oam_tex)
 	scroll = Vector2i(sol_view.x >> 4, sol_view.y >> 4)
+
+
+## What `SolFlow` asks of whoever holds the game.  $E520 raises a stage out of
+## its record; here that is the level file, which is the same record read out.
+func flow_raise(st: int) -> void:
+	stage_sol = st
+	_load("sol", st, 0)
+	_start_sol()
+	sol_pool.w_x[0x0C] = (sol_pool.w_x[0x0C] & 0xFF00) | (sol_flow.lives & 0xFF)
+	sol_pool.flow = sol_flow
+
+
+func flow_play() -> void:
+	_step_sol()
+
+
+func flow_hero() -> SolPlayer:
+	return sol_hero
+
+
+func flow_view() -> SolCamera:
+	return sol_view
+
+
+func flow_table() -> SolSprites.Table:
+	return sol_table
+
+
+func flow_pool() -> SolObjects:
+	return sol_pool
+
+
+## $E776 -- the tune the stage's own record names, which the stage raised is
+## played to.  No tune is made, so the number is carried and nothing else.
+func flow_tune() -> int:
+	return 0
+
+
+func flow_pad_new() -> int:
+	return pads[0].held & ~sol_pad_was
 
 
 ## One picture, in the order $CDB0 keeps it, and the same order the object
@@ -1164,6 +1327,10 @@ func _step_sol() -> void:
 	p.gravity = pool.hero_grav
 	p.hold_max = pool.hero_hold_max
 	pool.step(sol_view.x, sol_view.y, sol_table)         # $CDDD
+	# $05AF is one byte of memory and not two: a mind that writes it -- $847E,
+	# which is what ends his arriving -- writes what he reads next picture, so
+	# it is taken back out of the pool after the pool has run and not before.
+	p.fuel = pool.hero_fuel
 
 
 func _show_sol() -> void:
@@ -1875,6 +2042,9 @@ var stage_sol := 0
 var sol_pad_was := 0
 var sol_view: SolCamera
 var sol_table: SolSprites.Table
+## $02 -- what the game is doing.  A stand that only wants one stage leaves it
+## nought and steps the stage itself; a whole game hands the picture to this.
+var sol_flow: SolFlow
 ## $94 of the picture before: the scan reads last picture's slide, not this
 ## one's ($CF0E runs before $CF11).
 var slid := 0

@@ -199,6 +199,9 @@ var hero: SolPlayer = null
 ## stand that runs the pool for the numbers alone hands no table over and then
 ## none of the drawing happens; the live game hands one over every picture.
 var table: SolSprites.Table = null
+## $02 -- the flow, when a whole game is being run and not one stage.  $97A7
+## hands it the death.
+var flow: SolFlow = null
 var skipped := {}                   # which behaviours have not been read yet
 
 var _types: Array
