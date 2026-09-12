@@ -77,10 +77,14 @@ func _build() -> void:
 	present.resize(32)
 	present.fill(0xFF)
 	_cells = {}
+	# A metatile is named by one byte, so the cartridge's own tables are 256
+	# long; two stages were read out with more properties than that, and the
+	# tail of them is never named by anything.  The tables are made as long as
+	# the properties so the settling below does not walk off the end.
 	_shown = PackedByteArray()
-	_shown.resize(256)
+	_shown.resize(maxi(256, props.size()))
 	_coll = PackedByteArray()
-	_coll.resize(256)
+	_coll.resize(maxi(256, props.size()))
 	_settle()
 
 	_buf = PackedByteArray()

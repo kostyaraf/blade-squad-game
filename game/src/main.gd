@@ -759,6 +759,7 @@ var _cache := {}
 
 func _load(g: String, stage: int, area: int) -> void:
 	game = g
+	stage_sol = stage
 	var key := "%s/%d/%d" % [g, stage, area]
 	if game == "pb2":
 		level_pb2 = _cache.get(key, null)
@@ -945,15 +946,28 @@ func _step() -> void:
 	_bar_step()
 
 
-## Э4.1 -- Solbrain with a hero in it: he is set down where the stage says and
-## the view is put where the stage raises it.  Nothing else of the game is
-## here yet -- no things, no weapons, no bar -- so what this is good for is
-## walking, jumping and looking at him.
+## Э4.5 -- Solbrain with a hero in it, and now the pool along with him: what
+## the stage puts out, his own satellite in slots $0C to $0F, what he throws
+## and what is thrown at him.  Still missing is the stage's own script (the
+## bar, the bosses, the doors between stages) and the drawing of the two flat
+## pools, so a shot and its smoke are felt but not seen.
 func _start_sol() -> void:
 	sol_hero = SolPlayer.new(level_sol)
 	sol_hero.place(level_sol.start.x, level_sol.start.y)
 	sol_view = SolCamera.new(level_sol)
 	sol_view.place(level_sol.start.x, level_sol.start.y)
+	sol_pool = SolObjects.new(level_sol)
+	# $E788 gave it an empty pool and every spawn still to come; what is left
+	# is where the view stands and that the first picture owes a scan, so the
+	# things the stage opens on are put out before he can walk past them.
+	sol_pool.seen_x = sol_view.x
+	sol_pool.seen_y = sol_view.y
+	sol_pool.col_due = 0xFF
+	sol_pool.row_due = 0xFF
+	sol_pool.stage = stage_sol
+	sol_pool.room = sol_pool.room_of(sol_view.x, sol_view.y)
+	sol_pool.hero = sol_hero
+	sol_hero.pool = sol_pool
 	sol_table = SolSprites.Table.new()
 	for i in range(4):
 		sol_table.banks[i] = level_sol.spr_banks[i]
@@ -966,11 +980,76 @@ func _start_sol() -> void:
 	scroll = Vector2i(sol_view.x >> 4, sol_view.y >> 4)
 
 
-## One picture: the view first, because $CD9C runs before the hero does, then
-## the hero, then what he puts into the sprite table.
+## One picture, in the order $CDB0 keeps it, and the same order the object
+## stand runs above: what the background owes is paid at the top, then the
+## view moves ($CD9C), then his breath ($CDB3), the scan ($CDBB), his own box
+## ($CDBE) and what has been thrown at him ($CDCC) -- and only then does he
+## take his step ($CDD2), the shots theirs ($CDDA) and the pool its own
+## ($CDDD).  The one difference is that the stand is handed the cartridge's
+## $0C, $0E, $06, $26, $58 and $7F picture by picture and here they are made.
 func _step_sol() -> void:
-	sol_view.step(sol_hero.vx, sol_hero.vy, sol_hero.x, sol_hero.y)
-	sol_hero.step(pads[0].held)
+	var p := sol_hero
+	var pool := sol_pool
+	var held: int = pads[0].held
+	# $0C simply counts pictures.  $0E is the hash $CD57 stirs out of the whole
+	# of RAM and is not ported (`work/re/sol_minds.md` says what it wants);
+	# what stands in for it is a counter of its own, so what leans on it --
+	# which way a flyer turns, which thing refuses to be carried off -- is not
+	# the cartridge's answer but is at least not always the same one.
+	pool.clock = (pool.clock + 1) & 0xFF
+	pool.noise = (pool.noise * 5 + 0x3D) & 0xFF
+	# $06 is the buttons the hero is handed; only a stage's own script ever
+	# wipes it, and no script is ported, so it is the pad as read.
+	pool.six = held
+	pool.pad_new = held & ~sol_pad_was
+	sol_pad_was = held
+	# $7F is how far the stage's own script has got and $26 what the screen is
+	# still owed; neither is ported, so both stay nought.
+	pool.z7f = 0
+	pool.z26 = 0
+	pool.drew()
+	sol_view.step(p.vx, p.vy, p.x, p.y)
+	pool.born_wait = sol_view.hold
+	pool.map_kind = sol_view.map_kind
+	pool.z34 = sol_view.fall
+	pool.cam_x = sol_view.x
+	pool.cam_y = sol_view.y
+	SolShots.breathe(pool, p)                            # $CDB3
+	pool.scrolled(sol_view.x, sol_view.y)
+	pool.room = pool.room_of(sol_view.x, sol_view.y)
+	_hero_into(pool, p)
+	pool.scan(sol_view.x, sol_view.y, p.x, p.state)      # $CDBB
+	pool.hero_box()                                      # $CDBE
+	pool.shots_hit_hero()                                # $CDCC
+	# $91AC -- while the wait for a satellite is between one and $2F he does
+	# not move at all: $9477 is simply not called.
+	if sol_view.hold == 0 or sol_view.hold >= 0x30:
+		p.step(held)                                     # $91B5
+	else:
+		p.skip(held)
+	_hero_into(pool, p)
+	# $B862 -- one step of a handful of his animations strikes, and what it
+	# strikes with goes into slot fifteen while he is still the one running.
+	if p.punch >= 0:
+		SolSat.strike(pool, p.punch, p.punch_x, p.punch_y)
+		p.punch = -1
+	SolSat.letters(pool)                                 # $923B
+	sol_view.hold = pool.born_wait
+	p.state = pool.hero_state
+	p.fuel = pool.hero_fuel
+	p.burst = pool.z5ab
+	SolWeapon.step(pool)                                 # $B168
+	SolSat.step(pool)                                    # $9156
+	# $AD45 writes back into $05B2, which he reads again next picture.
+	p.face = pool.hero_face
+	SolShots.step(pool)                                  # $CDDA
+	# $B984 -- the shot that turns the world over writes his own numbers.
+	p.flags = pool.hero_flags
+	p.rise = pool.hero_rise - 0x10000 \
+			if pool.hero_rise >= 0x8000 else pool.hero_rise
+	p.jump = pool.hero_jump
+	p.gravity = pool.hero_grav
+	p.hold_max = pool.hero_hold_max
 	# A picture starts with an empty table: the game walks it from both ends
 	# every frame ($F4E2 forward, $F5E1 back) and nothing is kept.
 	sol_table.count = 0
@@ -980,8 +1059,9 @@ func _step_sol() -> void:
 	for i in range(sol_table.oam.size()):
 		sol_table.oam[i] = Pb2Sprites.HIDDEN
 	# $91C0 -- where he is, counted from the corner of the view.
-	SolSprites.hero(sol_hero, (sol_hero.x - sol_view.x) & 0xFFFF,
-			(sol_hero.y - sol_view.y) & 0xFFFF, sol_table)
+	SolSprites.hero(p, (p.x - sol_view.x) & 0xFFFF,
+			(p.y - sol_view.y) & 0xFFFF, sol_table)
+	pool.step(sol_view.x, sol_view.y, sol_table)         # $CDDD
 
 
 func _show_sol() -> void:
@@ -1685,6 +1765,12 @@ var oam_tex: ImageTexture
 # Э4.1 -- Solbrain walking about for real: the hero, the view and the table
 # the console draws him out of.  Э4.3 will hand the same table to the things.
 var sol_hero: SolPlayer
+var sol_pool: SolObjects
+var stage_sol := 0
+## $04 is what was pressed this picture, which is the pad now against the pad
+## last time; the stands are handed the cartridge's own byte, the live game
+## has to keep the one before itself.
+var sol_pad_was := 0
 var sol_view: SolCamera
 var sol_table: SolSprites.Table
 ## $94 of the picture before: the scan reads last picture's slide, not this
