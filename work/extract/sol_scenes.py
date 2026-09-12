@@ -57,6 +57,7 @@ MODES = (
     ('over', 0x14),         # $D974 -- GAME OVER
     ('cleared', 0x1B),      # $E09C -- AREA x CLEARED
     ('staff', 0x4E),        # $E3E7 -- the names at the end
+    ('bonus', 0x4C),        # $E33A -- what the whole game paid, at the end of it
     # $DAE3 -- the board STAGE SELECT is played on: five empty frames and the
     # man below them.  It does not stand: $DBAE walks the board up the screen
     # and then writes a picture into each frame, so the board has to be
@@ -65,6 +66,20 @@ MODES = (
     # and draws nothing at all.
     ('stages', 0x19, 40, ('0055=01',)),
 )
+
+## What a mode does to the board besides laying its screens, which the dump on
+## its own cannot say.
+##
+## * `fill` -- the tile each of the two kilobytes is wiped with before the
+##   screens go on, the last sixty four of each always being nought.  $E350
+##   fills both with $0F, which is the sky behind whatever screen $39 writes,
+##   and $E353 then wipes the second back to nought; every other mode wipes
+##   both with nought.
+## * `fold` -- which way the two boards were mirrored **while the screens were
+##   being written**, where that is not the way they are mirrored afterwards.
+##   $E38B turns the ending's boards across only after screen $39 has gone on,
+##   so its writes above $2400 landed in the second kilobyte and stayed there.
+EXTRA = {'bonus': {'fill': [0x0F, 0x00], 'fold': 1}}
 
 POKE_AT = P.IN_LEVEL + 5
 SETTLED = P.IN_LEVEL + 130
@@ -117,9 +132,13 @@ def scene(name, drew, d, got, how):
     wrote itself -- a score, a name, a cursor.  Printing it is the whole check:
     a screen that is all its own writes reads +0.
     """
-    left = sum(1 for i in range(0x800) if got[i] != d['ciram'][i])
+    over = [i for i in range(0x800) if got[i] != d['ciram'][i]]
+    left = len(over)
+    fill = EXTRA.get(name, {}).get('fill', [0, 0])
     rec = {
         'how': how,
+        'fill': fill,
+        'fold': EXTRA.get(name, {}).get('fold', d['mirror']),
         'screens': drew,
         'palette': d['pal'],
         'chr': d['chr'],
@@ -130,13 +149,14 @@ def scene(name, drew, d, got, how):
         'scroll': [(d['v'] & 0x1F) * 8 + d['fine_x'],
                    ((d['v'] >> 5) & 0x1F) * 8 + ((d['v'] >> 12) & 7)],
     }
-    print('%-8s screens %s  banks %s  %d bands  mirror %d  +%d written over'
+    print('%-8s screens %s  banks %s  %d bands  mirror %d  wipe $%02X/$%02X'
+          '  +%d written over'
           % (name, ' '.join('$%02X' % s for s in drew), d['chr'][:4],
-             len(rec['bands']), d['mirror'], left))
+             len(rec['bands']), d['mirror'], fill[0], fill[1], left))
     return rec
 
 
-def lay(screens, numbers, mirror):
+def lay(screens, numbers, mirror, fill=(0, 0)):
     """The board as the drawn screens leave it: wiped, then written on.
 
     The console has two kilobytes of name map and four places to put them, so
@@ -144,6 +164,9 @@ def lay(screens, numbers, mirror):
     first two places are the same memory; down, the first and the third are.
     """
     board = bytearray(0x0800)
+    for k in (0, 1):
+        for i in range(0x3C0):
+            board[k * 0x400 + i] = fill[k]
     for n in numbers:
         key = '%04X' % screens['screens'][n]
         for addr, step, bytes_ in screens['streams'][key]['writes']:
@@ -181,8 +204,9 @@ def walk(d, screens):
     for at in sorted(want):
         name, same = want[at]
         one = vram('%s/w%d.bin' % (d, at))
-        out[name] = scene(name, same, one, lay(screens, same, one['mirror']),
-                          ['walk', at])
+        out[name] = scene(name, same, one, lay(
+            screens, same, EXTRA.get(name, {}).get('fold', one['mirror']),
+            EXTRA.get(name, {}).get('fill', (0, 0))), ['walk', at])
     return out
 
 
@@ -206,8 +230,10 @@ def poked(d, screens, state, name, mode, wait=None, also=()):
     # What is written down is everything the shot needs to be taken again:
     # the mode poked, the picture it is poked on, the picture the board is
     # read off, and whatever else had to be poked alongside it.
-    return scene(name, drew, one, lay(screens, drew, one['mirror']),
-                 ['poke', mode, POKE_AT, at, list(also)])
+    return scene(name, drew, one, lay(
+        screens, drew, EXTRA.get(name, {}).get('fold', one['mirror']),
+        EXTRA.get(name, {}).get('fill', (0, 0))),
+        ['poke', mode, POKE_AT, at, list(also)])
 
 
 def main():

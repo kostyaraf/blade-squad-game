@@ -45,6 +45,7 @@ STANDS = [
     ('soltest',    'Э4.10', 'verify_sol_test.py',  []),
     ('solstrip',   'Э4.11', 'verify_sol_strip.py', []),
     ('solclear',   'Э4.12', 'verify_sol_clear.py', []),
+    ('solend',     'Э4.13', 'verify_sol_end.py', []),
 ]
 
 # Every stand ends on a line that counts what differs.  Two shapes are in use:

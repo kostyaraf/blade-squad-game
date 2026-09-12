@@ -31,6 +31,15 @@ var banks := [0, 0, 0, 0]
 var spr_banks := [0, 0, 0, 0]
 var bands := []                     # [[first line, [four banks]], ...]
 var mirror := 1                     # 0 across, 1 down
+## Which way the two were mirrored while the screens were being written, where
+## that is not the way they are mirrored afterwards -- the ending turns its
+## boards across only after screen $39 has gone on ($E38B), so the writes above
+## $2400 landed in the second kilobyte and stayed there.
+var fold := 1
+## What each of the two kilobytes is wiped with before the screens go on, the
+## last sixty four of each always nought ($C5FE).  Only the ending wipes with
+## anything but nought.
+var fill := [0, 0]
 var scroll := Vector2i.ZERO
 
 static var _screens: Dictionary
@@ -60,7 +69,12 @@ static func make(scene_name: String) -> SolScreen:
 	var s := SolScreen.new()
 	s.name = scene_name
 	s.mirror = int(cfg["mirror"])
+	s.fold = int(cfg["fold"]) if cfg.has("fold") else s.mirror
+	s.fill = [0, 0]
+	if cfg.has("fill"):
+		s.fill = [int(cfg["fill"][0]), int(cfg["fill"][1])]
 	s.board.resize(0x0800)
+	s.wipe()
 	for n in cfg["screens"]:
 		s.lay(int(n))
 	s.palette = PackedByteArray()
@@ -96,9 +110,20 @@ func lay_more(n: int) -> void:
 func relay(numbers: Array) -> void:
 	board = PackedByteArray()
 	board.resize(0x0800)
+	wipe()
 	for n in numbers:
 		lay(int(n))
 	build()
+
+
+## $C5DC and $C5F9 -- both kilobytes wiped, each with its own tile, and the
+## last sixty four of each left at nought because that is the colour map and
+## $C5FE writes nought over it whatever the tile is.
+func wipe() -> void:
+	for k in range(2):
+		var t: int = int(fill[k])
+		for i in range(0x3C0):
+			board[k * 0x400 + i] = t
 
 
 ## One screen's writes, on whatever already stands on the board.
@@ -114,7 +139,7 @@ func lay(n: int) -> void:
 		var step: int = int(w[1])
 		for b in w[2]:
 			var a: int = addr & 0x0FFF
-			a = (a & 0x03FF) | (0x400 if (a & (0x400 if mirror else 0x800)) != 0
+			a = (a & 0x03FF) | (0x400 if (a & (0x400 if fold else 0x800)) != 0
 					else 0)
 			board[a] = int(b)
 			addr += step

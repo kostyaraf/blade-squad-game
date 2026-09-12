@@ -42,6 +42,15 @@ const AREA := 0x32          # $DB4A -- the mark of the one picked flashed up
 const RAISE := 0x1D         # $E520 -- raise the stage named in $55
 const CLEAR := 0x1B         # $E09C -- AREA x CLEARED, and the plates of it
 const PAYING := 0x1C        # $E117 -- and what the clearing owes paid out
+
+## The end of the game.  $9FF8 in bank eight is the one door into it and it
+## opens on $4C; from there the modes run one into the next and nothing else
+## reaches any of them.  ($1E, $1F, $20, $21 stand in the table of modes and
+## are the same code over again, but nothing anywhere puts any of the four on
+## $02, so the game cannot stand in them.)
+const END_PAY := 0x4C       # $E33A -- what the whole game paid
+const END_SUN := 0x4D       # $E421 -- and the sun coming up behind it
+const STAFF := 0x4E         # $E3E7 -- the ground the names are shown over
 ## $D79F -- TEST MODE, the maker's own menu, opened by sixteen buttons in a row
 ## on the title.  Its nine lines are the two tests and seven stages, and those
 ## seven are the only door in the game to the rooms the bosses stand in.
@@ -203,6 +212,19 @@ var z0760 := PackedByteArray([0, 0, 0, 0, 0, 0, 0, 0])
 
 ## $75 -- what the beam's counter is set to.
 var z75 := 0
+## $72, $73 and $74 -- how far the ending has walked the view, and the place
+## and the count $8AE9 works out of it for the beam to be cut at.  Nothing here
+## cuts the beam; what is kept is the numbers, because the sunrise is judged by
+## them.
+var z72 := 0
+var z73 := 0
+var z74 := 0
+var z76 := 0                # $76 and $77 -- what $E37D leaves standing
+var z77 := 0
+## $060C -- the satellite's own slot, which is what the bonus at the end of the
+## game pays for.  The pool holds it while a stage is played; a walk that
+## stands on a screen and nothing else has no pool, so the flow holds it.
+var z060c := 0
 
 var z58 := 0                # $58 -- how far into the maker's own code he is
 var z05a0 := 0              # $05A0 -- how many times round the opening has gone
@@ -317,6 +339,10 @@ func step(host) -> void:
 			_area_clear(host)
 		PAYING:
 			_area_pay(host)
+		END_PAY:
+			_end_pay(host)
+		END_SUN:
+			_end_sun(host)
 		TEST_LAY:
 			_test_lay(host)
 		TEST_MENU:
@@ -1298,6 +1324,165 @@ func _pay_end(host) -> void:
 	mode = PICK                                   # $19
 
 
+## $E33A, mode $4C -- the game is over and won.  The bonus is worked out and
+## added to the count, screen $39 is laid over a board wiped to sky, and the
+## view is put where the sunrise starts from.
+func _end_pay(host) -> void:
+	scroll_x = 0                                  # $C578 -- $0A and $0B
+	scroll_y = 0
+	fade.blank()                                  # $C5B0
+	# $E39D -- a thousand for every try left, a thousand for as many as the
+	# satellite stands past a multiple of eight, ten thousand for finishing,
+	# and a hundred thousand more where GAME OVER and TEST MODE were never
+	# seen.  $59 is what says so.
+	score = (score + SolEnd.bonus(lives, sat_of(host), z59 == 0)) & 0xFFFFFF
+	_no_sprites(host)                             # $E343 -- $C618 with $0C
+	# $E350 wipes both boards with $0F and $E353 the second back to nought,
+	# which the scene carries as its own wipe; $E35F then lays screen $39.
+	var pair: Array = SolEnd.chr_pair()           # $E356 -- $C925
+	_screen("bonus", int(pair[0]), int(pair[1]))
+	z4c = 0                                       # $E362 -- $DAD8
+	z4d = 0x04                                    # $E365
+	z4e = 0
+	z4f = 0
+	fade.take(SolEnd.one("bonus_table"), 0x20)    # $E36B -- $C6E9 with X = $1F
+	# $E370 -- $05BC, $05BD and $05F8 are the beam's own and are not kept.
+	z77 = 0
+	z76 = 0x03                                    # $E37D
+	z75 = 0xA8
+	z72 = SolEnd.one("sun_from")                  # $E385
+	for i in range(8, 0x10):                      # $E38E -- $0108..$010F
+		fade.out[i] = 0x0F
+	mode = END_SUN                                # $E398 -- INC $02
+
+
+## $E421, mode $4D -- the sun comes up behind the count.  $4F says which of
+## twenty one steps of $89A4 in bank twelve it stands on; the tiles it is drawn
+## out of are turned over every sixteenth picture ($E4DD).
+func _end_sun(_host) -> void:
+	fade.tick()                                   # $F806
+	match z4f:
+		0:                                        # $89D3
+			z7d = SolEnd.one("sun_trick")
+			z4d = 0
+			z4f += 1
+			_sun_split()
+		1:                                        # $89E0 -- a whole page held
+			z4d = (z4d - 1) & 0xFF
+			if z4d == 0:
+				z4d = 0x01
+				z4f += 1
+		2:                                        # $8A6E
+			_sun_row(0, 0x04)
+		3:                                        # $8A53
+			_sun_row(1, 0x04)
+		4:                                        # $8A57
+			_sun_row(2, 0x04)
+		5:                                        # $8A5B
+			_sun_row(3, 0x04)
+		6:                                        # $8A5F
+			_sun_row(4, 0x04)
+		7:                                        # $8A63
+			_sun_row(5, 0x04)
+		8:                                        # $8A01
+			noise = 0x0E
+			fade.at_pace(0x20)
+			z4f += 1
+			fade.ask(0x06, 0x0C)
+		9:                                        # $8A39
+			_sun_row(6, 0xA0)
+		10:                                       # $8A47
+			_sun_walk(7, 0x40)
+		11:                                       # $8A43
+			_sun_walk(6, 0x40)
+		12:                                       # $8A33
+			_sun_walk(5, 0x40)
+		13:                                       # $8A2F
+			_sun_walk(4, 0x40)
+		14:                                       # $8A2B
+			_sun_walk(3, 0x40)
+		15:                                       # $8A27
+			_sun_walk(2, 0x40)
+		16:                                       # $8A23
+			_sun_walk(1, 0x40)
+		17:                                       # $8A1F -- LDY #$00 and then
+			# BNE, which never branches: what is taken is the three under it,
+			# so the last of the eight is the second row over again and the
+			# first is never reached at all on the way down.
+			_sun_walk(1, 0x40)
+		18:                                       # $8A14
+			z4d = (z4d - 1) & 0xFF
+			if z4d == 0:
+				z4e = 0
+				z4f += 1
+		19:                                       # $89EB
+			fade.at_pace(0x08)
+			z4f += 1
+			fade.ask(SolFade.DOWN, 0xFF)
+		20:                                       # $89FA
+			if fade.kind == 0:
+				mode = STAFF                      # INC $02
+	if z7d == SolEnd.one("sun_trick"):
+		# $C1DA -- what the beam's own stop leaves standing.  It writes the
+		# address it was given last picture and then takes this one's for the
+		# next, the two halves the other way about.
+		z77 = z73
+		z76 = z74
+	_end_chr()
+
+
+## $E4DD -- the second pair of kilobytes turned over every sixteenth picture,
+## which is what makes the sky flicker.
+func _end_chr() -> void:
+	var pair: Array = SolEnd.chr_pair()
+	var y: int = int(pair[1]) + (0x04 if (clock & 0x10) != 0 else 0)
+	chr = PackedInt32Array([int(pair[0]), int(pair[0]) + 1, y, y + 1])
+
+
+## $8A70 and $8A75 -- one row of the sunrise: three colours into $0101..$0103
+## and three into $0105..$0107, held for as long as $4D says and then `next`
+## pictures put on it for the row that follows.
+func _sun_row(row: int, next: int) -> void:
+	_sun_split()
+	_sun_paint(row, next)
+
+
+## $8A35 and $8A4B -- the same, with the view walked on a point first.
+func _sun_walk(row: int, next: int) -> void:
+	_sun_move()
+	_sun_paint(row, next)
+
+
+func _sun_paint(row: int, next: int) -> void:
+	var two: Array = SolEnd.sun(row)
+	for i in range(3):
+		fade.out[0x01 + i] = int(two[0][i])       # $8A76
+		fade.out[0x05 + i] = int(two[1][i])       # $8A88
+	z4d = (z4d - 1) & 0xFF                        # $8A9B
+	if z4d == 0:
+		z4d = next
+		z4f += 1
+
+
+## $8ADA -- the view a point along every other picture, and $9E is as far as it
+## goes.
+func _sun_move() -> void:
+	z72 = (z72 + (clock & 0x01)) & 0xFF
+	if z72 >= SolEnd.one("sun_stop"):
+		z72 = SolEnd.one("sun_top")
+	_sun_split()
+
+
+## $8AE9 -- where the beam is cut and what is shown below the cut, both worked
+## out of the view.  The engine does not cut the beam; it keeps the three so
+## that the sunrise can be judged against the cartridge.
+func _sun_split() -> void:
+	z75 = (((z72 & 0x07) ^ 0x07) + SolEnd.one("sun_line")) & 0xFF
+	var v: int = (z72 & 0xF8) << 2
+	z73 = v & 0xFF
+	z74 = ((v >> 8) + 0x08) & 0xFF
+
+
 ## $E28C -- the three counts written into the screen, which every step but the
 ## last does once a picture: what the game has scored at $21D0, the suits
 ## still on him at $2250 and what is still to be paid at $220F.
@@ -1318,6 +1503,19 @@ func _pay_draw(host) -> void:
 ## every picture a stage is played ($CDBB).  So the suits are the hero's and
 ## the paying is the pool's, and a walk that stands on a screen and nothing
 ## else -- which has neither -- leaves both with the flow.
+func sat_of(host) -> int:
+	var pool = host.flow_pool()
+	return int(pool.id[SolPlayer.SAT]) if pool != null else z060c
+
+
+func set_sat_of(host, v: int) -> void:
+	var pool = host.flow_pool()
+	if pool != null:
+		pool.id[SolPlayer.SAT] = v
+	else:
+		z060c = v
+
+
 func suits_of(host) -> int:
 	var p = host.flow_hero()
 	return p.suit if p != null else z05c5

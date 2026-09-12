@@ -1111,6 +1111,8 @@ func _run_sol_boot(spec: String) -> void:
 			"suit": sol_flow.set_suits_of(self, int(start[k]))
 			"bonus": sol_flow.set_owed_of(self, int(start[k]))
 			"fd": sol_fd_at = int(start[k])
+			"sat": sol_flow.set_sat_of(self, int(start[k]))
+			"seen": sol_flow.z59 = int(start[k])
 	for one in bests:
 		sol_flow.best_scores[int(one[0])] = int(one[1])
 		sol_flow.best_names[int(one[0])] = one[2]
@@ -1689,6 +1691,8 @@ func _sol_flow_state() -> Dictionary:
 		"4c": sol_flow.z4c, "4d": sol_flow.z4d,
 		"4e": sol_flow.z4e, "4f": sol_flow.z4f,
 		"75": sol_flow.z75, "7d": sol_flow.z7d,
+		"72": sol_flow.z72, "73": sol_flow.z73, "74": sol_flow.z74,
+		"76": sol_flow.z76, "77": sol_flow.z77,
 		"010a": sol_flow.fade.out[0x0A],
 		"010b": sol_flow.fade.out[0x0B],
 		# $0100..$011F -- the thirty two as the game holds them, which is not

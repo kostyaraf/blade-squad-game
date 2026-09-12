@@ -40,7 +40,12 @@ COLOURS_N = 128
 ## screen that takes only some of a table leaves the rest as the table before
 ## it wrote them -- so the one before has to be here as well.
 FIXED_BANK = 14
-FIXED = (0xD485, 0xD499)
+FIXED = (0xD485, 0xD499, 0xD481)
+
+## And the ending names one that does not stand on a boundary of thirty two:
+## $E36B takes the whole of the table at $8010, which is not where the spread
+## above lands.
+EXTRA = (0x8010,)
 
 
 def main():
@@ -55,6 +60,8 @@ def main():
     tables = {'%04X' % a: at(a, 32) for a in range(FIRST, LAST, 32)}
     for a in FIXED:
         tables['%04X' % a] = list(fixed[a - 0xC000:a - 0xC000 + 32])
+    for a in EXTRA:
+        tables['%04X' % a] = at(a, 32)
 
     data = {
         'tables': tables,
