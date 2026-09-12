@@ -150,6 +150,7 @@ def seed(base):
     cfg['room'] = base[0x05EB]
     cfg['stage'] = base[0x55]
     cfg['z75'] = base[0x75]
+    cfg['z7c'] = base[0x7C]
     cfg['z58'] = base[0x58]
     cfg['z26'] = base[0x26]
     cfg['letters'] = base[0x05C4]

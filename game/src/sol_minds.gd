@@ -48,8 +48,16 @@ static func _body(o: SolObjects, s: int) -> void:
 ## $81EA -- the table for a thing that is alive.
 static func _live(o: SolObjects, s: int, m: int) -> void:
 	match m:
-		0x01, 0x36, 0x37:
+		0x00, 0x01, 0x02, 0x36, 0x37:
 			pass                            # $B0CC -- nothing at all
+		0x15:
+			_aa41(o, s)
+		0x16:
+			_a7f0(o, s)
+		0x17:
+			_a836(o, s)
+		0x2E:
+			_a82b(o, s)
 		0x1E:
 			_a10b(o, s)
 		0x1B:
@@ -112,6 +120,28 @@ static func _live(o: SolObjects, s: int, m: int) -> void:
 ## all point somewhere else once bit 7 is on.
 static func _dead(o: SolObjects, s: int, m: int) -> void:
 	match m:
+		0x00, 0x01:
+			_a883(o, s)                     # $A883
+		0x02:
+			_a8ed(o, s)                     # $A8ED
+		0x04, 0x05, 0x0A:
+			_a96c(o, s)                     # $A96C
+		0x08, 0x09:
+			_a9f6(o, s)                     # $A9F6
+		0x13:
+			_a904(o, s)                     # $A904
+		0x15:
+			_aa41(o, s)                     # $AA41
+		0x16:
+			_a7f0(o, s)                     # $A7F0
+		0x17:
+			_a836(o, s)                     # $A836
+		0x2E:
+			_a82b(o, s)                     # $A82B
+		0x36:
+			_a8b8(o, s)                     # $A8B8
+		0x37:
+			_a8d3(o, s)                     # $A8D3
 		0x0B:
 			_af63(o, s)                     # $AF63
 		0x0C, 0x0E:
@@ -1373,7 +1403,9 @@ static func _9b61(o: SolObjects, s: int) -> void:
 			o.z52 = 0                       # $8133
 			o.y[s] = o.y[s] & 0xFF00
 			_9cdd(o, s, 0x40)
-			if o.kind[s] < 0x80:
+			# $9B85 -- the branch skips the write when bit 7 is clear, so it
+			# is the one already finished off that is sent back to $89.
+			if o.kind[s] >= 0x80:
 				o.kind[s] = 0x89
 			o.kind[s] = (o.kind[s] - 1) & 0xFF
 			down = false
@@ -1653,6 +1685,239 @@ static func _a989(o: SolObjects, s: int, score: int) -> void:
 	if free:
 		o.id[s] = 0                         # $80B9
 	o.score += score
+
+
+# ------------------------------------------------------ what breaks the stage
+#
+# $BF3D..$BF69 -- a burst is a list of cells, counted from the one the slot
+# stands in, and the $80 at the end closes it.  A crate is four cells, so most
+# of the lists are four pairs.
+
+const BURST_HIGH := [0xFF, 0xFD, 0xFF, 0xFE, 0x00, 0xFD, 0x00, 0xFE, 0x80]   # $BF46
+const BURST_HERE := [0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x80]   # $BF4F
+const BURST_LOW := [0xFF, 0x01, 0x00, 0x02, 0xFF, 0x02, 0x00, 0x01, 0x80]    # $BF58
+const BURST_UNDER := [0xFF, 0x02, 0x00, 0x01, 0x80]                          # $BF5C
+const BURST_FAR := [0xFF, 0x03, 0xFF, 0xFC, 0x00, 0x03, 0x00, 0xFC, 0x80]    # $BF61
+
+const BURST_THREE := [BURST_HIGH, BURST_HERE, BURST_LOW]                     # $A896
+const BURST_FOUR := [BURST_HIGH, BURST_HERE, BURST_LOW, BURST_FAR]           # $A8CB
+const BURST_TWO := [BURST_HERE, BURST_UNDER]                                 # $A900
+const BURST_ONE := [BURST_HERE]                                              # $A924
+
+
+## $A931 -- a word from it every fourth picture.  Sound is not kept, so this
+## is only where it would be said.
+static func _a931(_o: SolObjects) -> void:
+	pass                                    # $A937
+
+
+## $A93C -- one step of a burst.  $0610 counts which of the lists has already
+## been let off; at the last of them the burst is over and it answers $FF.  A
+## picture the background already owes a row or a column lets nothing off at
+## all, and the count is left where it was -- so a burst stretches out over
+## however many pictures it needs.
+static func _a93c(o: SolObjects, s: int, lists: Array) -> int:
+	if o.a[s] == lists.size():
+		return 0xFF                         # $A966
+	if o.smash_list(s, lists[o.a[s]]) == 0:
+		return 0                            # $A969
+	o.a[s] = (o.a[s] + 1) & 0xFF            # $A95C
+	return 0xFF if o.a[s] == lists.size() else 0
+
+
+## $A8A7 -- what every one of them does first: it cannot be hurt while it goes
+## off, it walks the third book of pictures, and the answer is whether it has
+## got as far as its eighth.
+static func _a8a7(o: SolObjects, s: int) -> bool:
+	_a931(o)
+	o.cool[s] = 0xFF                        # $80D4
+	o.anim_second(s, 0x00, 3)               # $8985
+	# $A8B2 -- the compare leaves its own carry behind it.
+	o.carry = 1 if o.frame[s] >= 0x08 else 0
+	return o.frame[s] >= 0x08
+
+
+## $A89C and $A926 -- and when the walk has run out, what it was worth.
+static func _a89c(o: SolObjects, s: int, score: int) -> void:
+	if o.left[s] != 0xFF:
+		return                              # $80E0
+	_a989(o, s, score)
+
+
+## $A883 -- [$00 and $01 finished] three lists, and a hundred for it.
+static func _a883(o: SolObjects, s: int) -> void:
+	if not _a8a7(o, s):
+		return                              # $A886
+	if _a93c(o, s, BURST_THREE) == 0:
+		return                              # $A88B
+	_a89c(o, s, 0x64)
+
+
+## $A8B8 -- [$36 finished] four lists, and fifty.
+static func _a8b8(o: SolObjects, s: int) -> void:
+	if not _a8a7(o, s):
+		return                              # $A8BB
+	if _a93c(o, s, BURST_FOUR) == 0:
+		return                              # $A8C0
+	_a89c(o, s, 0x32)
+
+
+## $A8D3 -- [$37 finished] the same three lists as $A883, but what it leaves
+## behind when it is over is a thing of its own.
+static func _a8d3(o: SolObjects, s: int) -> void:
+	if not _a8a7(o, s):
+		return                              # $A8D6
+	if _a93c(o, s, BURST_THREE) == 0:
+		return                              # $A8DB
+	if o.left[s] != 0xFF:
+		return                              # $80E0
+	o.hatch_here(s, 0xE1)                   # $A8E2
+	_a989(o, s, 0x32)
+
+
+## $A8ED -- [$02 finished] two lists, and a hundred.
+static func _a8ed(o: SolObjects, s: int) -> void:
+	if not _a8a7(o, s):
+		return                              # $A8F0
+	if _a93c(o, s, BURST_TWO) == 0:
+		return                              # $A8F5
+	_a89c(o, s, 0x64)
+
+
+## $A904 -- [$13 finished] one list only.
+static func _a904(o: SolObjects, s: int) -> void:
+	if not _a8a7(o, s):
+		return                              # $A914
+	if _a93c(o, s, BURST_ONE) == 0:
+		return                              # $A919
+	_a89c(o, s, 0x32)
+
+
+## $A871 -- the cell the slot itself stands in is broken through.
+static func _a871(o: SolObjects, s: int) -> int:
+	return o.smash((o.x[s] >> 8) & 0xFF, (o.y[s] >> 8) & 0xFF)
+
+
+## $A980 -- the low byte of the fall is set and its high byte taken one down,
+## which carries the slot upward at that speed.
+static func _a980(o: SolObjects, s: int, v: int) -> void:
+	o.z52 = v | ((((o.z52 >> 8) - 1) & 0xFF) << 8)
+	o.move(s)                               # $813F
+
+
+## $A836 -- [$17] the one that bores upward.  It is carried up a picture at a
+## time and breaks through every new row of cells it reaches; when it has been
+## through as many rows as it was given, it is done with.  A picture where the
+## background already owes a row or a column is sat out entirely -- it neither
+## breaks nor moves.
+static func _a836(o: SolObjects, s: int) -> void:
+	o.z52 = 0x00C0 | ((((o.z52 >> 8) - 1) & 0xFF) << 8)
+	if o.z26 != 0:
+		o.z52 = 0                           # $8133
+		return
+	if ((o.y[s] >> 8) & 0xFF) == o.b[s]:
+		o.move(s)                           # $A86E -- still in the same row
+		return
+	if o.row_due != 0 or o.col_due != 0:
+		o.z52 = 0                           # $A84B
+		return
+	if _a871(o, s) == 0:
+		o.b[s] = (o.y[s] >> 8) & 0xFF       # $A869
+		o.move(s)
+		return
+	o.c[s] = (o.c[s] + 1) & 0xFF            # $A852
+	if o.c[s] != o.d[s]:
+		o.b[s] = (o.y[s] >> 8) & 0xFF
+		o.move(s)
+		return
+	_a989(o, s, 0x00)                       # $A861
+	o.z52 = 0
+
+
+## $A7F0 -- [$16] and the one that bores downward.  The same, save that it is
+## carried the other way and that finishing it tells the stage to move on.
+static func _a7f0(o: SolObjects, s: int) -> void:
+	o.z52 = (o.z52 & 0xFF00) | 0x40
+	if o.z26 != 0:
+		o.z52 = 0                           # $A820
+		return
+	if ((o.y[s] >> 8) & 0xFF) == o.b[s]:
+		o.move(s)                           # $A828
+		return
+	if o.row_due != 0 or o.col_due != 0:
+		o.z52 = 0
+		return
+	if _a871(o, s) == 0:
+		o.b[s] = (o.y[s] >> 8) & 0xFF       # $A823
+		o.move(s)
+		return
+	o.c[s] = (o.c[s] + 1) & 0xFF            # $A80A
+	if o.c[s] != o.d[s]:
+		o.b[s] = (o.y[s] >> 8) & 0xFF
+		o.move(s)
+		return
+	_a989(o, s, 0x00)                       # $A819
+	o.z7f = (o.z7f + 1) & 0xFF              # $A81E
+	o.z52 = 0
+
+
+## $A82B -- [$2E] the borer above, and when its slot has gone the stage is
+## told to move on.
+static func _a82b(o: SolObjects, s: int) -> void:
+	_a836(o, s)
+	if o.id[s] == 0:
+		o.z7f = (o.z7f + 1) & 0xFF          # $A833
+
+
+## $AA41 -- [$15] it walks one picture and then it is over.
+static func _aa41(o: SolObjects, s: int) -> void:
+	o.anim_second(s, 0x0B, 3)               # $8985
+	if o.left[s] == 0xFF:
+		_a989(o, s, 0x00)                   # $80E0
+
+
+## $A96C -- [$04, $05 and $0A finished] it walks one picture and is carried
+## up; the slot goes when the walk is over, and at once if the hero is being
+## left alone.
+static func _a96c(o: SolObjects, s: int) -> void:
+	if o.hero_hurt != 0:
+		o.id[s] = 0                         # $A97B
+		return
+	o.anim_second(s, 0x09, 3)               # $8985
+	if o.left[s] == 0xFF:
+		o.id[s] = 0                         # $80E0
+		return
+	_a980(o, s, 0xC0)                       # $A97E
+
+
+## $A9F6 -- [$08 and $09 finished] a letter on its way to the bar.  While it
+## is still being thrown ($0610 nought) it simply goes, leaving a spark and
+## ten behind it.  After that it is drawn up to two rows under the top of the
+## view and then carried leftward until it is seven cells in, where what it
+## carries is written into the three the bar shows.
+static func _a9f6(o: SolObjects, s: int) -> void:
+	if o.a[s] == 0:
+		o.hatch_here(s, 0x1B)               # $A9FB
+		o.id[s] = 0                         # $80B9
+		o.score += 0x0A                     # $A9E1
+		return
+	o.carry = 1
+	var d: int = o._sbc((o.y[s] >> 8) & 0xFF, (o.cam_y >> 8) & 0xFF)
+	if o.carry != 0 and d >= 0x03:
+		_a980(o, s, 0x80)                   # $AA12
+		return
+	o.carry = 0                             # $AA17
+	o.y[s] = (o._adc((o.cam_y >> 8) & 0xFF, 0x02) << 8) & 0xFFFF
+	o.carry = 1                             # $AA22
+	var e: int = o._sbc((o.x[s] >> 8) & 0xFF, (o.cam_x >> 8) & 0xFF)
+	if e >= 0x07:
+		if e < 0x0A:
+			o.letters = o.b[s]              # $AA2F
+			o.id[s] = 0
+			return
+		o.z50 = (o.z50 - 0x100) & 0xFFFF    # $AA38
+	o.z50 = (o.z50 & 0xFF00) | 0x80         # $AA3A
+	o.move(s)
 
 
 # ------------------------------------------------------------- the behaviours

@@ -31,7 +31,11 @@ BORN = (8, 0x8096)          # $8072 + $24 -- the ring the spawner reads
 GONE = (14, 0xCEDE)     # $CEBA + $24 -- the ring the frame walk reads
 RING = 72                   # six rows of twelve; rows 0..2 and 9..11 are never read
 HATCH = (3, 0xAB77)         # bank 3, $AB10 -- what a behaviour may let out
-N_HATCH = 0xC0              # nine bytes a template, same order as the types
+N_HATCH = 0x120             # nine bytes a template, same order as the types;
+                            # $EA is the last index anything asks for
+HATCH2 = (12, 0x8D14)       # bank 12, $8C83/$8CAA -- the other one, which fills
+N_HATCH2 = 0x60             # the first free slot counting up rather than down;
+                            # $24 is the last index anything asks for
 ARCTAN = (12, 0x8ED2)       # bank 12, $8E99 -- two lengths become a heading
 N_ARCTAN = 0x100
 STEPS = (12, 0x9060)        # bank 12, $8FF6 -- how far a heading carries a thing
@@ -105,6 +109,9 @@ def export():
         # $AB77 -- nine bytes apiece, but reached by a plain byte offset, so
         # they are kept as bytes and read out where a behaviour asks.
         hatch=[int(v) for v in at(rom, HATCH, N_HATCH)],
+        # $8D14 -- the same nine bytes in the same order, but read by $8CAA,
+        # which takes the first free slot counting up from nought.
+        hatch2=[int(v) for v in at(rom, HATCH2, N_HATCH2)],
         # $9060 -- a quarter circle: a heading and a speed become a step along
         # and a step down.  $8FF6 reads it twice, once each way round.
         steps=[int(v) for v in at(rom, STEPS, N_STEPS)],

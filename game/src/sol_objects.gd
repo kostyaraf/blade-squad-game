@@ -152,6 +152,7 @@ var stage := 0                      # $55 -- which stage is up
 var zf8 := 0                        # $F8 -- what the game is to be put to next
 var map_kind := 0                   # $70 -- $3C is the stage that is all water
 var z9d := 0                        # $9D -- what the last probe left over
+var z5f0 := 0                       # $05F0 -- the map owes the screen a redraw
 ## $54 and $88..$8F -- the hero's own box.  It is built once a picture, at
 ## $80DE, before the pool is walked at all, so every slot is laid over the same
 ## one.
@@ -769,6 +770,46 @@ func finish(s: int) -> void:
 
 ## A behaviour that has not been read yet.  It is counted rather than guessed
 ## at, so the acceptance can name what is still owed.
+## $BE0F -- one place of the stage is hit.  Nothing is broken on a picture the
+## background already owes a row or a column ($36/$37): there is no room left
+## in the blanking for it.  What is hit is read out of the stage as it was
+## written, not as it is shown, because it is the written number the mark is
+## kept by.
+##
+## Only what stops something can be broken: the low nibble nought and four go
+## through untouched, the rest give way.  Whether that shows is another
+## matter -- a plain wall loses only what it stopped, a crate loses its face
+## as well.
+func smash(mx: int, my: int) -> int:
+	if row_due != 0 or col_due != 0:
+		return 0                        # $BE13
+	z90 = (mx & 0xFF) << 8              # $BE1B -- the low bytes are dropped
+	z92 = (my & 0xFF) << 8
+	var m: int = level.raw_at((mx & 0xFF) << 4, (my & 0xFF) << 4)
+	if m < 0:
+		return 0xFF
+	var n: int = level.props[m] & 0x0F  # $BE2C
+	if n < 0x0C and (n & 0x03) == 0:
+		return 0xFF                     # $BE18
+	level.smash(m)                      # $BE36
+	z5f0 = 0xFF                         # $BEE7
+	return 0xFF
+
+
+## $BF0B -- a whole burst of them: pairs of offsets in cells, counted from the
+## slot's own, until $80 closes the list.
+func smash_list(s: int, list: Array) -> int:
+	if row_due != 0 or col_due != 0:
+		return 0                        # $BF0F
+	var i := 0
+	while list[i] != 0x80:              # $BF17
+		var mx: int = (list[i] + ((x[s] >> 8) & 0xFF)) & 0xFF
+		var my: int = (list[i + 1] + ((y[s] >> 8) & 0xFF)) & 0xFF
+		i += 2
+		smash(mx, my)
+	return 0xFF                         # $BF37
+
+
 func missed(m: int, done: bool) -> void:
 	var key := "%02X%s" % [m, "-dead" if done else ""]
 	skipped[key] = int(skipped.get(key, 0)) + 1

@@ -229,6 +229,33 @@ func _run_sol_cam(path: String) -> void:
 	print("\n".join(out))
 
 
+## One byte of the pool written by hand, named the way the cartridge names it.
+## The crate stand needs a whole slot moved, not only its behaviour flipped.
+func _poke_pool(pool: SolObjects, a: int, v: int) -> void:
+	var s: int = a & 0x0F
+	match a & 0xFFF0:
+		0x00A0: pool.x[s] = (pool.x[s] & 0xFF00) | v
+		0x00B0: pool.x[s] = (pool.x[s] & 0x00FF) | (v << 8)
+		0x00C0: pool.y[s] = (pool.y[s] & 0xFF00) | v
+		0x00D0: pool.y[s] = (pool.y[s] & 0x00FF) | (v << 8)
+		0x0600: pool.id[s] = v
+		0x0610: pool.a[s] = v
+		0x0620: pool.b[s] = v
+		0x0630: pool.c[s] = v
+		0x0640: pool.d[s] = v
+		0x0650: pool.mind[s] = v
+		0x0660: pool.pic_lo[s] = v
+		0x0670: pool.pic_hi[s] = v
+		0x0680: pool.face[s] = v
+		0x0690: pool.kind[s] = v
+		0x06A0: pool.anim_a[s] = v
+		0x06B0: pool.anim_b[s] = v
+		0x06C0: pool.left[s] = v
+		0x06D0: pool.frame[s] = v
+		0x06E0: pool.cool[s] = v
+		0x06F0: pool.life[s] = v
+
+
 ## Э4.2 -- who is in the sixteen slots and where, held against the cartridge
 ## picture by picture.  The hero and the view are seeded and driven exactly as
 ## the other two stands drive them; what is printed is the pool.  The stand is
@@ -304,7 +331,12 @@ func _run_sol_objects(path: String) -> void:
 	var sixes: Array = cfg["six_at"] if cfg.has("six_at") else noises
 	var steps: Array = cfg["step_at"] if cfg.has("step_at") else noises
 	var rides: Array = cfg["ride_at"] if cfg.has("ride_at") else []
+	# $26 is what the screen still owes, and it is the blanking that pays it
+	# off -- machinery this stand has no model of at all.  Where a stand cares
+	# (the two borers sit still all the while it is not nought) the byte is
+	# handed over picture by picture, as the clocks above are.
 	var news: Array = cfg["new_at"] if cfg.has("new_at") else cfg["pads"]
+	var oweds: Array = cfg["owed_at"] if cfg.has("owed_at") else []
 	var out := PackedStringArray()
 	var shots := PackedStringArray()
 	var arms := PackedStringArray()
@@ -316,11 +348,18 @@ func _run_sol_objects(path: String) -> void:
 	# frame, so it is done here before anything else of the picture.
 	var kill_at: int = int(cfg["kill_at"]) if cfg.has("kill_at") else -1
 	var kill: Array = cfg["kill"] if cfg.has("kill") else []
+	# Э4.4 -- the crate stand writes a whole slot rather than one byte of it,
+	# and names each byte by the address the cartridge keeps it at.
+	var put: Array = cfg["put"] if cfg.has("put") else []
+	var want_crates: bool = cfg.has("crates")
+	var crates := PackedStringArray()
 	var n := 0
 	for f in cfg["pads"]:
 		if n == kill_at:
 			for e in kill:
 				pool.mind[int(e[0])] = int(e[1])
+			for e in put:
+				_poke_pool(pool, int(e[0]), int(e[1]))
 		# A picture the cartridge did not have time for: $0C does not move on,
 		# and neither does anything else.  The stand still asks for a row, so
 		# the one before is given again.
@@ -330,6 +369,8 @@ func _run_sol_objects(path: String) -> void:
 			arms.append(arms[n - 1])
 			heroes.append(heroes[n - 1])
 			hands.append(hands[n - 1])
+			if want_crates:
+				crates.append(crates[n - 1])
 			n += 1
 			continue
 		# The order of one picture, as $CDB0 keeps it: what the background
@@ -343,6 +384,8 @@ func _run_sol_objects(path: String) -> void:
 		pool.noise = int(noises[n])
 		pool.six = int(sixes[n])
 		pool.z7f = int(steps[n])
+		if n < oweds.size():
+			pool.z26 = int(oweds[n])
 		if n < rides.size():
 			pool.z58 = int(rides[n])
 		pool.drew()
@@ -430,8 +473,15 @@ func _run_sol_objects(path: String) -> void:
 					pool.frame[i], pool.cool[i], pool.life[i],
 					pool.pic_lo[i], pool.pic_hi[i]])
 		hands.append("H " + " ".join(hrow))
+		if want_crates:
+			var crow := PackedStringArray()
+			for i in range(level_sol.present.size()):
+				crow.append(str(level_sol.present[i]))
+			crates.append("C " + " ".join(crow))
 		n += 1
 	print("\n".join(out))
+	if want_crates:
+		print("\n".join(crates))
 	print("\n".join(shots))
 	print("\n".join(arms))
 	print("\n".join(heroes))
@@ -854,6 +904,9 @@ func _step_sol() -> void:
 
 func _show_sol() -> void:
 	var m: ShaderMaterial = bg.material
+	if level_sol.map_dirty:
+		level_sol.map_dirty = false
+		map_tex.update(level_sol.map_image)
 	scroll = Vector2i(sol_view.x >> 4, sol_view.y >> 4)
 	m.set_shader_parameter("scroll", Vector2(scroll - origin))
 	m.set_shader_parameter("banks",

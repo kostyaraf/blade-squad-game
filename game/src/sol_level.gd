@@ -21,9 +21,20 @@ var spr_banks: Array
 var start: Vector2i                 # where the player comes in, in 1/16 px
 var camera: Dictionary
 var props: PackedByteArray          # per metatile: palette, alt flag, collision
+var alt: PackedByteArray            # $18 -- what a whole one of it looks like
+var present: PackedByteArray        # $0540 -- a bit a metatile, set while whole
+## The two answers above worked out once for all 256 metatiles.  Asking what
+## is at a place is the hottest thing the engine does, so it must not be
+## three array reads and a pair of shifts deep.
+var _shown: PackedByteArray
+var _coll: PackedByteArray
+var map_dirty := false              # the picture owes the shader a fresh copy
 var room_group: PackedByteArray     # $9A -- per room, which object group it has
 var object_groups: Dictionary       # $9C -- the group's list of records
-var _metatile: PackedByteArray      # per 16x16 cell, the metatile it resolves to
+var _metatile: PackedByteArray      # per 16x16 cell, the metatile the stage names
+var _cells: Dictionary              # metatile -> the cells it sits in
+var _buf: PackedByteArray           # the picture, kept so a broken one can be redrawn
+var _quads: Array
 var _data: Dictionary
 
 
@@ -55,11 +66,25 @@ func _build() -> void:
 	var rooms: Array = _data["rooms"]
 	var screens: Array = _data["screens"]
 	var blocks: Array = _data["blocks"]
-	var quads: Array = _data["quads"]
-	var alt: Array = _data["alt"]
+	_quads = _data["quads"]
+	var alt_in: Array = _data["alt"]
+	alt = PackedByteArray()
+	alt.resize(alt_in.size())
+	for i in range(alt_in.size()):
+		alt[i] = int(alt_in[i])
+	# $A782 -- every metatile is marked whole when the stage is raised.
+	present = PackedByteArray()
+	present.resize(32)
+	present.fill(0xFF)
+	_cells = {}
+	_shown = PackedByteArray()
+	_shown.resize(256)
+	_coll = PackedByteArray()
+	_coll.resize(256)
+	_settle()
 
-	var buf := PackedByteArray()
-	buf.resize(width_tiles * height_tiles * 4)
+	_buf = PackedByteArray()
+	_buf.resize(width_tiles * height_tiles * 4)
 	_metatile = PackedByteArray()
 	_metatile.resize((width_tiles / 2) * (height_tiles / 2))
 
@@ -78,31 +103,79 @@ func _build() -> void:
 					for hx in range(2):
 						for hy in range(2):
 							var m: int = int(blk[hx * 2 + hy])
-							var p: int = props[m]
-							# A block that can be broken is solid until it is:
-							# the engine marks every one of them present when
-							# the stage is entered.
-							if (p & 0x20) != 0:
-								m = int(alt[m])
 							var mx: int = rx * 16 + bc * 2 + hx
 							var my: int = ry * 16 + br * 2 + hy
-							_metatile[my * (width_tiles / 2) + mx] = m
-							var q: Array = quads[m]
-							var pal: int = props[m] >> 6
-							for tx in range(2):
-								for ty in range(2):
-									var x: int = mx * 2 + tx
-									var y: int = my * 2 + ty
-									var o: int = (y * width_tiles + x) * 4
-									buf[o] = int(q[tx * 2 + ty])
-									buf[o + 1] = pal
-									buf[o + 3] = 255
+							var cell: int = my * (width_tiles / 2) + mx
+							_metatile[cell] = m
+							# A crate is four metatiles of its own, and the
+							# whole one is kept in the alternate table; the
+							# cells are remembered so that breaking it can
+							# redraw every one of them.
+							if (props[m] & 0x20) != 0:
+								if not _cells.has(m):
+									_cells[m] = []
+								_cells[m].append(cell)
+							_paint(mx, my, shown(m))
 	map_image = Image.create_from_data(width_tiles, height_tiles, false,
-			Image.FORMAT_RGBA8, buf)
+			Image.FORMAT_RGBA8, _buf)
 
 
-## The metatile at a world pixel, or -1 outside the stage.
-func metatile_at(px: int, py: int) -> int:
+## One cell of the picture, four tiles of it.
+func _paint(mx: int, my: int, m: int) -> void:
+	var q: Array = _quads[m]
+	var pal: int = props[m] >> 6
+	for tx in range(2):
+		for ty in range(2):
+			var x: int = mx * 2 + tx
+			var y: int = my * 2 + ty
+			var o: int = (y * width_tiles + x) * 4
+			_buf[o] = int(q[tx * 2 + ty])
+			_buf[o + 1] = pal
+			_buf[o + 3] = 255
+			if map_image != null:
+				map_image.set_pixel(x, y, Color8(_buf[o], pal, 0, 255))
+
+
+## The two tables above, worked out from the mark as it now stands.
+func _settle() -> void:
+	for m in range(props.size()):
+		var w: bool = (present[(m >> 3) & 0x1F] & (0x80 >> (m & 0x07))) != 0
+		if (props[m] & 0x20) != 0:
+			_shown[m] = alt[m] if w else m
+			_coll[m] = props[_shown[m]] & 0x1F
+		else:
+			_shown[m] = m
+			_coll[m] = (props[m] & 0x1F) if w else 0
+
+
+## $D124 -- is this metatile still whole.
+func whole(m: int) -> bool:
+	return (present[(m >> 3) & 0x1F] & (0x80 >> (m & 0x07))) != 0
+
+
+## $90FA -- what is actually shown where the stage names metatile `m`: the
+## whole one while it stands, the one written down once it is broken.
+func shown(m: int) -> int:
+	return _shown[m]
+
+
+## $BE36 -- one metatile is broken.  The mark is kept by metatile number, not
+## by place, so every cell in the stage that names it goes at the same time --
+## which is why a crate is given four numbers of its own.
+func smash(m: int) -> void:
+	if not whole(m):
+		return
+	present[(m >> 3) & 0x1F] &= ~(0x80 >> (m & 0x07)) & 0xFF
+	_settle()
+	if (props[m] & 0x20) == 0:
+		return                          # only what it stops changes, not its face
+	for cell in _cells.get(m, []):
+		_paint(cell % (width_tiles / 2), cell / (width_tiles / 2), m)
+	map_dirty = true
+
+
+## The metatile the stage names at a world pixel, whole or not, or -1 outside.
+func raw_at(px: int, py: int) -> int:
 	var mx := px >> 4
 	var my := py >> 4
 	if mx < 0 or my < 0 or mx >= width_tiles / 2 or my >= height_tiles / 2:
@@ -110,7 +183,18 @@ func metatile_at(px: int, py: int) -> int:
 	return _metatile[my * (width_tiles / 2) + mx]
 
 
-## The collision bits of the metatile at a world pixel.
+## The metatile shown at a world pixel, or -1 outside the stage.
+func metatile_at(px: int, py: int) -> int:
+	var m := raw_at(px, py)
+	return -1 if m < 0 else _shown[m]
+
+
+## The collision bits of the metatile at a world pixel.  A broken one that has
+## no second face still shows the same picture, but stops nothing at all
+## ($911D), which the table above has already worked out.
 func collision_at(px: int, py: int) -> int:
-	var m := metatile_at(px, py)
-	return 0 if m < 0 else props[m] & 0x1F
+	var mx := px >> 4
+	var my := py >> 4
+	if mx < 0 or my < 0 or mx >= width_tiles / 2 or my >= height_tiles / 2:
+		return 0
+	return _coll[_metatile[my * (width_tiles / 2) + mx]]
