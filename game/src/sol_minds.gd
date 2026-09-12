@@ -2396,6 +2396,8 @@ static func _a53d(o: SolObjects, s: int) -> void:
 			if o.left[s] == 0xFF:
 				_815a(o, s)
 				o.kind[s] = (o.kind[s] + 1) & 0xFF
+		0x20:
+			o.kind[s] = 0x02                    # $A716
 		_:
 			o.missed(0x1B, false)
 
@@ -3017,6 +3019,8 @@ static func _pickup(o: SolObjects, s: int) -> void:
 		0x22: _849c(o, s, 0xFF)
 		0x26: _842f(o, s)
 		0x2A: _83d7(o, s)
+		0x24: _83ef(o, s)
+		0x28: _8457(o, s)
 		0x2C: _k865c(o, s)
 		_: o.missed(0x3F, false)
 
@@ -3033,7 +3037,10 @@ static func _pickup_dead(o: SolObjects, s: int) -> void:
 		0x16: _k8545(o, s)
 		0x18: _8f68(o, s)                   # $8F65 -- a noise, then $8F68
 		0x1A, 0x2C: _a989(o, s, 0x00)       # $8F76
+		0x1C: _8ee6(o, s)
 		0x1E: _k84aa(o, s)
+		0x24: _83ef(o, s)
+		0x28: _8457(o, s)
 		0x20: _849c(o, s, 0x00)
 		0x22: _849c(o, s, 0xFF)
 		0x26: _842f(o, s)
@@ -3172,8 +3179,20 @@ static func _k84fb(o: SolObjects, s: int) -> void:
 		o.b[s] = (o.b[s] - 1) & 0xFF
 		o.cool[s] = 0x0F
 		return
-	# $8516 -- from here it is rising, and what it meets is Э4.3's second half.
-	o.missed(0x3F, false)
+	# $8516 -- from here it is rising, and the ceiling is what stops it.
+	if _87cd(o, s, o.probe_behind(s, 0x0080, 0x0100)) < 0x80:
+		o.z52 = (o.z52 & 0xFF00) | 0x40             # $8538
+		o.move(s)
+		return
+	# $851E -- the door is opened, and it is put back at the top of the view
+	# with something of its own let out where it stood.
+	o.y[s] = (o.y[s] & 0xFF00) | 0x07               # $8523, $05F7 = 7 with it
+	# $8525 -- the noise ($F1 = $3F) is not modelled.
+	o.hatch_here(s, 0xBD)                           # $AAF1
+	o.y[s] = (o.y[s] & 0x00FF) \
+			| (((o.cam_y >> 8) & 0xFF) << 8)        # $852D
+	o.b[s] = 0x70                                   # $8533
+	o.cool[s] = 0x0F                                # $850E
 
 
 ## $8545 -- it flickers and now and then lets something go.
@@ -4436,3 +4455,90 @@ static func _ae7b(o: SolObjects, s: int) -> void:
 	else:
 		o.z50 = (o.z50 & 0xFF00) | 0x14                 # $AECE
 	o.move(s)                                           # $AED4
+
+
+## $8446 -- it is put where the hero is, both halves of both numbers.
+static func _8446(o: SolObjects, s: int) -> void:
+	o.x[s] = o.hero_x
+	o.y[s] = o.hero_y
+
+
+## $8418 -- one of the four, let out on top of the hero.  $AAFA is handed a
+## seven, so this one looks for its free slot from seven down, not eleven.
+static func _8418(o: SolObjects, s: int, tpl: int) -> void:
+	o.hatch(o.hero_x, o.hero_y, tpl, 0x07)          # $AAFA
+
+
+## $83EF -- [kind $24] it rides the hero, and once he is in the state the end
+## of a stage puts him in, it lets four things out of itself at once and goes.
+static func _83ef(o: SolObjects, s: int) -> void:
+	_8446(o, s)                                     # $8446
+	o.anim_second(s, 0x0C, 3)                       # $8985
+	if o.hero_state != 0x13:                        # $05A2
+		return
+	for tpl in [0x48, 0x51, 0x5A, 0x63]:            # $83FE .. $840F
+		_8418(o, s, tpl)
+	_a989(o, s, 0x00)                               # $8412
+
+
+## $8457 -- [kind $28] the one that rides him off the stage: it counts down,
+## blinks the last of the count away, and takes the wire's fuel with it.
+static func _8457(o: SolObjects, s: int) -> void:
+	if (o.hero_pic_lo | o.hero_pic_hi) == 0:        # $8457 -- he is not drawn
+		return
+	_8446(o, s)                                     # $845F
+	_87a2(o, s)                                     # $8462
+	o.face[s] = 0                                   # $8465, A is the nought
+	if o.hero_pose == 0x0E and o.hero_step_t != 0xFF:
+		return                                      # $846B, $8472
+	o.a[s] = (o.a[s] - 1) & 0xFF                    # $8476
+	if o.a[s] == 0x00:
+		o.hero_fuel = 0                             # $847E
+		_a989(o, s, 0x00)                           # $8483
+		return
+	var p := 0xE8                                   # $8488
+	if o.a[s] >= 0x20:                              # $8486
+		if (o.a[s] & 0x08) != 0:                    # $848C -- half the time
+			return                                  # it is not drawn at all
+		p = 0xE6                                    # $8490
+	o.pic_lo[s] = p                                 # $8493
+	o.pic_hi[s] = 0x02                              # $8496
+
+
+## $8F12 -- the eight ways round, read at two offsets: the step along out of
+## $8F14 and the step down out of $8F12 itself.
+const BURST := [0x00, 0x22, 0x30, 0x22, 0x00, 0xDE, 0xD0, 0xDE, 0x00, 0x22]
+
+
+## $85C4 -- one of the ring: the pair is handed to it as its own speed, and the
+## down half is turned round for the side the thing faces.
+static func _85c4(o: SolObjects, s: int) -> void:
+	# $85C4 -- the noise ($F1 = $2C) is not modelled.
+	var i: int = SolShots.free_slot(o)              # $ADBA
+	if i < 0:
+		return
+	SolShots.put(o, i, 0xAB)                        # $907B
+	o.s_a[i] = o.z94                                # $85D4
+	var v: int = o.z95                              # $85DB
+	if (o.face[s] & 0x80) != 0:                     # $85D7 ASL
+		o.carry = 1                                 # $85DD left it up
+		v = o._adc(v ^ 0xFF, 0x00)
+	o.s_b[i] = v                                    # $85E3
+	SolShots.place_at(o, i, s)                      # $A1C2
+
+
+## $8F05 -- and which of the eight it is.
+static func _8f05(o: SolObjects, s: int, y: int) -> void:
+	o.z94 = BURST[y + 2]                            # $8F14,Y
+	o.z95 = BURST[y]                                # $8F12,Y
+	_85c4(o, s)
+
+
+## $8EE6 -- [dead kind $1C] near enough the hero and it lets the whole ring of
+## eight go before it is taken away.
+static func _8ee6(o: SolObjects, s: int) -> void:
+	if o.far_x(s) >= 0x03:                          # $AE30
+		for y in range(0x07, -1, -1):               # $8EED .. $8EF7
+			_8f05(o, s, y)
+	# $8EF9 -- the noise ($F1 = $21) is not modelled.
+	_8f68(o, s)                                     # $8EFD

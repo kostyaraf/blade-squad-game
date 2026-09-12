@@ -140,6 +140,8 @@ var hero_timer := 0                 # $05A3 -- how long the state has left
 var hero_pic_lo := 0                # $05A6 -- the picture he is drawn from
 var hero_pic_hi := 0                # $05A7
 var hero_fuel := 0                  # $05AF -- what the wire has left
+var hero_pose := 0                  # $05B5 -- the walk the state itself asks
+var hero_step_t := 0                # $05A4 -- how far into that walk he is
 var z5ab := 0                       # $05AB -- the burst of the doubled weapon
 var hero_hurt := 0                  # $05C2 -- frames of being left alone
 var hero_shield := 0                # $05C8
@@ -682,9 +684,11 @@ func speed_to_step(s: int) -> void:
 
 ## $AB10 -- a behaviour lets something out of itself.  The free slot is looked
 ## for from eleven downwards, and if there is none the answer is $FF.
-func hatch(px: int, py: int, tpl: int) -> int:
+## `top` is where the look for a free slot starts: eleven for everything the
+## game calls $AB10 with, but $8418 hands $AAFA a seven of its own.
+func hatch(px: int, py: int, tpl: int, top := 0x0B) -> int:
 	var f := -1
-	for i in range(0x0B, -1, -1):
+	for i in range(top, -1, -1):
 		if id[i] == 0:
 			f = i
 			break

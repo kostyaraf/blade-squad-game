@@ -431,6 +431,8 @@ func _run_sol_objects(path: String) -> void:
 		SolSat.letters(pool)
 		view.hold = pool.born_wait
 		p.state = pool.hero_state
+		# $847E -- the one that rides him off the stage takes the wire with it
+		p.fuel = pool.hero_fuel
 		p.burst = pool.z5ab
 		# $CDD2 is one call, $9150, and drawing him is only its first half:
 		# the second is $B168, the pool his satellite throws into.
@@ -511,6 +513,8 @@ func _hero_into(pool: SolObjects, p: SolPlayer) -> void:
 	pool.hero_pic_lo = p.pic_lo
 	pool.hero_pic_hi = p.pic_hi
 	pool.hero_fuel = p.fuel
+	pool.hero_pose = p.pose
+	pool.hero_step_t = p.step_t
 	pool.hero_hurt = p.hurt
 	pool.hero_shield = p.shield
 	pool.z5ab = p.burst
