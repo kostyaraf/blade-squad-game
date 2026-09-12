@@ -83,6 +83,18 @@ static func make(scene_name: String) -> SolScreen:
 	return s
 
 
+## The board wiped and a fresh list of screens laid on it.  A mode that picks
+## one of several screens by hand needs this and not `lay`: two of them written
+## one over the other leave the first one's tiles wherever the second writes
+## nothing at all.
+func relay(numbers: Array) -> void:
+	board = PackedByteArray()
+	board.resize(0x0800)
+	for n in numbers:
+		lay(int(n))
+	build()
+
+
 ## One screen's writes, on whatever already stands on the board.
 ##
 ## The console has two kilobytes of name map and four places to put it, so

@@ -1024,6 +1024,7 @@ func _run_sol_boot(spec: String) -> void:
 	var up := {}
 	var shots := {}
 	var start := {}
+	var bests: Array = []
 	for k in range(1, f.size()):
 		var g := f[k].split(":")
 		if g[0] == "shot":
@@ -1032,11 +1033,25 @@ func _run_sol_boot(spec: String) -> void:
 		if g[0] == "dump":
 			shots[int(g[1])] = "?"
 			continue
+		# `board:N:PATH` -- the two kilobytes of name map as they stand at turn
+		# N, written out raw.  It is what a stand compares against the
+		# cartridge's own dump when a picture says two screens differ and not
+		# where.
+		if g[0] == "board":
+			shots[int(g[1])] = "board:" + g[2]
+			continue
 		# `set:NAME:VALUE` -- the walk begun part way along instead of at the
 		# reset, which is how a mode only reached with a stage behind it is
 		# stood up: the cartridge is poked to the same place.
 		if g[0] == "set":
 			start[g[1]] = int(g[2])
+			continue
+		# `best:I:COUNT:A:B:C` -- one of the five lines of BEST 5, the count
+		# and the three letters of the name.  A stand that wants to see them
+		# put in order hands over five that are out of it.
+		if g[0] == "best":
+			bests.append([int(g[1]), int(g[2]),
+					[int(g[3]), int(g[4]), int(g[5])]])
 			continue
 		var bit := 0
 		match g[0]:
@@ -1061,6 +1076,12 @@ func _run_sol_boot(spec: String) -> void:
 			"clock": sol_flow.clock = int(start[k])
 			"lives": sol_flow.lives = int(start[k])
 			"done": sol_flow.z2d = int(start[k])
+			"score": sol_flow.score = int(start[k])
+			"z4c": sol_flow.z4c = int(start[k])
+			"tick": sol_flow.tick = int(start[k])
+	for one in bests:
+		sol_flow.best_scores[int(one[0])] = int(one[1])
+		sol_flow.best_names[int(one[0])] = one[2]
 	var held := 0
 	var was := -1
 	for i in range(n):
@@ -1072,6 +1093,16 @@ func _run_sol_boot(spec: String) -> void:
 		if sol_flow.mode != was:
 			was = sol_flow.mode
 			print("%d %02X %s" % [i, was, sol_flow.screen])
+		if shots.has(i) and str(shots[i]).begins_with("board:"):
+			_sol_screen_now()
+			var bf := FileAccess.open(str(shots[i]).substr(6),
+					FileAccess.WRITE)
+			bf.store_buffer(sol_screen.board)
+			# and the thirty two colours that stand with it, so a stand can
+			# tell a right board under a wrong fade from a right one.
+			bf.store_buffer(sol_flow.fade.out)
+			bf.close()
+			continue
 		if shots.has(i) and shots[i] == "?":
 			print("dump %d banks %s" % [i, str(sol_table.banks)])
 			print("  fade kind=%02X mask=%02X pace=%d cnt=%d lv=%s out=%s" % [
@@ -1537,6 +1568,17 @@ func flow_poke(addr: int, tile: int) -> void:
 
 func flow_pad() -> int:
 	return pads[0].held if not pads.is_empty() else 0
+
+
+## $EF8C over a screen already up -- one more of the cartridge's screens laid
+## on top of what stands.  The mode names the whole list because a plate laid
+## over another plate would leave the other's tiles where the new one writes
+## nothing: the board is wiped and the list laid on it from the start.
+func flow_relay(numbers: Array) -> void:
+	if sol_flow.screen == "":
+		return
+	_sol_screen_now()
+	sol_screen.relay(numbers)
 
 
 ## The picture a screen makes: the scene built afresh whenever the mode has put

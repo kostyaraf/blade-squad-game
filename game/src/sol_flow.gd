@@ -111,6 +111,12 @@ const RIDE_STEP := 0x0080
 const DEATH_ASK := ASK
 const DEATH_OVER := OVER
 
+## $D6CA and $D77E -- the five high scores, shown and then waited on; $DA02 --
+## what CONTINUE goes through on its way back to the stage.
+const BEST := 0x0E
+const BEST_WAIT := 0x0F
+const AGAIN := 0x47
+
 
 var mode := RAISE           # $02
 var stage := 0              # $55 -- which stage, and $E520 raises it
@@ -135,6 +141,17 @@ var z4e := 0                # $4E -- how long the drawing of him is held
 var z4f := 0                # $4F -- and which drawing it is
 var z2d := 0                # $2D -- which stages are done with, a bit each
 var z05ab := 0              # $05AB -- how long STAGE SELECT waits to pick
+## $05FD..$05FF -- what this game has scored, and $075B..$077F -- the five
+## counts BEST 5 shows, the biggest last.  $072B..$074F are the three letters
+## of each name.  The reset fills both out of $E545 and $E536.
+var score := 0
+var best_scores: Array = SolOver.first_scores()
+var best_names: Array = SolOver.first_names()
+## $0752 and $0753 -- the two the GAME OVER screen counts its asking by: while
+## $0753 stands the first press of START is swallowed, and $0752 says whether
+## the asking is over.
+var z0752 := 0
+var z0753 := 0
 var z58 := 0                # $58 -- how far into the maker's own code he is
 var z05a0 := 0              # $05A0 -- how many times round the opening has gone
 var z7d := 0                # $7D -- which of the beam's own tricks is asked for
@@ -167,9 +184,9 @@ var home_y := 0
 ## borrows it.
 var kept_bank := 0
 
-## $00 -- the count $C72D hands the sprite table.  Nothing here makes it; what
-## runs a whole game sets it every picture, and the stand hands over the
-## cartridge's own.
+## $00 -- the count $C72D hands the sprite table, raised at $FADE every
+## picture the console is not held on.  BEST 5 counts its waiting by the low
+## two of it, so it is kept here and raised with $0C.
 var tick := 0
 
 ## $8037 in bank four -- the words of the tale, typed one at a time.  How long
@@ -193,6 +210,10 @@ var stuck := -1
 ## `flow_table()`; `main.gd` does.
 func step(host) -> void:
 	clock = (clock + 1) & 0xFF
+	# $FADE -- the other count of pictures, raised in the same breath as $0C
+	# and only while $6E is clear.  Nothing in the engine stops the picture,
+	# so it is raised every turn.
+	tick = (tick + 1) & 0xFF
 	match mode:
 		PLAY:
 			host.flow_play()
@@ -245,9 +266,15 @@ func step(host) -> void:
 		ASKING:
 			_asking(host)
 		OVER:
-			_over()
+			_over(host)
 		OVER_WAIT:
 			_over_wait(host)
+		AGAIN:
+			_again(host)
+		BEST:
+			_best(host)
+		BEST_WAIT:
+			_best_wait(host)
 		_:
 			stuck = mode
 
@@ -266,8 +293,7 @@ func _maker() -> void:
 func _choose() -> void:
 	var n: int = z05a0 & 0x03
 	if n == 1 or n == 3:
-		mode = 0x0E                               # BEST 5, which is not ported
-		stuck = 0x0E
+		mode = BEST                               # $D194 -- four $0E
 		return
 	mode = TITLE
 
@@ -974,22 +1000,168 @@ func _asking(host) -> void:
 	stuck = ASKING
 
 
-## $D974, mode $14 -- no tries left, and $DA52, mode $15 -- waiting there.  The
-## screen is not ported; pressing START starts the game again.
-func _over() -> void:
+## $D974, mode $14 -- no tries left.  The screen is drawn, the two counts are
+## written into it, and the plate of the stage the game was left in is laid
+## over the ground $E237 draws under it.
+func _over(host) -> void:
+	fade.blank()                                  # $D974 -- $C5C9
+	_no_sprites(host)                             # $C5CC -- $C618 with $0C
 	z2e = 0                                       # $D97C
-	z59 = (z59 + 1) & 0xFF                        # $D97E
+	if z59 != 0xFF:                               # $D97E -- it stops at $FF
+		z59 += 1
 	noise = 0x09                                  # $D986
-	mode = OVER_WAIT
+	screen = "over"                               # $D98A -- $EF8C A=$14
+	chr = PackedInt32Array()
+	mode = OVER_WAIT                              # $D9BB
+	# $D9BF -- $C6E9 X=$1F: the thirty two are written straight, which is the
+	# screen's own.  It is said before the screen is laid, because the laying
+	# is what hands them over.
+	pal_direct = true
+	fade.full()
+	# $E237 draws the ground and one of thirteen plates.  In the cartridge
+	# both go into the queue behind the counts; here the laying wipes the
+	# board, so it goes first and the counts are written over it.
+	host.flow_relay([0x14] + SolOver.plate(stage))
+	# $D98D -- the top of the five, and $D9AA -- what this game scored.
+	SolOver.write(host, SolOver.over_score_at(), int(best_scores[4]))
+	SolOver.write(host, SolOver.over_best_at(), score)
+	z4c = 0                                       # $D9C4 -- $DAD8
+	z4d = 0
+	z4e = 0
+	z4f = 0
+	z7d = 0x3F                                    # $D9C7 -- $E10A
+	z0752 = 1                                     # $D9D9
+	z0753 = 1
+	lives = 0x02                                  # $D9E3 -- $071C
 
 
+## $DA52, mode $15 -- GAME OVER waited on.  A cursor stands beside one of the
+## two lines, SELECT moves it, and START takes it.
 func _over_wait(host) -> void:
-	if (host.flow_pad_new() & Pad.START) == 0:
+	var hit: int = host.flow_pad_new()
+	if z0753 != 0:                                # $DA58
+		# The press that brought the screen up must not be read as the answer
+		# to it: the first START seen is swallowed and the asking begins.
+		if (hit & Pad.START) == 0:                # $DA61
+			return
+		z0752 = 0                                 # $DA73
+		z0753 = 0
 		return
-	lives = 0x02
-	z0d = 0
+	if (hit & Pad.START) == 0:                    # $DA68
+		if (hit & Pad.SELECT) != 0:               # $DAB0
+			noise = 0x02                          # $DAB6 -- $F1
+			z4d = (z4d + 1) & 0xFF
+		_over_mark(host)                          # $DABC
+		return
+	if z0752 != 0:                                # $DA6E
+		z0752 = 0
+		z0753 = 0
+		return
+	if (z4d & 0x01) == 0:                         # $DA7C -- CONTINUE
+		mode = AGAIN                              # $DAA1
+		noise = 0x0F                              # $DAA3
+		z4d = 0x80                                # $DAAB
+		return
+	z2d = 0                                       # $DA83 -- END: the game over
+	z05a0 = 0
 	stage = 0
-	mode = RAISE
+	z7d = 0x3F                                    # $DA8C -- $E105
+	screen = ""                                   # $DA8F -- $C578 and $C5DA
+	noise = 0x10                                  # $DA95
+	mode = 0x43                                   # $DA9C -- the opening again
+	stuck = 0x43
+
+
+## $C618 with bit two set -- every one of the sixty four sprites put out of
+## the picture.  The screens that ask for it do so once and then leave the
+## table alone, so what is written into it afterwards stands.
+func _no_sprites(host) -> void:
+	var t = host.flow_table()
+	for i in range(256):
+		t.oam[i] = 0xF7
+
+
+## $DABC -- the cursor, which is one sprite: beside CONTINUE or beside END.
+func _over_mark(host) -> void:
+	var t = host.flow_table()
+	t.oam[4] = 0x80 if (z4d & 0x01) == 0 else 0x90
+	t.oam[5] = 0x1B
+	t.oam[6] = 0x00
+	t.oam[7] = 0x60
+
+
+## $DA02, mode $47 -- CONTINUE taken.  $4D counts down from $80 while the
+## chosen line blinks, and at the end the stage is raised again.
+func _again(host) -> void:
+	z4d = (z4d - 1) & 0xFF                        # $DA05
+	if z4d != 0:
+		if (z4d & 0x07) == 0:                     # $DA4A
+			z0752 = (z0752 + 1) & 0xFF
+		_over_mark(host)
+		return
+	lives = 0x02                                  # $DA0B -- $F8B9
+	if stage == 0x08:                             # $DA0E
+		stage = 0
+		mode = RAISE                              # $DA32 -- $1D
+	elif (z2d & 0x1F) != 0x1F:                    # $DA18
+		mode = PICK                               # $DA36 -- $19
+	else:
+		if stage != 0x10:                         # $DA20
+			stage = 0x10 if stage == 0x13 else 0x0F
+		mode = RAISE                              # $DA32
+	z7d = 0x3F                                    # $DA3A -- $E105
+	screen = ""                                   # $DA3D -- $C578 and $C5DA
+	noise = 0x10                                  # $DA3E
+
+
+## $D6CA, mode $0E -- BEST 5: the five counts and the five names, the biggest
+## at the top.  The plate of the stage goes on it as well.
+func _best(host) -> void:
+	fade.blank()                                  # $D6D0 -- $C5C9
+	_no_sprites(host)                             # $C5CC -- $C618 with $0C
+	screen = "best"                               # $D6D6 -- $EF8C A=$12
+	chr = PackedInt32Array()
+	mode = BEST_WAIT                              # $D6DE
+	pal_direct = true                             # $D6E0 -- $C6E9 X=$1F
+	fade.full()
+	host.flow_relay([0x12] + SolOver.plate(stage))    # $D6DB -- $E237
+	# $D6E7 -- $ED02 puts the five in order, the biggest last, which is the
+	# line at the top.  The name goes with its count: the cartridge swaps all
+	# six bytes at once.  Its own walk is kept as it is -- for every place
+	# from the last down, everything below it that is not smaller changes
+	# places with it.
+	for x in range(4, -1, -1):
+		for y in range(x, -1, -1):
+			if y == x:
+				continue
+			if int(best_scores[y]) < int(best_scores[x]):
+				continue
+			var sc = best_scores[y]
+			best_scores[y] = best_scores[x]
+			best_scores[x] = sc
+			var nm = best_names[y]
+			best_names[y] = best_names[x]
+			best_names[x] = nm
+	var at: Array = SolOver.best_at()
+	var names: Array = SolOver.name_at()
+	for y in range(5):                            # $D6EC and $D728
+		SolOver.write(host, int(at[y]), int(best_scores[y]))
+		SolOver.write_name(host, int(names[y]), best_names[y])
+	z7d = 0x3F                                    # $D760 -- $E10A
+
+
+## $D77E, mode $0F -- BEST 5 waited on: any button, or $4C run out, and the
+## opening goes round again.
+func _best_wait(host) -> void:
+	if (host.flow_pad_new() & 0xF0) == 0:         # $D784
+		if (tick & 0x03) != 0:                    # $D78A -- $00
+			return
+		z4c = (z4c - 1) & 0xFF                    # $D790
+		if z4c != 0:
+			return
+	z05a0 = (z05a0 + 1) & 0xFF                    # $D794
+	z7d = 0x3F                                    # $D797 -- $E105
+	mode = CHOOSE                                 # $D79A
 
 
 ## $97A7 -- the hero's last state, which is where a stage is left from.  It is
