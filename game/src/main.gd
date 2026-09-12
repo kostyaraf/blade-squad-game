@@ -1108,8 +1108,8 @@ func _run_sol_boot(spec: String) -> void:
 			"score": sol_flow.score = int(start[k])
 			"z4c": sol_flow.z4c = int(start[k])
 			"tick": sol_flow.tick = int(start[k])
-			"suit": sol_flow.set_suits_of(flow_pool(), int(start[k]))
-			"bonus": sol_flow.set_owed_of(flow_pool(), int(start[k]))
+			"suit": sol_flow.set_suits_of(self, int(start[k]))
+			"bonus": sol_flow.set_owed_of(self, int(start[k]))
 			"fd": sol_fd_at = int(start[k])
 	for one in bests:
 		sol_flow.best_scores[int(one[0])] = int(one[1])
@@ -1713,8 +1713,8 @@ func _sol_flow_state() -> Dictionary:
 		"screen": sol_flow.screen,
 		# What the paying out of a clearing moves: the suits still on him, what
 		# is still to be paid, and which areas are done with.
-		"05c5": sol_flow.suits_of(flow_pool()),
-		"05c6": sol_flow.owed_of(flow_pool()),
+		"05c5": sol_flow.suits_of(self),
+		"05c6": sol_flow.owed_of(self),
 		"2d": sol_flow.z2d,
 	}
 

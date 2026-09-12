@@ -1169,10 +1169,9 @@ func _area_clear(host) -> void:
 ## walks the band the writing stands in along ($E255); which of the two comes
 ## first is the step's own business, and so is whether it does both.
 func _area_pay(host) -> void:
-	var pool = host.flow_pool()
 	match z4d:
 		0, 6:                                     # $E12E
-			_pay_draw(host, pool)
+			_pay_draw(host)
 			_pay_tick()
 			_pay_bands()
 		1:                                        # $E17C
@@ -1181,26 +1180,26 @@ func _area_pay(host) -> void:
 			# that wants the cartridge's own waiting says when.
 			if host.flow_tune_end():
 				z4d += 1
-			_pay_draw(host, pool)
+			_pay_draw(host)
 			_pay_tick()
 		2:                                        # $E185
-			_pay_bonus(pool)
-			_pay_draw(host, pool)
+			_pay_bonus(host)
+			_pay_draw(host)
 			_pay_tick()
 		3, 5:                                     # $E173
 			z4c = (z4c - 1) & 0xFF
 			if z4c == 0:
 				z4d += 1
-			_pay_draw(host, pool)
+			_pay_draw(host)
 			_pay_tick()
 		4:                                        # $E1C3
-			_pay_suits(pool)
-			_pay_draw(host, pool)
+			_pay_suits(host)
+			_pay_draw(host)
 			_pay_tick()
 		7:                                        # $E1E8
 			fade.ask(SolFade.DOWN, 0xFF)          # $F86D A=$01 Y=$FF
 			z4d += 1
-			_pay_draw(host, pool)
+			_pay_draw(host)
 		8:                                        # $E1F4
 			_pay_end(host)
 
@@ -1243,8 +1242,8 @@ func _pay_tick() -> void:
 ## $E185, step two -- what is still to be paid handed over to the count, ten a
 ## picture while more than a page of it is left and one a picture after that.
 ## When there is none left the step is over and the next waits $80 pictures.
-func _pay_bonus(pool) -> void:
-	var owed: int = owed_of(pool)
+func _pay_bonus(host) -> void:
+	var owed: int = owed_of(host)
 	if owed == 0:
 		z4c = SolOver.pay_wait()                  # $E18D
 		z4d += 1
@@ -1252,7 +1251,7 @@ func _pay_bonus(pool) -> void:
 	var by: int = SolOver.pay_one()               # $E196
 	if (owed >> 8) != 0:
 		by = SolOver.pay_ten()
-	set_owed_of(pool, (owed - by) & 0xFFFF)         # $E1A1
+	set_owed_of(host, (owed - by) & 0xFFFF)         # $E1A1
 	score = (score + by) & 0xFFFFFF               # $E1AF -- $E3D3 A=by Y=0
 	if (clock & 0x07) == 0:                       # $E1B6
 		noise2 = 0x04
@@ -1260,8 +1259,8 @@ func _pay_bonus(pool) -> void:
 
 ## $E1C3, step four -- and the suits still on him, one every sixteenth picture
 ## and $012C on the count for each.
-func _pay_suits(pool) -> void:
-	var left: int = suits_of(pool)
+func _pay_suits(host) -> void:
+	var left: int = suits_of(host)
 	if left == 0:
 		z4c = SolOver.pay_wait()                  # $E1C8
 		z4d += 1
@@ -1269,7 +1268,7 @@ func _pay_suits(pool) -> void:
 	if (tick & 0x0F) != 0:                        # $E1D1 -- $00 and not $0C
 		return
 	noise2 = 0x04                                 # $E1D7
-	set_suits_of(pool, left - 1)
+	set_suits_of(host, left - 1)
 	score = (score + SolOver.pay_suit()) & 0xFFFFFF
 
 
@@ -1302,11 +1301,11 @@ func _pay_end(host) -> void:
 ## $E28C -- the three counts written into the screen, which every step but the
 ## last does once a picture: what the game has scored at $21D0, the suits
 ## still on him at $2250 and what is still to be paid at $220F.
-func _pay_draw(host, pool) -> void:
+func _pay_draw(host) -> void:
 	var at: Array = SolOver.clear_at()
 	var rows: Array = [SolOver.score_tiles(score),
-			SolOver.suit_bar(suits_of(pool)),
-			SolOver.owed_tiles(owed_of(pool))]
+			SolOver.suit_bar(suits_of(host)),
+			SolOver.owed_tiles(owed_of(host))]
 	for k in range(3):
 		var row: Array = rows[k]
 		for i in range(row.size()):
@@ -1314,24 +1313,31 @@ func _pay_draw(host, pool) -> void:
 
 
 ## $05C5 and $05C6:$05C7 -- how many suits are still on him and what is still
-## to be paid.  Both are the pool's while a stage is played; a walk that stands
-## on a screen and nothing else has no pool, and then the flow holds them.
-func suits_of(pool) -> int:
-	return pool.hero_suit if pool != null else z05c5
+## to be paid.  The cartridge has one cell for each; the engine has two homes
+## for the first, because the hero holds it and the pool is handed a copy of it
+## every picture a stage is played ($CDBB).  So the suits are the hero's and
+## the paying is the pool's, and a walk that stands on a screen and nothing
+## else -- which has neither -- leaves both with the flow.
+func suits_of(host) -> int:
+	var p = host.flow_hero()
+	return p.suit if p != null else z05c5
 
 
-func set_suits_of(pool, v: int) -> void:
-	if pool != null:
-		pool.hero_suit = v
+func set_suits_of(host, v: int) -> void:
+	var p = host.flow_hero()
+	if p != null:
+		p.suit = v
 	else:
 		z05c5 = v
 
 
-func owed_of(pool) -> int:
+func owed_of(host) -> int:
+	var pool = host.flow_pool()
 	return pool.hero_bonus if pool != null else z05c6
 
 
-func set_owed_of(pool, v: int) -> void:
+func set_owed_of(host, v: int) -> void:
+	var pool = host.flow_pool()
 	if pool != null:
 		pool.hero_bonus = v
 	else:
