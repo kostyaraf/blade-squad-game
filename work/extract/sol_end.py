@@ -87,9 +87,14 @@ STAFF_TRICK = 0x84
 ## picture, and the colours start down when he reaches $40 and the walk is
 ## over at $B8.  $4F is the picture he wears.
 WALK_Y = 0x80
+WALK_FROM = 0x20          # $E3FE -- where he starts
 WALK_ASK = 0x40
 WALK_END = 0xB8
 WALK_PIC = (0x30, 0x2E, 0x2C)
+WALK_PAGE = 0x03          # $E4D8 -- the high half of the picture's own number
+## $E44B and $E45A -- the two holds between the walk being over and the names
+## going down.
+WALK_HOLD = (0xC0, 0x60)
 
 ## $8138 in bank six, mode $53 -- eight rows of three, nine apart, which is
 ## what takes the names down into the dark.
@@ -97,6 +102,14 @@ RAMP = 0x8138
 RAMP_N = 3                # how many rows of the ramp there are ($4D = 0, 3, 6)
 RAMP_STEP = 9
 RAMP_TIMES = 8            # and how many threes are written out of each
+RAMP_EVERY = 8            # $80DD -- a row every eighth picture
+RAMP_LAST = 9             # $80D5 -- and when $4D comes round to this it is over
+## $E47C, $80F1 and $80F5 -- what is counted down once the three rows are
+## written: a point every other picture out of $E0, one line typed at $C0, and
+## the walk down asked for at nought.
+RAMP_WAIT = 0xE0
+RAMP_SAY_AT = 0xC0
+RAMP_SAY = 0x18
 
 ## $820E in bank six -- the stream, and $829F -- the twenty six lines.
 STREAM = 0x820E
@@ -161,7 +174,9 @@ def main():
         beats.append({
             'pic': rec[0] | ((rec[1] & 0x1F) << 8),
             'flip': rec[1] >> 7,
-            'pace': rec[2],
+            # $05AB, which $8806 hands $B7BA: the walk he does over the beat,
+            # and not a count of anything.
+            'pose': rec[2],
             'pal': rec[3],
             'lines': said,
         })
@@ -192,13 +207,21 @@ def main():
         'sun_trick': SUN_TRICK,
         'staff_trick': STAFF_TRICK,
         'walk_y': WALK_Y,
+        'walk_from': WALK_FROM,
         'walk_ask': WALK_ASK,
         'walk_end': WALK_END,
         'walk_pic': list(WALK_PIC),
+        'walk_page': WALK_PAGE,
+        'walk_hold': list(WALK_HOLD),
         'ramp': [[at(text, RAMP + 3 * i + RAMP_STEP * k, 3)
                   for k in range(RAMP_TIMES)] for i in range(RAMP_N)],
         'ramp_rows': RAMP_N,
         'ramp_times': RAMP_TIMES,
+        'ramp_every': RAMP_EVERY,
+        'ramp_last': RAMP_LAST,
+        'ramp_wait': RAMP_WAIT,
+        'ramp_say_at': RAMP_SAY_AT,
+        'ramp_say': RAMP_SAY,
         'beats': beats,
         'lines': lines,
         'beat_pal': [at(text, BEAT_PAL + i, 3) for i in range(0x28)],

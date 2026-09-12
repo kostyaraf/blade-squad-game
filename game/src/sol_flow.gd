@@ -51,6 +51,17 @@ const PAYING := 0x1C        # $E117 -- and what the clearing owes paid out
 const END_PAY := 0x4C       # $E33A -- what the whole game paid
 const END_SUN := 0x4D       # $E421 -- and the sun coming up behind it
 const STAFF := 0x4E         # $E3E7 -- the ground the names are shown over
+const END_WALK := 0x4F      # $E42F -- the man walked in front of it
+const END_HOLD := 0x50      # $E456 -- and standing where he stopped
+const END_TURN := 0x51      # $E463 -- turned to face the names
+const END_WAIT := 0x52      # $E474
+const END_DOWN := 0x53      # $E486 -- the names taken down into the dark
+const END_LAST := 0x54      # $E494
+## $E4E9 and $E515 -- the names themselves, typed over the black.  $22 wipes
+## both boards and takes twenty of $D481; $23 is the twenty one steps of $8836
+## in bank twelve, which read the stream of bank six.
+const CREDIT_PAL := 0x22
+const CREDIT := 0x23
 ## $D79F -- TEST MODE, the maker's own menu, opened by sixteen buttons in a row
 ## on the title.  Its nine lines are the two tests and seven stages, and those
 ## seven are the only door in the game to the rooms the bosses stand in.
@@ -246,6 +257,12 @@ var scroll_y := 0
 ## $C925 -- the four kilobytes the background is drawn out of, when a mode has
 ## asked for something other than the scene's own.  Empty is the scene's.
 var chr := PackedInt32Array()
+## Which of the two kilobytes a new screen carries over from the one standing
+## instead of wiping, a bit apiece.  $C5DC wipes $2000 and $2400, and where the
+## two boards are mirrored across those are the same kilobyte, so the other one
+## is never touched at all -- which is how the ending's names stand over what
+## the bonus screen left behind.
+var screen_keep := 0
 
 
 ## $0720/$0730 and $0740/$0750 -- the four pieces, and $0717..$0747 -- where
@@ -343,6 +360,20 @@ func step(host) -> void:
 			_end_pay(host)
 		END_SUN:
 			_end_sun(host)
+		STAFF:
+			_end_staff(host)
+		END_WALK:
+			_end_walk(host)
+		END_HOLD:
+			_end_hold(host)
+		END_TURN:
+			_end_turn(host)
+		END_WAIT:
+			_end_wait(host)
+		END_DOWN:
+			_end_down(host)
+		END_LAST:
+			_end_last(host)
 		TEST_LAY:
 			_test_lay(host)
 		TEST_MENU:
@@ -669,6 +700,7 @@ func _into(host) -> void:
 ## drawn on it and the four kilobytes it is drawn out of taken.
 func _screen(name: String, a: int, y: int) -> void:
 	screen = name
+	screen_keep = 0
 	chr = PackedInt32Array()
 	_chr(a, y)
 
@@ -1360,6 +1392,14 @@ func _end_pay(host) -> void:
 ## twenty one steps of $89A4 in bank twelve it stands on; the tiles it is drawn
 ## out of are turned over every sixteenth picture ($E4DD).
 func _end_sun(_host) -> void:
+	if z7d == SolEnd.one("sun_trick"):
+		# $C1DA -- what the beam's own stop leaves standing.  It writes the
+		# address it was handed last picture and takes this one's for the
+		# next, the two halves the other way about; the picture it does that
+		# in is the one after the trick was asked for, so it is done here
+		# before the step rather than after it.
+		z77 = z73
+		z76 = z74
 	fade.tick()                                   # $F806
 	match z4f:
 		0:                                        # $89D3
@@ -1422,12 +1462,6 @@ func _end_sun(_host) -> void:
 		20:                                       # $89FA
 			if fade.kind == 0:
 				mode = STAFF                      # INC $02
-	if z7d == SolEnd.one("sun_trick"):
-		# $C1DA -- what the beam's own stop leaves standing.  It writes the
-		# address it was given last picture and then takes this one's for the
-		# next, the two halves the other way about.
-		z77 = z73
-		z76 = z74
 	_end_chr()
 
 
@@ -1481,6 +1515,157 @@ func _sun_split() -> void:
 	var v: int = (z72 & 0xF8) << 2
 	z73 = v & 0xFF
 	z74 = ((v >> 8) + 0x08) & 0xFF
+
+
+## $E3E7, mode $4E -- the ground the names are shown over.  Both boards are
+## wiped, screen $3A goes on, the thirty two of $8020 are walked up out of
+## black, and the man is put down at $20 across.
+func _end_staff(host) -> void:
+	scroll_x = 0                                  # $C5C9 -- $C578
+	scroll_y = 0
+	fade.blank()                                  # $C5B0
+	_no_sprites(host)                             # $C618 with $0C
+	var pair: Array = SolEnd.chr_pair()           # $E3EA -- $C925
+	_screen("staff", int(pair[0]), int(pair[1]))  # $E3F1 -- $EF8C A = $3A
+	z4c = 0                                       # $E3F6 -- $DAD8
+	z4d = 0
+	z4e = 0
+	z4f = 0
+	z7d = 0                                       # $E3F9 -- and $A000 across
+	# $C5DC wipes $2000 and $2400 under the mirroring $4C left standing, which
+	# is across: both of those are the first kilobyte, so the second keeps
+	# whatever the bonus screen wrote into it and is only turned back into
+	# view by the $A000 above.
+	screen_keep = 0x02
+	z4c = SolEnd.one("walk_from")                 # $E3FE
+	fade.count = fade.pace                        # $E404 -- $25 = $28
+	# $E40C -- $E9B1 names $8020 and $CC43 copies it into $0790 and points the
+	# walk at the copy, which is the same thirty two either way.
+	fade.name_table(SolEnd.one("staff_table"))
+	fade.dark()                                   # $E412 -- $F84F
+	fade.ask(0x06, 0x0F)                          # $E415 -- $F86D
+	mode = END_WALK                               # $E41C -- INC $02
+
+
+## $E42F, mode $4F -- he walks in a point every other picture.  The names come
+## up when he reaches $40 and the walk is over at $B8.
+func _end_walk(host) -> void:
+	z4f = SolEnd.walk_pic(0)                      # $E42F
+	var at: int = (z4c + (clock & 0x01)) & 0xFF   # $E433
+	if at == SolEnd.one("walk_ask"):
+		fade.ask(0x06, 0xFF)                      # $E43F -- $F86D
+	if at >= SolEnd.one("walk_end"):
+		z4d = SolEnd.hold(0)                      # $E44B
+		mode = END_HOLD
+	z4c = at                                      # $E451
+	_end_tail(host)
+
+
+## $E456, mode $50 -- a hold of $C0 pictures with him standing where he stopped.
+func _end_hold(host) -> void:
+	z4d = (z4d - 1) & 0xFF
+	if z4d == 0:
+		z4d = SolEnd.hold(1)                      # $E45A
+		mode = END_TURN
+	_end_tail(host)
+
+
+## $E463, mode $51 -- he turns to face the names, and $60 pictures more.
+func _end_turn(host) -> void:
+	z4f = SolEnd.walk_pic(1)                      # $E463
+	z4d = (z4d - 1) & 0xFF
+	if z4d == 0:
+		z4d = 0                                   # $E46B -- a whole page to come
+		mode = END_WAIT
+	_end_tail(host)
+
+
+## $E474, mode $52 -- the page, at the end of which the names begin to go down.
+func _end_wait(host) -> void:
+	z4d = (z4d - 1) & 0xFF
+	if z4d == 0:
+		z4e = 0                                   # $E478
+		z05ab = SolEnd.one("ramp_wait")           # $E47C
+		mode = END_DOWN
+	z4f = SolEnd.walk_pic(2)                      # $E4A5
+	_end_tail(host)
+
+
+## $E486, mode $53, which is $80D3 in bank six -- three rows of colours out of
+## $8138, one every eighth picture, and that is the names going down.  When the
+## three are written $05AB is counted out a point every other picture: at $C0
+## the last line is typed, and at nought the walk down is asked for.
+func _end_down(host) -> void:
+	if z4d == SolEnd.one("ramp_last"):            # $80D5
+		if z05ab == SolEnd.one("ramp_say_at"):    # $80F1
+			_end_say(host, SolEnd.one("ramp_say"))
+		if (clock & 0x01) != 0:                   # $80FA
+			z05ab = (z05ab - 1) & 0xFF
+			if z05ab == 0:
+				fade.ask(SolFade.DOWN, 0xFF)      # $8104
+				mode = END_LAST                   # $810C
+	else:
+		z4e = (z4e + 1) & 0xFF                    # $80D9
+		if (z4e & 0x07) == 0:
+			_end_ramp(z4d)                        # $810F
+			z4d = (z4d + 3) & 0xFF                # $80E7
+	# $E49F -- the man is still drawn, but neither the walk of the colours nor
+	# the turning over of the tiles is asked for again this picture.
+	z4f = SolEnd.walk_pic(2)
+	_end_man(host)
+
+
+## $E494, mode $54 -- the walk down waited out, and then the names themselves.
+func _end_last(host) -> void:
+	fade.tick()                                   # $F806
+	if fade.kind == 0:                            # $E497
+		mode = CREDIT_PAL                         # $E49B -- $02 = $22
+	z4f = SolEnd.walk_pic(2)                      # $E49F
+	_end_man(host)
+
+
+## $810F -- one row of the ramp written into eight of the thirty two, which is
+## every palette but the backdrop of each.
+func _end_ramp(row: int) -> void:
+	var three: Array = SolEnd.ramp(row)
+	for k in range(three.size()):
+		var one: Array = three[k]
+		for i in range(3):
+			fade.out[k * 4 + 1 + i] = int(one[i])
+			fade.table[k * 4 + 1 + i] = int(one[i])
+
+
+## $8270 and $E28C together -- one of the twenty six lines written into the
+## board where its own record says it goes.  The cartridge lays the record in
+## $0301 and the picture unit writes it out between pictures; nothing reads it
+## back, so the engine writes it straight.
+func _end_say(host, i: int) -> void:
+	var one: Dictionary = SolEnd.line(i)
+	if one.is_empty():
+		return
+	var at: int = int(one["at"])
+	var tiles: Array = one["tiles"]
+	for k in range(tiles.size()):
+		host.flow_poke(at + k, int(tiles[k]))
+
+
+## $E4A9 -- a picture of the walk of the colours, the tiles turned over, and
+## then the man.
+func _end_tail(host) -> void:
+	fade.tick()                                   # $F806
+	_end_chr()                                    # $E4DD
+	_end_man(host)
+
+
+## $E4AF -- the sprite table put back to empty and the man laid into it at $4C
+## across and $80 down, out of whichever picture the mode left on $4F.
+func _end_man(host) -> void:
+	var t = host.flow_table()
+	SolSprites.reset(t, clock)                    # $C72D
+	t.oam[0] = 0xF7                               # $E4B4
+	t.fwd = 0                                     # $E4BA -- $6C
+	SolSprites.plain((SolEnd.one("walk_page") << 8) | z4f, 0x00,
+			z4c, SolEnd.one("walk_y"), t)         # $E4D6 -- $F3F9
 
 
 ## $E28C -- the three counts written into the screen, which every step but the

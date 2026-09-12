@@ -36,9 +36,24 @@ static func sun(row: int) -> Array:
 
 
 ## $8138 -- one row of the ramp that takes the names down, eight threes of it.
+## $4D counts three at a time, which is the row's own place in the table.
 static func ramp(row: int) -> Array:
 	load_data()
-	return _d["ramp"][row]
+	return _d["ramp"][row / 3]
+
+
+## $E42F, $E463 and $E4A5 -- the three pictures the man is drawn from while he
+## walks in, while he turns, and while he stands.
+static func walk_pic(i: int) -> int:
+	load_data()
+	return int(_d["walk_pic"][i])
+
+
+## $E44B and $E45A -- the two holds between his walk being over and the names
+## going down.
+static func hold(i: int) -> int:
+	load_data()
+	return int(_d["walk_hold"][i])
 
 
 ## $81E4 -- the three colours a beat names, and $81D1 -- the three that are

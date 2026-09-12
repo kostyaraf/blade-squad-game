@@ -1748,7 +1748,16 @@ func _sol_screen_frame() -> void:
 func _sol_screen_now() -> void:
 	if sol_screen != null and sol_screen.name == sol_flow.screen:
 		return
+	var was: PackedByteArray = (sol_screen.board if sol_screen != null
+			else PackedByteArray())
 	sol_screen = SolScreen.make(sol_flow.screen)
+	# A kilobyte the mode says was never wiped keeps what stood in it.
+	if sol_flow.screen_keep != 0 and was.size() == sol_screen.board.size():
+		for k in range(2):
+			if (sol_flow.screen_keep & (1 << k)) == 0:
+				continue
+			for i in range(0x400):
+				sol_screen.board[k * 0x400 + i] = was[k * 0x400 + i]
 	if sol_flow.pal_direct:
 		sol_flow.fade.out = PackedByteArray(sol_screen.palette)
 	# $42..$45 -- a screen arrives with the four the cartridge had when it

@@ -45,11 +45,11 @@ import verify_sol_boot as B                                    # noqa: E402
 POKE_AT = P.IN_LEVEL + 5
 ## Long enough for the whole sunrise: a page held, eight rows of colour, and
 ## eight more with the view walking under them.
-RUN = POKE_AT + 2000
-TURNS = 2000
+RUN = POKE_AT + 3600
+TURNS = 3600
 
-## The mode the sunrise hands the game to, which is where this stand stops.
-LAST = 0x4E
+## The mode the names are typed in, which is where this stand stops.
+LAST = 0x22
 
 ## $28 and $25 -- the pace of the walk of the colours and how much of the next
 ## step of it is still to come.  A stage leaves its own and $4C sets both to
@@ -240,7 +240,19 @@ def one(name, lives, sat, seen, score):
     for k in sorted(step):
         at = min(step[k] + 2, sun[0][1] + sun[0][2] - 1) if sun else step[k]
         want.append(('step %d' % k, at))
-    want = [(nm, at) for nm, at in want if at + 1 in turn]
+    ## And three pictures of every mode of the chain: just after it opens, in
+    ## the middle of it, and the last one before it hands the game on.
+    for c in cart:
+        for nm, at in (('opens', c[1] + 1), ('midway', c[1] + c[2] / 2),
+                       ('closes', c[1] + c[2] - 1)):
+            want.append(('%02X %s' % (c[0], nm), at))
+    seen_at = set()
+    keep = []
+    for nm, at in want:
+        if at + 1 in turn and at not in seen_at:
+            seen_at.add(at)
+            keep.append((nm, at))
+    want = keep
     d = P.scratch('end_at')
     try:
         rom = cart_look(sorted({turn[at + 1] for _n, at in want}
@@ -258,19 +270,19 @@ def one(name, lives, sat, seen, score):
             all += 3
             if got:
                 bad += 1
-                print('%-8s %6d cells of the board differ' % (nm, got))
+                print('%-12s %6d cells of the board differ' % (nm, got))
             if hue:
                 bad += 1
-                print('%-8s %6d of the thirty two differ: %s' % (nm, hue,
+                print('%-12s %6d of the thirty two differ: %s' % (nm, hue,
                       ', '.join('%d %02X/%02X' % (i, cpal[i], epal[i])
                                 for i in HUES if cpal[i] != epal[i])))
             if wrong:
                 bad += 1
-                print('%-8s what is held differs: %s' % (nm, ', '.join(
+                print('%-12s what is held differs: %s' % (nm, ', '.join(
                     '%s %s/%s' % (key, cheld[key], eheld.get(key))
                     for key in sorted(wrong))))
             if not got and not hue and not wrong:
-                print('%-8s ok' % nm)
+                print('%-12s ok' % nm)
     finally:
         P.sweep(d)
     return bad, all
