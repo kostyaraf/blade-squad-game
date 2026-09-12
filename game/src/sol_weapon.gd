@@ -444,7 +444,14 @@ static func _coming_back(o: SolObjects, i: int) -> void:
 	var ring := 0x50                        # $B69A
 	if n < 0x0F:
 		# $B670 -- which way the satellite lies, and one nudge towards it.
-		var want: int = o.angle_between(o.w_x[i], o.w_y[i], sx, sy)
+		# $C051 stores Y into $90 before it swaps banks, and $90 is the low
+		# byte of the satellite's x that $B626 has just put there.  The Y that
+		# lands on it is $B611's own #$C2, carried through $C01B/$E554, neither
+		# of which touches Y.  So the heading is taken not from where the
+		# satellite is but from its high byte with $C2 underneath it.  That is
+		# the cartridge's doing and it is kept.
+		var want: int = o.angle_between(o.w_x[i], o.w_y[i],
+				(sx & 0xFF00) | 0xC2, sy)
 		o.carry = 1
 		var d: int = o._sbc(want, o.w_vx[i]) & 0x3F
 		o.carry = 1 if d >= 0x20 else 0
@@ -488,3 +495,48 @@ static func _orbit(o: SolObjects, i: int) -> void:
 		o.carry = 1                         # $8FD6 SEC
 		o.z90 = o._neg16(o.z90)
 	_add_both(o, i)                         # $B76C -> $B2CD
+
+
+## $AEBD -- throw one weapon of kind `m` from slot `s` of the object pool.
+##
+## Every one of the hero's nine firing routines ends here.  The kind picks a
+## row of tables; the row says which slot of the pool to try first, how fast
+## the thing goes, how far from the thrower it starts and how many things it
+## may go through.  If no slot from that one down to nought is free, nothing
+## is thrown at all.
+##
+## Two of the tables come in halves, picked by bit 7 of $05CB, and the
+## starting offsets come in four, picked by that bit and by whether the
+## thrower is standing in state three.
+##
+## The answer is which slot was filled, or -1 when none was free.  The
+## cartridge says the same thing in its flags: it comes back with the zero
+## flag set when a slot was found and the negative flag set when the count
+## ran off the bottom.
+static func throw(o: SolObjects, m: int, s: int) -> int:
+	var t: Dictionary = o.weapon_table
+	var row: int = m & 0x7F                             # $AEBF
+	var i: int = int(t["slot"][row])                    # $AEC4
+	while i >= 0:                                       # $AEC8..$AF43
+		if o.w_kind[i] == 0:
+			break
+		i -= 1
+	if i < 0:
+		return -1                                       # $AF44
+	var alt := (o.hero_flags & 0x80) != 0               # $AED9
+	var three: bool = o.hero_state == 0x03              # $AEE8
+	var pre := "alt_" if alt else ""
+	var post := "_3" if three else ""
+	var dx: int = int(t[pre + "dx_lo" + post][row]) \
+			| int(t[pre + "dx_hi" + post][row]) << 8
+	var dy: int = int(t[pre + "dy_lo" + post][row]) \
+			| int(t[pre + "dy_hi" + post][row]) << 8
+	if (o.face[s] & 0x80) != 0:                         # $AF25, looking left
+		dx = (-dx) & 0xFFFF                             # $AF2A, with the SEC
+	o.w_x[i] = (o.x[s] + dx) & 0xFFFF                   # $AE8A
+	o.w_y[i] = (o.y[s] + dy) & 0xFFFF                   # $AE99
+	o.w_kind[i] = m                                     # $AEA8
+	o.w_pen[i] = int(t["pen"][row])                     # $AEAD
+	o.w_vx[i] = int(t[pre + "vx"][row])                 # $AEB2
+	o.w_vy[i] = int(t[pre + "vy"][row])                 # $AEB7
+	return i

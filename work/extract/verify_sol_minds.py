@@ -61,6 +61,7 @@ def main():
                 cfg['six_at'] = [t[2] for t in ticks]
                 cfg['step_at'] = [t[3] for t in ticks]
                 cfg['ride_at'] = [t[4] for t in ticks]
+                cfg['new_at'] = [t[5] for t in ticks]
                 got, missing = engine(cfg, scratch)
                 for k, v in missing.items():
                     owed[k] = owed.get(k, 0) + v

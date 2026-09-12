@@ -100,7 +100,18 @@ var rise := 0                   # $05AD:$05AE, the vertical speed before it land
 var speed := 0                  # $35, one signed byte
 var state := ST_GROUND          # $05A2
 var timer := 0                  # $05A3
-var face_left := false          # $05B2 bit 7
+## $05B2 -- which way he is looking, and the whole byte of it.  The two places
+## that write it ($9B6D and $AD5C) put a rolled copy of the direction being
+## held in, so bit 7 means looking left, bit 6 means right is held, and bit 5
+## is whatever the carry happened to be.  Three readers want the whole byte:
+## $AE1E and $B884 copy it into a slot's own face, and $AD48 takes bit 6 out
+## of it to say which way the satellite turns.
+var face := 0
+var face_left: bool:
+	get:
+		return (face & 0x80) != 0
+	set(v):
+		face = (face & 0x7F) | (0x80 if v else 0x00)
 var hold := 0                   # $05AC
 var jump := JUMP_FULL           # $05E8
 var gravity := GRAVITY          # $05E9
@@ -137,6 +148,9 @@ var pic_hi := 0                 # $05A7
 ## with it ($9E).  -1 is "not drawn at all".
 var draw_id := -1
 var draw_mark := 0
+## $B81E -- which reach of $B8F7 the animation has just asked to be struck
+## with, or -1 for none.  $B862 empties it again on the same picture.
+var punch := -1
 ## $06 as it stood at the end of last frame -- masked, not raw.  $C88B works
 ## out what was newly pressed by comparing the pad against this, so a mask that
 ## blanked $06 makes a button that was never let go read as pressed again the
@@ -623,6 +637,14 @@ func _reel(id: int) -> void:
 	pic_lo = int(s[1])
 	pic_hi = int(s[2])
 	step_i += 1
+	# $B81E -- a handful of the animations strike on one of their steps.  The
+	# table says on which step and which of the four reaches; bit 7 means the
+	# animation never strikes at all.  What is struck is slot fifteen of the
+	# object pool, and that is $B862's business, so only the ask is kept here.
+	if id < SolSprites.loop.size():
+		var v: int = int(SolSprites.loop[id])
+		if (v & 0x80) == 0 and (v & 0x0F) == step_i:
+			punch = (v & 0x70) >> 1
 
 
 ## $A2B5 -- a push up, unless this jump has already been spent and the button
@@ -677,20 +699,21 @@ func _horizontal(held: int) -> void:
 	if timer == 1:
 		_thrown()
 		return
-	_steer(held)
+	# $9AC3 -- and the carry that comparison leaves is read again at $9B55.
+	_steer(held, 1 if timer >= 1 else 0)
 
 
 ## $9ABE -- the frame after $9FA5 set the clock back to nothing.
 func _thrown() -> void:
 	if suit != 0:
 		if hurt != 0:
-			_steer(0)
+			_steer(0, 1)                    # $9ACD, and the clock is one
 			return
 		if state != ST_AIR:
 			_knock()
 			return
 		jump_flags = 0xC0
-		_steer(0)
+		_steer(0, 1)                        # $9AD8, after an equal CPX
 		return
 	_knock()
 
@@ -710,17 +733,47 @@ func _knock() -> void:
 	_launch()
 
 
-## $9B4C -- the steering proper.
-func _steer(held: int) -> void:
+## $9B1E -- on the way to the steering, the one thing that lets the wire go: a
+## hero with no suit on and no line left, standing in state two on the eighth
+## step of his animation, is pushed off it backwards.
+##
+## Each of the four comparisons leaves a carry, and $9B55 rolls that carry into
+## the byte it writes to $05B2, so the carry is handed on rather than dropped.
+func _release(c_in: int) -> int:
+	if suit != 0:
+		return c_in                         # $9B21
+	if fuel != 0:
+		return c_in                         # $9B26
+	if state != 2:
+		return 1 if state >= 2 else 0       # $9B2D
+	if step_t != 8:
+		return 1 if step_t >= 8 else 0      # $9B34
+	fuel = (fuel + 1) & 0xFF                # $9B36
+	jump = 0xF8                             # $9B39
+	var c: int = 1 if jump >= JUMP_FLOOR else 0
+	_launch()                               # $9B3E
+	speed = 0x18 if face_left else -0x18    # $9B41
+	return c
+
+
+## $9B4C -- the steering proper.  The direction held is rolled three places
+## right and the whole byte of it becomes $05B2: bit 7 is "looking left", bit 6
+## is "right is held", bit 5 is the carry that came down from $9B1E.
+func _steer(held: int, c_in: int) -> void:
+	var carry: int = _release(c_in)
 	var dir: int = held & STEER[state] & 0x03
 	if dir == 0:
 		_drag()
 		return
-	var want_left := dir == LEFT
+	var v: int = dir                        # $9B55, three rolls right
+	for _k in range(3):
+		var nc: int = v & 0x01
+		v = ((carry << 7) | (v >> 1)) & 0xFF
+		carry = nc
 	# $9B59 -- turning round on ordinary ground costs half the speed.
-	if want_left != face_left and state != ST_AIR and ground == GROUND_PLAIN:
+	if ((v ^ face) & 0x80) != 0 and state != ST_AIR and ground == GROUND_PLAIN:
 		speed = _asr(speed)
-	face_left = want_left
+	face = v                                # $9B6D
 	# $9B72 and $9B7E -- two a frame, one on anything slippery.
 	var gain: int = 1 if ground != GROUND_PLAIN else 2
 	speed = _sbyte(speed + (-gain if face_left else gain))

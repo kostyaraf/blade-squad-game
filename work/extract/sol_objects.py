@@ -25,6 +25,8 @@ ANIMS = (12, 0x80B2)        # bank 12, the object animation set (the fifth)
 N_ANIMS = 128               # what the word list holds before the steps start
 ANIMS3 = (12, 0x8065)       # the fourth set, which a few minds reach for instead
 N_ANIMS3 = 38               # as many as fit before the fifth set begins
+ANIMS1 = (13, 0xBDB9)       # the second set, which the hero's satellite wears
+N_ANIMS1 = 38               # as many as the word list holds before the steps
 BORN = (8, 0x8096)          # $8072 + $24 -- the ring the spawner reads
 GONE = (14, 0xCEDE)     # $CEBA + $24 -- the ring the frame walk reads
 RING = 72                   # six rows of twelve; rows 0..2 and 9..11 are never read
@@ -97,6 +99,9 @@ def export():
         # $8065 -- the fourth set; $8985 in bank 2 hands $BDAB a three, not a
         # four, so a handful of behaviours wear these pictures instead.
         anims3=anims(rom, ANIMS3, N_ANIMS3),
+        # $BDB9 -- the second set.  $8DA6 and $8DD6 both hand $8DEF a one, so
+        # everything in the hero's own four slots wears these pictures.
+        anims1=anims(rom, ANIMS1, N_ANIMS1),
         # $AB77 -- nine bytes apiece, but reached by a plain byte offset, so
         # they are kept as bytes and read out where a behaviour asks.
         hatch=[int(v) for v in at(rom, HATCH, N_HATCH)],

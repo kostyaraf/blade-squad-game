@@ -21,7 +21,7 @@ class_name SolMinds
 static func run(o: SolObjects, s: int) -> void:
 	# $819D -- a ride under way holds the whole slot still: neither its own
 	# turn nor anything it might touch.
-	if o.ride_hold != 0 and o.ride_hold < 0x30:
+	if o.born_wait != 0 and o.born_wait < 0x30:
 		return
 	_body(o, s)
 	# $81A9 -- a thing that has been finished off touches nobody.

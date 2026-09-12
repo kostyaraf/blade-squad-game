@@ -88,6 +88,7 @@ var w_vx := PackedByteArray()       # $0750
 var w_vy := PackedByteArray()       # $0760
 var w_pen := PackedByteArray()      # $0770: how much it can still go through
 var weapons_skipped := {}
+var sat_skipped := {}
 
 # Where it is on the screen, in whole pixels, filled by the frame walk.
 var at_x := PackedInt32Array()      # $5C:$5D
@@ -95,6 +96,10 @@ var at_y := PackedInt32Array()      # $5E:$5F
 
 # The scroll bookkeeping the spawner leans on.
 var due := 0                        # $05EC: a scan has been asked for
+## $05FD:$05FE:$05FF -- the three bytes of the score, lowest byte last.  The
+## only thing in this module that touches them is $A8C6, which adds five for a
+## wall broken with a fist.
+var z5ff := 0
 var col_due := 0                    # $37: a column of background is queued
 var row_due := 0                    # $36: a row of it is
 var seen_x := 0                     # $05E0:$05E1
@@ -130,6 +135,19 @@ var z58 := 0                        # $58 -- how many are still on the ride
 var hero_suit := 0                  # $05C5 -- which suit is on
 var hero_flags := 0                 # $05CB
 var hero_state := 0                 # $05A2 -- what the hero is busy with
+var hero_timer := 0                 # $05A3 -- how long the state has left
+var hero_pic_lo := 0                # $05A6 -- the picture he is drawn from
+var hero_pic_hi := 0                # $05A7
+var hero_fuel := 0                  # $05AF -- what the wire has left
+var z5ab := 0                       # $05AB -- the burst of the doubled weapon
+var hero_hurt := 0                  # $05C2 -- frames of being left alone
+var hero_shield := 0                # $05C8
+var z5fa := 0                       # $05FA -- set while the stage is ending
+var pad_new := 0                    # $04 -- what was pressed this picture
+## The Y register as the animation walk leaves it.  $C051 saves Y in $90
+## before it swaps banks and so destroys what the caller put there; $A802 is
+## the one place that notices.
+var y_reg := 0
 var stage := 0                      # $55 -- which stage is up
 var map_kind := 0                   # $70 -- $3C is the stage that is all water
 var z9d := 0                        # $9D -- what the last probe left over
@@ -148,8 +166,12 @@ var z63 := 0                        # $63:$64
 var z65 := 0                        # $65:$66
 var z67 := 0                        # $67:$68
 var z9c := 0                        # $9C, which side the overlap came from
-var ride_hold := 0                  # $05C3 -- a ride holds the whole pool still
-var hero_suits := 0                 # $05C4 -- which of the three suits are had
+## $05C3 -- how long until the satellite is born.  A finished combination
+## sets it to $80; it counts down, the satellite is made at $30, and until
+## it is under $31 the whole pool stands still.
+var born_wait := 0
+## $05C4 -- the three letters that have been picked up, a pair of bits each.
+var letters := 0
 var hero_bonus := 0                 # $05C6:$05C7 -- points still to be counted
 ## The hero himself, because being touched writes back into him.  A stand that
 ## has no hero simply never touches anything.
@@ -159,6 +181,7 @@ var skipped := {}                   # which behaviours have not been read yet
 var _types: Array
 var _anims: Array
 var _anims3: Array
+var _anims1: Array
 var _hatch: PackedByteArray
 var _steps: PackedByteArray
 var _arctan: PackedByteArray
@@ -174,6 +197,12 @@ var _hit_slow: PackedByteArray
 ## $9060 -- fifteen rings of sixteen, the quarter circle $8FF6 turns an angle
 ## into a step with.
 var _aim: PackedByteArray
+## $AEBD's twenty two rows: which slot to try first, how much it goes
+## through, its two speeds and its four sets of starting offsets.
+var weapon_table: Dictionary
+## $A5C1, $AE5F, $ADEF and the rest: what the hero's own four slots are
+## driven by.
+var sat_table: Dictionary
 
 
 func _init(lvl: SolLevel) -> void:
@@ -182,6 +211,7 @@ func _init(lvl: SolLevel) -> void:
 	_types = t["types"]
 	_anims = t["anims"]
 	_anims3 = t["anims3"]
+	_anims1 = t["anims1"]
 	_hatch = PackedByteArray(t["hatch"])
 	_steps = PackedByteArray(t["steps"])
 	_arctan = PackedByteArray(t["arctan"])
@@ -190,6 +220,8 @@ func _init(lvl: SolLevel) -> void:
 	_hit_box = h["box"]
 	_hit_slow = PackedByteArray(h["slow"])
 	_aim = PackedByteArray(Nes._load_json("%s/sol/aim.json" % Nes.DATA)["ring"])
+	weapon_table = Nes._load_json("%s/sol/weapon.json" % Nes.DATA)
+	sat_table = Nes._load_json("%s/sol/sat.json" % Nes.DATA)
 	_born = PackedByteArray(t["born"])
 	_gone = PackedByteArray(t["gone"])
 	_room_group = lvl.room_group
@@ -407,9 +439,11 @@ func _tick(s: int, n: int, set := 4) -> void:
 
 
 ## $8026 in bank 12 -- the next step of the walk, and a step whose hold is
-## nothing means start the walk again.
+## nothing means start the walk again.  $9A picks the set: four for the
+## things in the pool, three for the handful that ask for it by name, one
+## for everything in the hero's own four slots.
 func _advance(s: int, n: int, set := 4) -> void:
-	var book: Array = _anims if set == 4 else _anims3
+	var book: Array = _anims if set == 4 else (_anims3 if set == 3 else _anims1)
 	if n >= book.size():
 		return
 	var steps: Array = book[n]
@@ -421,6 +455,8 @@ func _advance(s: int, n: int, set := 4) -> void:
 	left[s] = int(st[0])
 	pic_lo[s] = int(st[1])
 	pic_hi[s] = int(st[2])
+	# $8E1F reads the step three bytes at a time and leaves Y just past it.
+	y_reg = (frame[s] * 3 + 2) & 0xFF
 	frame[s] = (frame[s] + 1) & 0xFF
 
 
@@ -744,6 +780,12 @@ func missed_shot(m: int, done: bool) -> void:
 func missed_weapon(m: int, done: bool) -> void:
 	var key := "%02X%s" % [m, "-dead" if done else ""]
 	weapons_skipped[key] = int(weapons_skipped.get(key, 0)) + 1
+
+
+## $A594 -- and the same for the fourteen the hero's own slots are walked by.
+func missed_sat(m: int) -> void:
+	var key := "%02X" % m
+	sat_skipped[key] = int(sat_skipped.get(key, 0)) + 1
 
 
 ## And an entry of bank six that has not been read either.
@@ -1197,22 +1239,22 @@ func _worth(s: int, n: int) -> void:
 	mind[s] = mind[s] | 0x80            # $8290
 
 
-## $82B5 and $82F3 -- one half of a suit.  $05C4 holds three pairs of bits, a
-## pair to a suit, and the pick-up belongs to the first pair still empty; when
-## all three are full the slot is simply let go instead.
+## $82B5 and $82F3 -- one letter picked up.  $05C4 holds three pairs of bits,
+## a pair to a letter, and the pick-up belongs to the first pair still empty;
+## when all three are full the slot is simply let go instead.
 func _suit(s: int, one: int, two: int, three: int) -> void:
 	var bit := one
 	var which := 0
-	if (hero_suits & 0x03) != 0:
+	if (letters & 0x03) != 0:
 		which = 1
 		bit = two
-		if (hero_suits & 0x0C) != 0:
+		if (letters & 0x0C) != 0:
 			which = 2
 			bit = three
-			if (hero_suits & 0x30) != 0:
+			if (letters & 0x30) != 0:
 				id[s] = 0               # $8336
 				return
-	b[s] = hero_suits | bit             # $82DE
+	b[s] = letters | bit             # $82DE
 	if which != 2:
 		pass                            # $82EB -- $070C,Y, the weapon's own
 	a[s] = 0xFF                         # $832E

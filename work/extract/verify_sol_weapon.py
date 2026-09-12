@@ -135,7 +135,7 @@ def cartridge(state, pads, base, pk):
     out = []
     ticks = []
     for _fr, c in rows[:-1]:
-        ticks.append((c[0x0C], c[0x0E], c[0x06], c[0x7F], c[0x58]))
+        ticks.append((c[0x0C], c[0x0E], c[0x06], c[0x7F], c[0x58], c[0x04]))
         out.append(tuple(
             (c[0x0700 + i],
              c[0x0710 + i] | c[0x0720 + i] << 8,
@@ -207,6 +207,7 @@ def main():
                     cfg['six_at'] = [t[2] for t in ticks]
                     cfg['step_at'] = [t[3] for t in ticks]
                     cfg['ride_at'] = [t[4] for t in ticks]
+                    cfg['new_at'] = [t[5] for t in ticks]
                     for k in ('wkind', 'wx', 'wy', 'wvx', 'wvy', 'wpen'):
                         cfg[k] = list(cfg0[k])
                     for i, s in enumerate(slots):

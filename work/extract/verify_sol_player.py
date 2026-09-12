@@ -160,6 +160,7 @@ def snapshot(base):
         'speed': sbyte(base[0x35]),
         'jump': base[0x05E8],
         'face_left': bool(base[0x05B2] & 0x80),
+        'face': base[0x05B2],
         'timer': base[0x05A3],
         'hold': base[0x05AC],
         'rise': s16(base[0x05AD], base[0x05AE]),

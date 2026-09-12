@@ -215,7 +215,7 @@ func _run_sol_cam(path: String) -> void:
 	view.x = int(cfg["cam_x"])
 	view.y = int(cfg["cam_y"])
 	view.map_kind = int(cfg["map_kind"]) if cfg.has("map_kind") else 0
-	view.hold = int(cfg["ride_hold"]) if cfg.has("ride_hold") else 0
+	view.hold = int(cfg["born_wait"]) if cfg.has("born_wait") else 0
 	view.fall = int(cfg["ride_fall"]) if cfg.has("ride_fall") else 0
 	# $CD9C runs before the hero does, so the view always moves on the picture
 	# he has already finished, not the one being drawn.
@@ -240,7 +240,7 @@ func _run_sol_objects(path: String) -> void:
 	view.x = int(cfg["cam_x"])
 	view.y = int(cfg["cam_y"])
 	view.map_kind = int(cfg["map_kind"]) if cfg.has("map_kind") else 0
-	view.hold = int(cfg["ride_hold"]) if cfg.has("ride_hold") else 0
+	view.hold = int(cfg["born_wait"]) if cfg.has("born_wait") else 0
 	view.fall = int(cfg["ride_fall"]) if cfg.has("ride_fall") else 0
 	p.vx = int(cfg["vx"])
 	p.vy = int(cfg["vy"])
@@ -254,8 +254,10 @@ func _run_sol_objects(path: String) -> void:
 	pool.z75 = int(cfg["z75"]) if cfg.has("z75") else 0
 	pool.z58 = int(cfg["z58"]) if cfg.has("z58") else 0
 	pool.z26 = int(cfg["z26"]) if cfg.has("z26") else 0
-	pool.hero_suits = int(cfg["suits"]) if cfg.has("suits") else 0
+	pool.letters = int(cfg["letters"]) if cfg.has("letters") else 0
 	pool.hero_bonus = int(cfg["bonus"]) if cfg.has("bonus") else 0
+	pool.z5ab = int(cfg["z5ab"]) if cfg.has("z5ab") else 0
+	pool.z5fa = int(cfg["z5fa"]) if cfg.has("z5fa") else 0
 	for i in range(SolObjects.MARKS):
 		pool.mark[i] = int(cfg["mark"][i])
 	for i in range(SolObjects.SLOTS):
@@ -301,9 +303,11 @@ func _run_sol_objects(path: String) -> void:
 	var sixes: Array = cfg["six_at"] if cfg.has("six_at") else noises
 	var steps: Array = cfg["step_at"] if cfg.has("step_at") else noises
 	var rides: Array = cfg["ride_at"] if cfg.has("ride_at") else []
+	var news: Array = cfg["new_at"] if cfg.has("new_at") else cfg["pads"]
 	var out := PackedStringArray()
 	var shots := PackedStringArray()
 	var arms := PackedStringArray()
+	var hands := PackedStringArray()
 	var n := 0
 	for f in cfg["pads"]:
 		# A picture the cartridge did not have time for: $0C does not move on,
@@ -313,6 +317,7 @@ func _run_sol_objects(path: String) -> void:
 			out.append(out[n - 1])
 			shots.append(shots[n - 1])
 			arms.append(arms[n - 1])
+			hands.append(hands[n - 1])
 			n += 1
 			continue
 		# The order of one picture, as $CDB0 keeps it: what the background
@@ -331,7 +336,7 @@ func _run_sol_objects(path: String) -> void:
 		pool.drew()
 		view.step(p.vx, p.vy, p.x, p.y)
 		pool.hero = p
-		pool.ride_hold = view.hold
+		pool.born_wait = view.hold
 		pool.map_kind = view.map_kind
 		pool.stage = int(cfg["stage"]) if cfg.has("stage") else 0
 		pool.z34 = view.fall
@@ -354,9 +359,20 @@ func _run_sol_objects(path: String) -> void:
 		# pad.  Where no script interferes the two are the same.
 		p.step(int(sixes[n]) if cfg.has("six_at") else int(f))   # $CDD2
 		_hero_into(pool, p)
+		# $B862 -- one step of a handful of his animations strikes, and what it
+		# strikes with goes into slot fifteen while he is still the one running.
+		if p.punch >= 0:
+			SolSat.strike(pool, p.punch)
+			p.punch = -1
 		# $CDD2 is one call, $9150, and drawing him is only its first half:
 		# the second is $B168, the pool his satellite throws into.
 		SolWeapon.step(pool)
+		# $9156 -- and the third half: the hero's own four slots, $0C to $0F.
+		pool.pad_new = int(news[n])
+		SolSat.step(pool)
+		# $AD45 writes back into $05B2, which he reads again next picture --
+		# the whole byte of it, not only the bit that says which way he looks.
+		p.face = pool.hero_face
 		SolShots.step(pool)                              # $CDDA
 		pool.step(view.x, view.y)                        # $CDDD
 		var row := PackedStringArray()
@@ -375,16 +391,28 @@ func _run_sol_objects(path: String) -> void:
 			wrow.append("%d,%d,%d,%d,%d,%d" % [pool.w_kind[i], pool.w_x[i],
 					pool.w_y[i], pool.w_vx[i], pool.w_vy[i], pool.w_pen[i]])
 		arms.append("W " + " ".join(wrow))
+		var hrow := PackedStringArray()
+		for i in range(SolSat.FIRST, SolSat.LAST + 1):
+			hrow.append("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d"
+					% [pool.id[i], pool.x[i], pool.y[i], pool.mind[i],
+					pool.kind[i], pool.a[i], pool.b[i], pool.c[i], pool.d[i],
+					pool.face[i], pool.anim_a[i], pool.anim_b[i], pool.left[i],
+					pool.frame[i], pool.cool[i], pool.life[i],
+					pool.pic_lo[i], pool.pic_hi[i]])
+		hands.append("H " + " ".join(hrow))
 		n += 1
 	print("\n".join(out))
 	print("\n".join(shots))
 	print("\n".join(arms))
+	print("\n".join(hands))
 	if not pool.skipped.is_empty():
 		printerr("minds not read yet: ", pool.skipped)
 	if not pool.shots_skipped.is_empty():
 		printerr("shots not read yet: ", pool.shots_skipped)
 	if not pool.weapons_skipped.is_empty():
 		printerr("weapons not read yet: ", pool.weapons_skipped)
+	if not pool.sat_skipped.is_empty():
+		printerr("satellite not read yet: ", pool.sat_skipped)
 
 
 ## The hero's own numbers, copied into the pool.  $CDBB and $CDBE read them
@@ -393,10 +421,16 @@ func _hero_into(pool: SolObjects, p: SolPlayer) -> void:
 	pool.hero_x = p.x
 	pool.hero_y = p.y
 	pool.hero_vx = p.vx
-	pool.hero_face = 0x80 if p.face_left else 0x00
+	pool.hero_face = p.face
 	pool.hero_suit = p.suit
 	pool.hero_flags = p.flags
 	pool.hero_state = p.state
+	pool.hero_timer = p.timer
+	pool.hero_pic_lo = p.pic_lo
+	pool.hero_pic_hi = p.pic_hi
+	pool.hero_fuel = p.fuel
+	pool.hero_hurt = p.hurt
+	pool.hero_shield = p.shield
 
 
 ## Everything the cartridge had in the hero when the buttons started, put back
@@ -411,7 +445,9 @@ func _seed_sol(cfg: Dictionary) -> SolPlayer:
 		p.speed = int(cfg["speed"])
 	if cfg.has("jump"):
 		p.jump = int(cfg["jump"])
-	if cfg.has("face_left"):
+	if cfg.has("face"):
+		p.face = int(cfg["face"])
+	elif cfg.has("face_left"):
 		p.face_left = bool(cfg["face_left"])
 	if cfg.has("timer"):
 		p.timer = int(cfg["timer"])

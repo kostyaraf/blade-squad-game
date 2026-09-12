@@ -71,7 +71,7 @@ def main():
             cfg0 = V.snapshot(base)
             cfg0['cam_x'] = base[0x30] | base[0x31] << 8
             cfg0['cam_y'] = base[0x32] | base[0x33] << 8
-            cfg0['ride_hold'] = base[0x05C3]
+            cfg0['born_wait'] = base[0x05C3]
             cfg0['ride_fall'] = base[0x34]
             # The view moves on the speed he had when it ran, and on the first
             # frame that is the speed the cartridge was carrying already.

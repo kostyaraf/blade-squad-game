@@ -73,7 +73,7 @@ def ids(rows):
 
 # $0C counts pictures; $0E is the hash of RAM that $CD57 stirs, and until that
 # is ported the engine is handed the cartridge's own.
-TICKS = [0x0C, 0x0E, 0x06, 0x7F, 0x58]
+TICKS = [0x0C, 0x0E, 0x06, 0x7F, 0x58, 0x04]
 FIELDS = [0x0650, 0x0690, 0x0660, 0x0670]
 
 
@@ -86,7 +86,7 @@ def cartridge(state, pads, base, full=False):
     out = []
     ticks = []
     for _fr, c in rows[:-1]:
-        ticks.append((c[0x0C], c[0x0E], c[0x06], c[0x7F], c[0x58]))
+        ticks.append((c[0x0C], c[0x0E], c[0x06], c[0x7F], c[0x58], c[0x04]))
         if full:
             out.append(tuple(
                 (c[0x0600 + i], c[0xA0 + i] | c[0xB0 + i] << 8,
@@ -137,7 +137,7 @@ def seed(base):
     cfg = V.snapshot(base)
     cfg['cam_x'] = base[0x30] | base[0x31] << 8
     cfg['cam_y'] = base[0x32] | base[0x33] << 8
-    cfg['ride_hold'] = base[0x05C3]
+    cfg['born_wait'] = base[0x05C3]
     cfg['ride_fall'] = base[0x34]
     cfg['vx'] = V.s16(base[0x05B6], base[0x05B7])
     cfg['vy'] = V.s16(base[0x05B8], base[0x05B9])
@@ -151,7 +151,9 @@ def seed(base):
     cfg['z75'] = base[0x75]
     cfg['z58'] = base[0x58]
     cfg['z26'] = base[0x26]
-    cfg['suits'] = base[0x05C4]
+    cfg['letters'] = base[0x05C4]
+    cfg['z5ab'] = base[0x05AB]
+    cfg['z5fa'] = base[0x05FA]
     cfg['bonus'] = base[0x05C6] | base[0x05C7] << 8
     cfg['mark'] = [base[0x0560 + i] for i in range(MARKS)]
     # The sixteen shots.  Э4.2 does not read them either, but a shot can reach
@@ -214,6 +216,7 @@ def main():
                 cfg['six_at'] = [t[2] for t in ticks]
                 cfg['step_at'] = [t[3] for t in ticks]
                 cfg['ride_at'] = [t[4] for t in ticks]
+                cfg['new_at'] = [t[5] for t in ticks]
                 got = ids(engine(cfg, scratch))
                 n = min(len(want), len(got))
                 done = finished(ticks, n)

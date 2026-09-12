@@ -44,7 +44,7 @@ def cartridge(state, pads, base):
     out = []
     ticks = []
     for _fr, c in rows[:-1]:
-        ticks.append((c[0x0C], c[0x0E], c[0x06], c[0x7F], c[0x58]))
+        ticks.append((c[0x0C], c[0x0E], c[0x06], c[0x7F], c[0x58], c[0x04]))
         out.append(tuple(
             (c[0x0780 + i],
              c[0x0790 + i] | c[0x07A0 + i] << 8,
@@ -109,6 +109,7 @@ def main():
                 cfg['six_at'] = [t[2] for t in ticks]
                 cfg['step_at'] = [t[3] for t in ticks]
                 cfg['ride_at'] = [t[4] for t in ticks]
+                cfg['new_at'] = [t[5] for t in ticks]
                 got, missing = engine(cfg, scratch)
                 for k, v in missing.items():
                     owed[k] = owed.get(k, 0) + v

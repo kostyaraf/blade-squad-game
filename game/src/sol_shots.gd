@@ -21,7 +21,7 @@ class_name SolShots
 ## $B2E9 -- one frame of the pool, from the last slot down to the first.  A
 ## ride under way holds the whole of it still, exactly as it holds the objects.
 static func step(o: SolObjects) -> void:
-	if o.ride_hold != 0 and o.ride_hold < 0x30:
+	if o.born_wait != 0 and o.born_wait < 0x30:
 		return
 	for i in range(SolObjects.SHOTS - 1, -1, -1):
 		if o.s_kind[i] == 0:
