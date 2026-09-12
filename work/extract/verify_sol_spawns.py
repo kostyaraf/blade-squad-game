@@ -77,12 +77,13 @@ TICKS = [0x0C, 0x0E, 0x06, 0x7F, 0x58, 0x04]
 FIELDS = [0x0650, 0x0690, 0x0660, 0x0670]
 
 
-def cartridge(state, pads, base, full=False):
+def cartridge(state, pads, base, full=False, pokes=()):
     script = V.cartridge_script(pads, base)
     addrs = set(POOL) | set(POS) | set(TICKS)
     if full:
         addrs |= {p + i for p in FIELDS for i in range(SLOTS)}
-    rows = P.watched(state, script, base, base + len(pads), addrs)
+    rows = P.watched(state, script, base, base + len(pads), addrs,
+                     pokes=pokes)
     out = []
     ticks = []
     for _fr, c in rows[:-1]:

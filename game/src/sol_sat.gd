@@ -916,3 +916,88 @@ static func _finding_hero(o: SolObjects, x: int) -> void:
 	o.spin(o.kind[x], 0x50)                             # $A81C, $8FF6
 	o.x[x] = (o.x[x] + o.z90) & 0xFFFF                  # $AE6F
 	o.y[x] = (o.y[x] + o.z92) & 0xFFFF
+
+
+# ---------------------------------------------------------------------------
+# The letters.  Three of them are picked up in a stage, and a combination the
+# game knows gives a satellite.  $923B is the tail of $9159, which is mostly
+# drawing the hero and the strip at the bottom; these are the only parts of it
+# that are not drawing.
+
+
+## $923B -- is a combination finished, and is anything already counting down.
+static func letters(o: SolObjects) -> void:
+	if o.hero_hurt != 0 or o.born_wait != 0:
+		_counting(o)                                    # $9241
+		return
+	if o.hero_state == 0x0D:
+		return                                          # $924A
+	# $924B -- the eight combinations, read from the top down; the first that
+	# matches starts the wait at $80.
+	for i in range(7, -1, -1):
+		if int(o.sat_table["combos"][i]) == o.letters:
+			o.born_wait = 0x80                          # $925C
+			break
+	if o.born_wait != 0:
+		_counting(o)                                    # $9262
+		return
+	_boxes(o)                                           # $9264
+
+
+## $92B5 -- the wait counts down.  At $30 exactly the satellite is made; below
+## that nothing more is done, and the whole pool is standing still anyway
+## ($A56A holds it there).  Above it the boxes are drawn on the pictures whose
+## bit three is clear, which is what makes them flash.
+static func _counting(o: SolObjects) -> void:
+	if o.born_wait == 0:
+		return                                          # $92BB
+	o.born_wait = (o.born_wait - 1) & 0xFF
+	if o.born_wait == 0x30:
+		_make(o)                                        # $92CD
+		return
+	if o.born_wait < 0x30:
+		return                                          # $92C4
+	if (o.born_wait & 0x08) == 0:
+		_boxes(o)                                       # $92CA
+
+
+## $9264 and $927B -- the three boxes on the strip.  Drawing them is not this
+## module's business, but each box carries a timer of its own in $070C, $070D
+## and $070E -- three bytes of the $0700 pool that the pool walk never reaches,
+## because $B168 only walks the first eight -- and a box whose timer is running
+## is drawn empty every other four pictures.  Only the timer is state.
+static func _boxes(o: SolObjects) -> void:
+	for i in range(3):
+		if o.w_kind[0x0C + i] != 0:
+			o.w_kind[0x0C + i] = (o.w_kind[0x0C + i] - 1) & 0xFF  # $9292
+
+
+## $92CD -- the combination is looked up once more and paid out.  A combination
+## that gives the weapon he is already holding does not give a second one: the
+## one he has bursts instead, and that is the "super" the game is named for.
+static func _make(o: SolObjects) -> void:
+	var at := -1
+	for i in range(7, -1, -1):
+		if int(o.sat_table["combos"][i]) == o.letters:
+			at = i
+			break
+	if at < 0:
+		return                                          # $92DA
+	o.letters = 0                                       # $92DD
+	o.id[SolObjects.BLAST] = 0                          # $92E0
+	for i in range(11):
+		o.w_kind[i] = 0                                 # $92E5, eleven of them
+	var give: int = int(o.sat_table["weapon_of"][at])
+	var have: int = o.id[FIRST] & 0x3F                  # $92EB
+	if have != 0 and have == give:
+		o.life[FIRST] = 0x10                            # $92F7
+		o.hero_state = 0x0D                             # $9302
+		o.z5ab = 0x7F                                   # $9307
+		o.letters = 0                                   # $930C
+		return
+	# $9310 -- a new satellite, resting on the side he is looking away from.
+	o.a[FIRST] = 0x2B if (o.hero_face & 0x80) != 0 else 0x35
+	o.mind[FIRST] = at                                  # $9324
+	o.id[FIRST] = give                                  # $9327
+	o.life[FIRST] = 0x10                                # $9347
+	_take_back(o)                                       # $934C

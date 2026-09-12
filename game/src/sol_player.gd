@@ -98,6 +98,7 @@ var vx := 0                     # $05B6:$05B7, this frame's move
 var vy := 0                     # $05B8:$05B9
 var rise := 0                   # $05AD:$05AE, the vertical speed before it lands
 var speed := 0                  # $35, one signed byte
+const ST_BURST := 0x0D          ## $97D4 -- the doubled weapon burning off
 var state := ST_GROUND          # $05A2
 var timer := 0                  # $05A3
 ## $05B2 -- which way he is looking, and the whole byte of it.  The two places
@@ -121,6 +122,10 @@ var flags := 0                  # $05CB
 var jump_flags := 0             # $05C9
 var hurt := 0                   # $05C2
 var scripted := 0               # $05A5
+## $05AB -- the burst of the doubled weapon.  $92CD sets it to $7F when a
+## combination gives the weapon he already holds, and state $0D counts it down
+## by four a picture; the satellite's own $A5D9 and $A5F6 read it as a ring.
+var burst := 0                  # $05AB
 var push_x := 0                 # $05A8:$05A9
 var anim := 0                   # $05CE
 var suit := 8                   # $05C5
@@ -179,6 +184,15 @@ func place(px: int, py: int) -> void:
 	timer = 0
 	hold = 0
 	jump = JUMP_FULL
+
+
+## $91AC -- the picture the hero is not run at all, because the wait for a new
+## satellite is between one and $2F.  Two things still happen: the frame
+## counter moves on, and $C882 works out what was newly pressed.  Neither is
+## inside $9477, so neither is skipped with it.
+func skip(pad: int) -> void:
+	clock = (clock + 1) & 0xFF
+	pad_held = pad
 
 
 ## $9477 -- one frame of him, start to finish.  `pad` is the controller as it
@@ -420,8 +434,27 @@ func _vertical(held: int, pressed: int) -> void:
 			_landing(held, pressed)
 		ST_CROUCH:
 			_crouch(held, pressed)
+		ST_BURST:
+			_bursting()
 		_:
 			_ground(held, pressed)
+
+
+## $97D4 -- the doubled weapon burning off.  He does not move at all; $05AB is
+## taken down four a picture and when it will not go any lower he is put back
+## on his feet and left alone for $7F pictures.
+func _bursting() -> void:
+	timer = 0x20                                # $8825
+	if burst >= 4:
+		burst -= 4                              # $97DA
+		return
+	scripted = 0                                # $B7AC
+	step_t = 0
+	step_i = 0
+	state = ST_GROUND                           # $97ED
+	pose = 0
+	anim = 0                                    # $97F5
+	hurt = 0x7F                                 # $97FA
 
 
 ## $9ED3 -- on the ground, standing or running.

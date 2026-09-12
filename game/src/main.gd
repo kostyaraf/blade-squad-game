@@ -257,6 +257,7 @@ func _run_sol_objects(path: String) -> void:
 	pool.letters = int(cfg["letters"]) if cfg.has("letters") else 0
 	pool.hero_bonus = int(cfg["bonus"]) if cfg.has("bonus") else 0
 	pool.z5ab = int(cfg["z5ab"]) if cfg.has("z5ab") else 0
+	p.burst = pool.z5ab
 	pool.z5fa = int(cfg["z5fa"]) if cfg.has("z5fa") else 0
 	for i in range(SolObjects.MARKS):
 		pool.mark[i] = int(cfg["mark"][i])
@@ -307,9 +308,19 @@ func _run_sol_objects(path: String) -> void:
 	var out := PackedStringArray()
 	var shots := PackedStringArray()
 	var arms := PackedStringArray()
+	var heroes := PackedStringArray()
 	var hands := PackedStringArray()
+	# The death stand kills a pool by hand: on one named picture bit 7 goes on
+	# the behaviour of every slot that holds something, which is what sends
+	# $81B7 to its second table.  The cartridge is poked at the top of the same
+	# frame, so it is done here before anything else of the picture.
+	var kill_at: int = int(cfg["kill_at"]) if cfg.has("kill_at") else -1
+	var kill: Array = cfg["kill"] if cfg.has("kill") else []
 	var n := 0
 	for f in cfg["pads"]:
+		if n == kill_at:
+			for e in kill:
+				pool.mind[int(e[0])] = int(e[1])
 		# A picture the cartridge did not have time for: $0C does not move on,
 		# and neither does anything else.  The stand still asks for a row, so
 		# the one before is given again.
@@ -317,6 +328,7 @@ func _run_sol_objects(path: String) -> void:
 			out.append(out[n - 1])
 			shots.append(shots[n - 1])
 			arms.append(arms[n - 1])
+			heroes.append(heroes[n - 1])
 			hands.append(hands[n - 1])
 			n += 1
 			continue
@@ -357,13 +369,25 @@ func _run_sol_objects(path: String) -> void:
 		# in bank 8 does, all through stage twenty's opening), and that script
 		# is not ported yet -- so the hero is handed the byte rather than the
 		# pad.  Where no script interferes the two are the same.
-		p.step(int(sixes[n]) if cfg.has("six_at") else int(f))   # $CDD2
+		# $91AC -- while the wait for a satellite is between one and $2F he
+		# does not move at all: $9477 is simply not called.
+		var pad: int = int(sixes[n]) if cfg.has("six_at") else int(f)
+		if view.hold == 0 or view.hold >= 0x30:
+			p.step(pad)                                      # $91B5
+		else:
+			p.skip(pad)
 		_hero_into(pool, p)
 		# $B862 -- one step of a handful of his animations strikes, and what it
 		# strikes with goes into slot fifteen while he is still the one running.
 		if p.punch >= 0:
 			SolSat.strike(pool, p.punch)
 			p.punch = -1
+		# $923B -- the tail of $9159: the three letter boxes, and what a
+		# finished combination gives him.
+		SolSat.letters(pool)
+		view.hold = pool.born_wait
+		p.state = pool.hero_state
+		p.burst = pool.z5ab
 		# $CDD2 is one call, $9150, and drawing him is only its first half:
 		# the second is $B168, the pool his satellite throws into.
 		SolWeapon.step(pool)
@@ -391,6 +415,12 @@ func _run_sol_objects(path: String) -> void:
 			wrow.append("%d,%d,%d,%d,%d,%d" % [pool.w_kind[i], pool.w_x[i],
 					pool.w_y[i], pool.w_vx[i], pool.w_vy[i], pool.w_pen[i]])
 		arms.append("W " + " ".join(wrow))
+		# A row of the hero himself, for when a stand has to be told where a
+		# difference in his own slots came from.  It is kept apart from the
+		# arms so that a picture the cartridge did not finish repeats one row
+		# of each and not two of one.
+		heroes.append("P %d,%d,%d,%d,%d,%d,%d" % [p.state, p.pose, p.step_i,
+				p.step_t, p.anim, p.scripted, p.burst])
 		var hrow := PackedStringArray()
 		for i in range(SolSat.FIRST, SolSat.LAST + 1):
 			hrow.append("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d"
@@ -404,6 +434,7 @@ func _run_sol_objects(path: String) -> void:
 	print("\n".join(out))
 	print("\n".join(shots))
 	print("\n".join(arms))
+	print("\n".join(heroes))
 	print("\n".join(hands))
 	if not pool.skipped.is_empty():
 		printerr("minds not read yet: ", pool.skipped)
@@ -431,6 +462,7 @@ func _hero_into(pool: SolObjects, p: SolPlayer) -> void:
 	pool.hero_fuel = p.fuel
 	pool.hero_hurt = p.hurt
 	pool.hero_shield = p.shield
+	pool.z5ab = p.burst
 
 
 ## Everything the cartridge had in the hero when the buttons started, put back

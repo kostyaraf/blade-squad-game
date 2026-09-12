@@ -54,6 +54,14 @@ static func _live(o: SolObjects, s: int, m: int) -> void:
 			_a10b(o, s)
 		0x1B:
 			_a53d(o, s)
+		0x04:
+			_b11d(o, s, 0x01)               # $B11D
+		0x05:
+			_b11d(o, s, 0x02)               # $B225
+		0x1C:
+			_a3a8(o, s)
+		0x1D:
+			_a3b1(o, s)
 		0x18:
 			_8802(o, s)
 		0x0D:
@@ -98,27 +106,136 @@ static func _live(o: SolObjects, s: int, m: int) -> void:
 			o.missed(m, false)
 
 
-## $827B -- and for one that is finished.
+## $827B -- and for one that is finished.  Twenty three of the sixty four
+## entries are the same word as the live table's; the rest are their own, and
+## the ones that look alike are the easiest to get wrong -- $1E, $1B and $18
+## all point somewhere else once bit 7 is on.
 static func _dead(o: SolObjects, s: int, m: int) -> void:
 	match m:
+		0x0B:
+			_af63(o, s)                     # $AF63
 		0x0C, 0x0E:
 			_af31(o, s, 0x00)               # $AF23
 		0x0F, 0x11:
 			_af31(o, s, 0x0A)               # $AF27
-		0x1E:
-			_a10b(o, s)
-		0x1B:
-			_a53d(o, s)
-		0x18:
-			_8802(o, s)
 		0x0D:
 			_af31(o, s, 0x14)               # $AF2B
 		0x12:
 			_af31(o, s, 0x32)               # $AF2F
+		0x18:
+			_897e(o, s)                     # $897E
+		0x1A, 0x1B:
+			_a43c(o, s)                     # $A43C
+		0x1C:
+			_a989(o, s, 0x00)               # $A987
+		0x1D:
+			_a3b1(o, s)                     # $A3B1, the same as the live one
+		0x1E:
+			_a484(o, s)                     # $A484
+		0x21, 0x2D:
+			_a406(o, s)                     # $A406
+		0x22:
+			_9d71(o, s)                     # $9D71, the same as the live one
+		0x23:
+			_9dab(o, s)                     # $9DAB, the same
+		0x24:
+			_9d41(o, s)                     # $9D41, the same
+		0x25:
+			_a3bc(o, s)                     # $A3BC
+		0x26:
+			_a3fb(o)                        # $A3FB
+		0x27:
+			_9b05(o, s)                     # $9B05, the same
+		0x2A:
+			_a4a0(o, s)                     # $A4A0
+		0x2B:
+			_962e(o, s)                     # $962E, the same
+		0x2C:
+			_a4bd(o, s)                     # $A4BD
+		0x2F:
+			_915b(o, s)                     # $915B, the same
+		0x30:
+			_923b(o, s)                     # $923B, the same
+		0x38, 0x39, 0x3A, 0x3B:
+			_8f85(o, s, 0x14)               # $8F72
+		0x3C:
+			_8f85(o, s, 0x0A)               # $8F7B
+		0x3E:
+			_8f85(o, s, 0x64)               # $8F7F
 		0x3F:
 			_pickup_dead(o, s)
 		_:
 			o.missed(m, true)
+
+
+# -------------------------------------------------- the thing that is dropped
+
+## $B11D and $B225 -- [$04] and [$05] what is left behind to be picked up.  On
+## its first picture it is thrown up; after that it falls, bounces off what it
+## lands on, and is counted down until it goes.
+static func _b11d(o: SolObjects, s: int, pic: int) -> void:
+	if o.kind[s] == 0:
+		o.kind[s] = (o.kind[s] + 1) & 0xFF  # $B122
+		# $816F -> $8163 -- $C0 into the fall with both high bytes taken down,
+		# which is a throw upwards.
+		o.c[s] = 0xC0
+		o.d[s] = 0xFF
+		o.b[s] = 0xFF
+		return
+	_b134(o, s)                             # $B128
+	o.anim_second(s, pic, 3)                # $8985, the third book of walks
+	_b239(o, s)                             # $B130
+
+
+## $B134 -- one picture of the fall, and what it lands on.
+static func _b134(o: SolObjects, s: int) -> void:
+	_b1b5(o, s)
+	o.fall(s, 0x02)                         # $B2BB
+	o.move_facing(s)                        # $813A
+
+
+## $B1B5 -- what stops it: going up it is what is over its head, coming down it
+## is what is under its feet, and off the floor it comes back up at three
+## quarters of the speed it arrived with.
+static func _b1b5(o: SolObjects, s: int) -> void:
+	o.z90 = 0                               # $8121
+	o.z92 = 0x0080
+	if o.d[s] >= 0x80:
+		if o.probe_above(s, 0x0080) < 0x80:
+			return                          # $B210
+		o.y[s] = (o.y[s] & 0xFF00) | 0x80   # $B214
+		o.b[s] = 0x80
+		o.c[s] = 0                          # $B21C
+		o.d[s] = 0
+		return
+	if o.probe_behind(s, 0, 0x0080) < 0x80:
+		return                              # $B1C4
+	o.y[s] = (o.y[s] & 0xFF00) | 0x80       # $B1C8
+	o.b[s] = 0x80
+	# $B1CD -- the speed is halved, a quarter of it is added back, and what is
+	# left is turned round: it comes off at three quarters.
+	var v: int = ((o.d[s] << 8 | o.c[s]) >> 1) & 0xFFFF
+	var q: int = (v >> 1) & 0xFFFF
+	o.carry = 0
+	var lo: int = o._adc(q & 0xFF, v & 0xFF)
+	var hi: int = o._adc((q >> 8) & 0xFF, (v >> 8) & 0xFF)
+	o.carry = 1
+	o.c[s] = o._sbc(0, lo)
+	o.d[s] = o._sbc(0, hi)
+
+
+## $B239 -- it is counted down; at nothing the slot goes, over $40 it is left
+## alone, and under that it is made to blink.
+static func _b239(o: SolObjects, s: int) -> void:
+	o.a[s] = (o.a[s] - 1) & 0xFF
+	if o.a[s] != 0:
+		o.carry = 1 if o.a[s] >= 0x40 else 0
+		if o.carry != 0:
+			return                          # $B245
+	else:
+		o.id[s] = 0                         # $80B9
+	if (o.clock & 0x02) == 0:               # $B249
+		o.cool[s] = 0x0F
 
 
 # ------------------------------------------------------- the one that carries
@@ -699,6 +816,10 @@ static func _927e(o: SolObjects, s: int) -> void:
 		return
 	var t := [0x00, 0xFF, 0x00, 0x01]       # $92B1
 	var yh: int = o._adc(t[o.noise & 0x03], (o.y[s] >> 8) & 0xFF)
+	# $929D -- the second index is picked out of the stirred byte by two RORs,
+	# and a ROR both reads and writes the carry.  What the second sum is handed
+	# is therefore bit one of that byte, not the carry the first sum made.
+	o.carry = (o.noise >> 1) & 0x01
 	var xh: int = o._adc(t[(o.noise >> 2) & 0x03], (o.x[s] >> 8) & 0xFF)
 	o.hatch(xh << 8, yh << 8, 0x7E)         # $AAC2
 
@@ -1486,6 +1607,30 @@ static func _af31(o: SolObjects, s: int, score: int) -> void:
 		_a989(o, s, score)
 
 
+## $A9AB -- and on the way out it may leave something to pick up.  Only a thing
+## that was not being held on to, whose behaviour is at least eight, that is
+## within five pages of the hero along, and that has room above it.  What is
+## dropped is the plain one, or the better one once the thing was worth $32 or
+## more and the stirred byte says so.
+static func _a9ab(o: SolObjects, s: int, score: int) -> void:
+	if (o.mind[s] & 0x40) != 0:
+		return                              # $8173, $A9AE
+	if (o.mind[s] & 0x3F) < 0x08:
+		return                              # $A9B7
+	if o.far_x(s) >= 0x05:
+		return                              # $A9BE
+	o.z90 = 0                               # $8121
+	o.z92 = 0
+	if o.probe_above(s, 0) >= 0x80:
+		return                              # $A9C6
+	var tpl := 0x12                         # $A9CC
+	if score >= 0x32:
+		# $A9D2 -- the ROR hands on bit nought of the stirred byte.
+		if (o.noise & 0x01) != 0:
+			tpl = 0x1B                      # $A9D5
+	o.hatch_here(s, tpl)                    # $AAF1
+
+
 ## $A989 -- the slot is given up: the spawn id loses one of its lives and the
 ## slot goes back to nothing.  What it was worth is added to the score.
 static func _a989(o: SolObjects, s: int, score: int) -> void:
@@ -1500,7 +1645,11 @@ static func _a989(o: SolObjects, s: int, score: int) -> void:
 			free = false                    # $A99D -- it was never out; keep it
 		else:
 			n = n & 0x7F
+			# $A9A1 -- the take away leaves its own carry, and $AE30 just below
+			# reads it without setting one of its own.
+			o.carry = 1 if n >= 1 else 0
 			o.mark[o.id[s] & 0x3F] = 0 if n == 0 else n - 1
+			_a9ab(o, s, score)
 	if free:
 		o.id[s] = 0                         # $80B9
 	o.score += score
@@ -2490,19 +2639,22 @@ static func _pickup(o: SolObjects, s: int) -> void:
 		0x00, 0x0A: _k86a1(o, s)
 		0x02: _k86c9(o, s)
 		0x04: _k8729(o, s)
+		0x06: _8767(o, s)
+		0x08: _87ab(o, s)
 		0x0C: _k861c(o, s)
 		0x0E: _k85ea(o, s, 0x00)
 		0x10: _k85ea(o, s, 0xFF)
 		0x12: _k856c(o, s, 0x75, 0x00)
 		0x14: _k856c(o, s, 0x76, 0xFF)
 		0x16: _k8545(o, s)
-		0x1E:
-			_a10b(o, s)
-		0x1B:
-			_a53d(o, s)
 		0x18: _k84fb(o, s)
+		0x1A: _84ef(o, s)
 		0x1C: _k84d6(o, s)
 		0x1E: _k84ba(o, s)
+		0x20: _849c(o, s, 0x00)
+		0x22: _849c(o, s, 0xFF)
+		0x26: _842f(o, s)
+		0x2A: _83d7(o, s)
 		0x2C: _k865c(o, s)
 		_: o.missed(0x3F, false)
 
@@ -2510,17 +2662,111 @@ static func _pickup(o: SolObjects, s: int) -> void:
 ## $8359 -- and the same family once it has been finished off.
 static func _pickup_dead(o: SolObjects, s: int) -> void:
 	match o.kind[s]:
-		0x00, 0x02, 0x04, 0x0E, 0x10: _af31(o, s, 0x32)
-		0x0C: _af31(o, s, 0x0A)
-		0x12, 0x14, 0x2C: _af31(o, s, 0x14)
-		0x1E:
-			_a10b(o, s)
-		0x1B:
-			_a53d(o, s)
-		0x18: _a989(o, s, 0x00)             # $8F65 -- the sound, then $8F68
+		0x00, 0x02, 0x04, 0x0E, 0x10: _af31(o, s, 0x32)     # $8F83
+		0x06: _8767(o, s)
+		0x08: _87ab(o, s)
+		0x0A: _8f68(o, s)                   # $8F68
+		0x0C: _af31(o, s, 0x0A)             # $8F7B
+		0x12, 0x14: _af31(o, s, 0x14)       # $8F72
 		0x16: _k8545(o, s)
+		0x18: _8f68(o, s)                   # $8F65 -- a noise, then $8F68
+		0x1A, 0x2C: _a989(o, s, 0x00)       # $8F76
 		0x1E: _k84aa(o, s)
+		0x20: _849c(o, s, 0x00)
+		0x22: _849c(o, s, 0xFF)
+		0x26: _842f(o, s)
+		0x2A: _83d7(o, s)
 		_: o.missed(0x3F, true)
+
+
+## $87A2 -- the picture is dropped, so nothing of it is drawn.
+static func _87a2(o: SolObjects, s: int) -> void:
+	o.pic_lo[s] = 0
+	o.pic_hi[s] = 0
+
+
+## $8767 -- [kind $06] it burns down: $0640 counts, and while it is running the
+## walk is shown; at nothing it throws a spark off every eighth picture and the
+## count is put back up, so it sits at the end and keeps sparking.
+static func _8767(o: SolObjects, s: int) -> void:
+	o.d[s] = (o.d[s] - 1) & 0xFF            # $8767
+	if o.d[s] != 0:
+		# $8796 -- the CMP's own carry; under $30 the walk is still shown.
+		o.carry = 1 if o.d[s] >= 0x30 else 0
+		if o.carry == 0:
+			o.anim_second(s, 0x6F)          # $879D
+		else:
+			_87a2(o, s)
+		return
+	var t: int = (s ^ o.clock) & 0xFF       # $876C
+	if (t & 0x03) != 0:
+		o.d[s] = (o.d[s] + 1) & 0xFF        # $878E
+		_87a2(o, s)
+		return
+	if (t & 0x07) != 0:                     # $8779, a noise first
+		o.d[s] = (o.d[s] + 1) & 0xFF
+		_87a2(o, s)
+		return
+	o.hatch_here(s, 0xEA)                   # $877D
+	o.c[s] = (o.c[s] - 1) & 0xFF
+	if o.c[s] != 0:
+		o.d[s] = (o.d[s] + 1) & 0xFF
+		_87a2(o, s)
+		return
+	o.c[s] = 0x07                           # $8787 -- and $0640 is left at nought
+	_87a2(o, s)
+
+
+## $87AB -- [kind $08] it walks its picture, and once that is over it is given
+## up; either way it is carried up and to the left.
+static func _87ab(o: SolObjects, s: int) -> void:
+	o.anim_second(s, 0x70)                  # $904B
+	if o.frame[s] == 0x01:
+		return                              # $87B7
+	if o.left[s] == 0xFF:                   # $80E0
+		o.id[s] = 0                         # $80B9
+	# $87C0 -- $C0 along with the high byte taken one down, and $40 across.
+	o.z50 = 0x00C0 | ((((o.z50 >> 8) - 1) & 0xFF) << 8)
+	o.z52 = (o.z52 & 0xFF00) | 0x40
+	o.move(s)                               # $813F
+
+
+## $84EF -- [kind $1A] the walk is shown only every other picture.
+static func _84ef(o: SolObjects, s: int) -> void:
+	if ((s ^ o.clock) & 0x01) != 0:
+		return                              # $84F3
+	o.anim_second(s, 0x78)
+
+
+## $849C and $84A0 -- [kinds $20 and $22] it is turned one way or the other and
+## walks the one picture.
+static func _849c(o: SolObjects, s: int, f: int) -> void:
+	o.face[s] = f                           # $84A2
+	o.anim_second(s, 0x79)                  # $904B
+
+
+## $842F -- [kind $26] the four bytes it keeps are the step it is carried by.
+static func _842f(o: SolObjects, s: int) -> void:
+	o.z50 = o.a[s] | o.b[s] << 8            # $842F
+	o.z52 = o.c[s] | o.d[s] << 8
+	o.move(s)                               # $813F
+
+
+## $83D7 -- [kind $2A] every so many pictures it throws one off, but only while
+## it is near enough along or on the hero's own side.
+static func _83d7(o: SolObjects, s: int) -> void:
+	if (s ^ o.clock) != 0:
+		return                              # $83DA
+	o.far_x(s)
+	if ((o.z90 >> 8) & 0xFF) >= 0x05 and o.z94 >= 0x80:
+		return                              # $83E7
+	o.hatch_here(s, 0xF3)                   # $83E9
+
+
+## $8F68 -- what is left of it is put down and the slot is given up.
+static func _8f68(o: SolObjects, s: int) -> void:
+	o.hatch_here(s, 0xBD)                   # $AAF1
+	_a989(o, s, 0x00)
 
 
 ## $84AA -- the last frames of the one that chased.
@@ -2687,3 +2933,271 @@ static func _k8729(o: SolObjects, s: int) -> void:
 static func _pickup_tail(o: SolObjects, s: int) -> void:
 	if o.left[s] == 0xFF:
 		o.kind[s] = 0
+
+
+# ------------------------------------------------ the second table, $827B
+
+# $808A and $808E fill sixteen bytes of page one with $0F or $30.  Page one is
+# where the drawing keeps what it is about to hand over, and nothing any stand
+# compares is in it, so neither of them is kept here.
+
+## The endings are told apart by a run of CMP/BEQ, and a CMP leaves its own
+## carry behind -- which the smoke at $927E then adds in.  So the chain is
+## walked the way the cartridge walks it, one comparison at a time.
+static func _is(o: SolObjects, a: int, want: int) -> bool:
+	o.carry = 1 if a >= want else 0
+	return a == want
+
+
+## $A427 -- one picture of dying.  The walk is stepped; when it runs out the
+## thing is worth a thousand and the slot goes.  Answers which step of the walk
+## it is on, or nothing at all once the slot has gone.
+static func _a427(o: SolObjects, s: int, pic: int) -> int:
+	o.anim_second(s, pic)                   # $99D9
+	if o.left[s] != 0xFF:
+		# $80E0 is a CMP against $FF, so the carry it leaves is down whenever
+		# the walk is still running, and the next thing to add reads it.
+		o.carry = 0
+		return o.frame[s]
+	o.carry = 1
+	# $A4FA -- a thousand.  The three score bytes are added without the decimal
+	# flag, so this is a plain sum and not a BCD one, and the carry out of the
+	# middle byte is the one $80B9 hands on.
+	var was: int = o.score & 0xFFFF
+	o.score += 1000
+	o.carry = 1 if was + 1000 > 0xFFFF else 0
+	o.id[s] = 0                             # $80B9
+	return 0
+
+
+## $8351 -- the eight ways the last of something flies.
+const SPARKS := [0xD2, 0x00, 0x2D, 0x40, 0x2D, 0x00, 0xD2, 0xC0]
+
+## $8317 -- it comes apart: a slot of its own for each of the eight, each with
+## its own step and the mind $99.  $8319 is the same with fewer of them.
+static func _8319(o: SolObjects, s: int, n: int) -> void:
+	while n >= 0:
+		var f: int = o.hatch_here(s, 0x09)  # $AAF1
+		if f == 0xFF:
+			return                          # $8320 -- no slot to be had
+		o.c[f] = SPARKS[n]                  # $832B
+		if SPARKS[n] >= 0x80:
+			o.d[f] = (o.d[f] - 1) & 0xFF
+		var k: int = (n + 6) & 0x07         # $8333
+		o.a[f] = SPARKS[k]
+		if SPARKS[k] >= 0x80:
+			o.b[f] = (o.b[f] - 1) & 0xFF
+		o.mind[f] = 0x99                    # $8345
+		n -= 1
+
+
+## $A452 and $A458 -- the whole pool is wiped and then it comes apart.  $809E
+## clears slots one to eleven; slot nought is left where it is.
+static func _a458(o: SolObjects, s: int) -> void:
+	for i in range(1, 0x0C):
+		o.id[i] = 0                         # $809E
+	_8319(o, s, 7)                          # $8317
+
+
+## $A475 -- the stage is asked to end.  Stages fifteen and sixteen end on their
+## own, so on those nothing is asked for.
+static func _a475(o: SolObjects) -> void:
+	if _is(o, o.stage, 0x0F) or _is(o, o.stage, 0x10):
+		return
+	o.zf8 = 0x0F                            # $A481
+
+
+## $A4D9 -- everything in the pool of shots is wiped, a puff of smoke is left,
+## and the screen's colours are shifted ($A0AB, which nothing here keeps).
+static func _a4d9(o: SolObjects, s: int) -> void:
+	for i in range(SolObjects.SHOTS):
+		o.s_kind[i] = 0                     # $A4DD
+	_927e(o, s)
+
+
+## $A4E9 -- while the first slot is still within twelve of the top of the view
+## the thing is pushed down a little.  The height read is $D0 itself and not
+## $D0,X, so it is slot nought's whoever is dying.
+static func _a4e9(o: SolObjects, s: int) -> void:
+	o.carry = 1
+	var d: int = o._sbc((o.y[0] >> 8) & 0xFF, (o.cam_y >> 8) & 0xFF)
+	o.carry = 1 if d >= 0x0C else 0         # $A4EE -- the CMP's own carry
+	if o.carry != 0:
+		return                              # $A4F9
+	# $A4F2 -- only the low byte of the step down is written, so the high byte
+	# is whatever the last mind left there.
+	o.z52 = (o.z52 & 0xFF00) | 0x04
+	o.move(s)                               # $813F
+
+
+## $A3FF -- the screen is told to do its own ending.
+static func _a3ff(o: SolObjects) -> void:
+	o.z26 = 0x04                            # $80A9
+
+
+## $A3BC -- [$25] the pair: while the one beside it is still there it only
+## smokes and counts down; once it is gone this one dies for both.
+static func _a3bc(o: SolObjects, s: int) -> void:
+	var other: int = s ^ 0x01               # $A3BF
+	if o.id[other] != 0 and not _is(o, o.mind[other] & 0x3F, 0x19):
+		o.anim_first(s, 0x30)               # $A3D1
+		o.a[s] = (o.a[s] - 1) & 0xFF
+		if o.a[s] == 0:
+			o.id[s] = 0                     # $A3E1
+			return
+		_927e(o, s)                         # $A3DB
+		return
+	var r: int = _a427(o, s, 0x7D)          # $A3E5
+	if _is(o, r, 0x01):
+		pass                                # $A46D -- a noise, and nothing more
+	elif _is(o, r, 0x02):
+		_927e(o, s)                         # $A46A
+	elif _is(o, r, 0x03):
+		_a3fb(o)                            # $A3FB
+	elif _is(o, r, 0x05):
+		_a458(o, s)                         # $A452
+
+
+## $A3FB -- [$26] the stage's own script is moved on and the screen is told to
+## end.
+static func _a3fb(o: SolObjects) -> void:
+	o.z7f = 0x06                            # $A3FD
+	_a3ff(o)
+
+
+## $A406 -- [$21] and [$2D] the one that is carried: the hero is held still for
+## a while, it is put where $75 says, and then it dies.
+static func _a406(o: SolObjects, s: int) -> void:
+	o.hero_timer = 0x1F                     # $A408
+	_9ffa(o, s)
+	o.move(s)                               # $813F
+	var r: int = _a427(o, s, 0x7C)
+	if _is(o, r, 0x01):
+		pass                                # $A46D
+	elif _is(o, r, 0x03):
+		_927e(o, s)                         # $A46A
+	elif _is(o, r, 0x04):
+		_a3ff(o)                            # $A3FF
+	elif _is(o, r, 0x06):
+		_a458(o, s)                         # $A458
+
+
+## $A43C -- [$1A] and [$1B]
+static func _a43c(o: SolObjects, s: int) -> void:
+	var r: int = _a427(o, s, 0x15)
+	if _is(o, r, 0x01):
+		_a475(o)                            # $A472
+	elif _is(o, r, 0x03):
+		_927e(o, s)                         # $A46A
+	elif _is(o, r, 0x04):
+		_a3ff(o)
+	elif _is(o, r, 0x06):
+		_a458(o, s)
+
+
+## $A484 -- [$1E]
+static func _a484(o: SolObjects, s: int) -> void:
+	_a4e9(o, s)
+	var r: int = _a427(o, s, 0x7E)
+	if _is(o, r, 0x01):
+		_a475(o)
+	elif _is(o, r, 0x02):
+		_a4d9(o, s)                         # $A4D9
+	elif _is(o, r, 0x06):
+		_a458(o, s)
+	elif _is(o, r, 0x04):
+		_a3ff(o)
+
+
+## $A4A0 -- [$2A]
+static func _a4a0(o: SolObjects, s: int) -> void:
+	var r: int = _a427(o, s, 0x7F)
+	if _is(o, r, 0x01):
+		_a475(o)
+	elif _is(o, r, 0x02):
+		_927e(o, s)
+	elif _is(o, r, 0x03):
+		_a3ff(o)                            # $A4B6 -- a noise first
+	elif _is(o, r, 0x05):
+		_a458(o, s)
+
+
+## $A4BD -- [$2C]
+static func _a4bd(o: SolObjects, s: int) -> void:
+	_a4e9(o, s)
+	var r: int = _a427(o, s, 0x0B)
+	if _is(o, r, 0x01):
+		_a475(o)
+	elif _is(o, r, 0x02):
+		_927e(o, s)
+	elif _is(o, r, 0x06):
+		_a458(o, s)
+	elif _is(o, r, 0x04):
+		_a3ff(o)
+
+
+## $AF67 -- it is thrown back off its feet and falls, and while $0610 is still
+## nothing it walks a picture of its own; once that is over it counts on and
+## the second walk carries it to the end.
+static func _af67(o: SolObjects, s: int, pic: int, set: int) -> void:
+	# $80DA is another CMP, against one, and the carry it leaves is read by the
+	# fall that follows.
+	o.carry = 1 if o.cool[s] >= 1 else 0
+	if o.cool[s] <= 1:
+		o.face_hero(s)                      # $8118
+		o.face[s] = o.face[s] ^ 0xFF        # $AE24
+		o.cool[s] = 0xD0
+		o.c[s] = 0xD0                       # $8163
+		o.d[s] = 0xFF
+		o.b[s] = 0xFF
+	o.fall(s, 0x02)                         # $B2BB
+	# $AF14 -- the step along is $20, and only its low byte is written.
+	o.z50 = (o.z50 & 0xFF00) | 0x20
+	if o.face[s] < 0x80:
+		o.carry = 1                         # $8181
+		var lo: int = o._sbc(0, o.z50 & 0xFF)
+		var hi: int = o._sbc(0, (o.z50 >> 8) & 0xFF)
+		o.z50 = lo | hi << 8
+	o.move(s)                               # $813F
+	if o.a[s] == 0:
+		o.anim_second(s, pic, set)          # $AFAE
+		if o.left[s] == 0xFF:
+			o.a[s] = (o.a[s] + 1) & 0xFF
+		return
+	o.anim_second(s, 0x04)                  # $AF8D
+	if o.left[s] == 0xFF:                   # $AFA0
+		_a989(o, s, 0x0A)
+
+
+## $A3A8 -- [$1C] it is only counted down, and at nothing it is given up.
+static func _a3a8(o: SolObjects, s: int) -> void:
+	o.kind[s] = (o.kind[s] - 1) & 0xFF      # $A3A8
+	if o.kind[s] == 0:
+		_a989(o, s, 0x00)                   # $A987
+
+
+## $A3B1 -- [$1D] a puff of smoke: it walks its own picture once and goes.
+static func _a3b1(o: SolObjects, s: int) -> void:
+	o.anim_second(s, 0x04)                  # $99D9
+	if o.left[s] == 0xFF:                   # $80E0
+		o.carry = 1
+		_a989(o, s, 0x00)                   # $A987
+		return
+	o.carry = 0
+
+
+## $AF63 -- [$0B]
+static func _af63(o: SolObjects, s: int) -> void:
+	_af67(o, s, 0x03, 0x04)
+
+
+## $897E -- [$18]
+static func _897e(o: SolObjects, s: int) -> void:
+	_af67(o, s, 0x11, 0x03)
+
+
+## $8F85 -- [$38] to [$3E] the plain endings: the slot stops being held on to
+## and then it bursts, each for its own score.
+static func _8f85(o: SolObjects, s: int, score: int) -> void:
+	o.id[s] = o.id[s] & 0xBF                # $906C
+	_af31(o, s, score)

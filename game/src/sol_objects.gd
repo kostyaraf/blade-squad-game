@@ -149,6 +149,7 @@ var pad_new := 0                    # $04 -- what was pressed this picture
 ## the one place that notices.
 var y_reg := 0
 var stage := 0                      # $55 -- which stage is up
+var zf8 := 0                        # $F8 -- what the game is to be put to next
 var map_kind := 0                   # $70 -- $3C is the stage that is all water
 var z9d := 0                        # $9D -- what the last probe left over
 ## $54 and $88..$8F -- the hero's own box.  It is built once a picture, at
@@ -404,6 +405,9 @@ func anim_first(s: int, n: int, set := 4) -> void:
 		frame[s] = 0
 		left[s] = 0
 	_tick(s, anim_a[s], set)
+	# $BD98 -- the tail compares what is left against $FF, and the carry that
+	# comparison makes is read by whatever adds next.
+	carry = 1 if left[s] == 0xFF else 0
 	if left[s] == 0xFF:
 		anim_reset(s)
 

@@ -64,6 +64,46 @@ PLACES = [('s0', 0), ('s1', 1), ('s5', 5)]
 # $9337 -- and which weapon each of the eight letter combinations gives.
 WEAPONS = [(1, 0), (2, 1), (3, 2), (4, 3), (5, 4), (6, 5), (7, 6), (8, 7)]
 
+# $9337 itself, as the exporter left it.
+COMBOS = json.load(open(os.path.join(
+    ROOT, 'game', 'data', 'sol', 'sat.json')))['combos']
+
+# The wait runs $80 down to $30 before anything is made, so a script that is
+# to see a satellite born has to be long enough to get there and then watch it.
+LETTER_SCRIPTS = {
+    'waiting':      hold(LEN * 4, 0),
+    'walking':      hold(LEN * 4, R),
+    'firing after': hold(90, 0) + hold(LEN * 2, B),
+}
+
+
+def cases(face, guns, letters_only):
+    """What is stood up: a satellite put there by hand, or three letters.
+
+    The letters are the way the game itself does it -- $05C4 is set, $923B
+    sees a combination it knows, and eighty pictures later $92CD pays it out.
+    The second half of each pair also puts the satellite the combination would
+    give there already, which is what makes $92F2 take the other branch and
+    burst the one he has instead of giving him a second.
+    """
+    out = []
+    if not letters_only:
+        for weapon, index in WEAPONS:
+            if guns and weapon not in guns:
+                continue
+            out.append(('weapon %d' % weapon, born(weapon, index, face),
+                        SCRIPTS))
+        return out
+    for weapon, index in WEAPONS:
+        if guns and weapon not in guns:
+            continue
+        out.append(('letters %d' % weapon, {0x05C4: COMBOS[index]},
+                    LETTER_SCRIPTS))
+        made = born(weapon, index, face)
+        made[0x05C4] = COMBOS[index]
+        out.append(('letters %d again' % weapon, made, LETTER_SCRIPTS))
+    return out
+
 
 def born(weapon, index, face):
     """$92CD and $9347 -- the eleven bytes that make a satellite.
@@ -187,6 +227,7 @@ def main():
     places = [a.split('=')[1] for a in sys.argv[1:] if a.startswith('--place=')]
     guns = [int(a.split('=')[1]) for a in sys.argv[1:]
             if a.startswith('--weapon=')]
+    letters_only = '--letters' in sys.argv[1:]
     scratch = P.scratch('sat')
     try:
         bad = total = 0
@@ -200,12 +241,9 @@ def main():
             base = P.ram(state, [(first, '-')], first)
             cfg0 = S.seed(base)
             face = (base[0x05B2] & 0x80) != 0
-            for weapon, index in WEAPONS:
-                if guns and weapon not in guns:
-                    continue
-                made = born(weapon, index, face)
+            for tag0, made, scripts in cases(face, guns, letters_only):
                 pk = [(a, v, play) for a, v in sorted(made.items())]
-                for name, pads in sorted(SCRIPTS.items()):
+                for name, pads in sorted(scripts.items()):
                     if only and name not in only:
                         continue
                     total += 1
@@ -219,6 +257,9 @@ def main():
                     cfg['ride_at'] = [t[4] for t in ticks]
                     cfg['new_at'] = [t[5] for t in ticks]
                     for a, v in made.items():
+                        if a == 0x05C4:
+                            cfg['letters'] = v
+                            continue
                         key = {0x0600: 'id', 0x0650: 'omind', 0x0690: 'okind',
                                0x0610: 'oa', 0x0620: 'ob', 0x0630: 'oc',
                                0x0640: 'od', 0x0660: 'opic_lo',
@@ -247,13 +288,13 @@ def main():
                             break
                     if where is None and len(want) != len(got):
                         where, kind = n, 'length'
-                    tag = 'weapon %d / %s' % (weapon, name)
+                    tag = '%s / %s' % (tag0, name)
                     if where is None:
-                        print('%-4s %-26s ok, %d frames' % (label, tag, n))
+                        print('%-4s %-32s ok, %d frames' % (label, tag, n))
                         sys.stdout.flush()
                         continue
                     bad += 1
-                    print('%-4s %-26s differs on frame %d' % (label, tag, where))
+                    print('%-4s %-32s differs on frame %d' % (label, tag, where))
                     if kind == 'slot':
                         show(want, got, where)
                     elif kind == 'shot':
