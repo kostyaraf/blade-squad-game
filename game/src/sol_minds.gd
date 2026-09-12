@@ -140,6 +140,20 @@ static func _live(o: SolObjects, s: int, m: int) -> void:
 			_8c40(o, s)
 		0x35:
 			_902d(o, s)
+		0x3C:
+			_8a33(o, s)
+		0x19:
+			_82fb(o, s)
+		0x29:
+			_9975(o, s)
+		0x31:
+			_9588(o, s)
+		0x0F:
+			_acb5(o, s, 0xFF)              # $ACB9
+		0x11:
+			_acb5(o, s, 0x00)              # $ACB5
+		0x1A:
+			_a511(o, s)
 		0x3F:
 			_pickup(o, s)
 		_:
@@ -248,6 +262,12 @@ static func _dead(o: SolObjects, s: int, m: int) -> void:
 			_a047(o, s)
 		0x20:
 			_a031(o, s)
+		0x19:
+			_82fb(o, s)
+		0x29:
+			_9975(o, s)
+		0x31:
+			_9588(o, s)
 		0x3F:
 			_pickup_dead(o, s)
 		_:
@@ -4042,3 +4062,210 @@ static func _902d(o: SolObjects, s: int) -> void:
 	o.a[s] = o.z94                                      # $9053
 	o.hold_on(s)                                        # $9056
 	o.anim_second(s, 0x56)                              # $9049
+
+## $8179 -- the step along is set from one byte and turned round for a thing
+## that looks left.  Only the low byte is written, so whatever $51 was holding
+## is kept, which is how a thing that was already drifting keeps its page.
+static func _8179(o: SolObjects, s: int, n: int) -> void:
+	o.z50 = (o.z50 & 0xFF00) | n                        # $8179
+	if (o.face[s] & 0x80) == 0:
+		return                                          # $8180
+	o.carry = 1                                         # $8181
+	var lo: int = o._sbc(0x00, o.z50 & 0xFF)            # $8184
+	var hi: int = o._sbc(0x00, (o.z50 >> 8) & 0xFF)     # $818A
+	o.z50 = lo | hi << 8
+
+
+## $8A33 -- [$3C] the one that circles.  It holds itself on the screen, turns
+## a step towards the hero every other picture and drifts along its own
+## heading; while $0640 is still counting it does not turn at all but walks its
+## heading up instead, which is what makes it go round.  Once it has been let
+## go of it charges straight ahead and wears the picture of the charge.
+static func _8a33(o: SolObjects, s: int) -> void:
+	o.id[s] = (o.id[s] & 0xBF) | 0x40                   # $906E
+	if o.anim_a[s] != 0:                                # $8A38
+		_8179(o, s, 0x80)                               # $8A29
+		o.move(s)                                       # $813F
+		o.anim_first(s, 0x05)                           # $8A2E -> $9028
+		return
+	o.face_hero(s)                                      # $8118
+	if (o.mind[s] & 0x40) == 0 and o.cool[s] == 0x01:   # $8173, $80DA
+		o.a[s] = (o.a[s] ^ 0x20) & 0xFF                 # $8A4D
+		o.anim_first(s, 0x05)                           # $8A2E
+		return
+	o.anim_second(s, 0x67)                              # $8A55
+	if o.d[s] == 0x00:                                  # $8A5D
+		if (o.clock & 0x01) != 0:                       # $8A67
+			o.turn_toward_hero(s)                       # $802B
+		o.step_of(s)                                    # $8066
+		o.move(s)                                       # $813F
+		return
+	o.d[s] = (o.d[s] - 1) & 0xFF                        # $8A5F
+	if (o.clock & 0x01) != 0:                           # $8A75
+		o.a[s] = (o.a[s] + 1) & 0xFF                    # $8A78
+		o.step_of(s)                                    # $8066
+		o.z50 = 0                                       # $812C
+	o.move(s)                                           # $8A81
+
+## $A6D6 -- a step along of $10, turned round for a thing that looks left, and
+## taken back again where what lies just ahead of its middle is solid.
+static func _a6d6(o: SolObjects, s: int) -> void:
+	_8179(o, s, 0x10)                                   # $A6D8, $8181
+	o.z90 = 0x0080                                      # $8121, $A6E3
+	o.z92 = 0x0040                                      # $A6DF
+	if o.probe_fwd(s, o.z90, o.z92) >= 0x80:            # $B179
+		o.z50 = 0                                       # $812C
+
+
+## $9975 -- [$29] it walks in from the side until it reaches the pillar at $4E
+## and stops there: it faces the hero, plays one animation out and then hands
+## itself on to the behaviour after its own.
+static func _9975(o: SolObjects, s: int) -> void:
+	o.z50 = (o.z50 & 0x00FF) | 0x0100                   # $9977
+	if ((o.x[s] >> 8) & 0xFF) != 0x4E:                  # $997B
+		o.move(s)                                       # $999F
+		return
+	if o.d[s] == 0x00:                                  # $997F
+		# $9984 -- the noise it makes ($F1 = $36) is not modelled.
+		o.d[s] = (o.d[s] + 1) & 0xFF                    # $9988
+	_a6d6(o, s)                                         # $A6D6
+	o.face_hero(s)                                      # $8118
+	o.anim_second(s, 0x35)                              # $99D9
+	if o.left[s] != 0xFF:
+		return                                          # $9996
+	o.mind[s] = (o.mind[s] + 1) & 0xFF                  # $9998
+	o.a[s] = 0x40                                       # $9A73
+	o.kind[s] = (o.kind[s] + 1) & 0xFF
+
+
+## $959E -- the four waits it blinks through, read by the second bit of the
+## count and up.
+const BLINK := [0x01, 0x01, 0x02, 0x00]
+
+
+## $9588 -- [$31] nothing but a blink that runs out: the wait is picked out of
+## $959E by what is left of the count, and at nothing the slot goes.
+static func _9588(o: SolObjects, s: int) -> void:
+	o.cool[s] = BLINK[(o.a[s] >> 1) & 0x03]             # $958F
+	o.a[s] = (o.a[s] - 1) & 0xFF                        # $9595
+	if o.a[s] == 0x00:
+		o.id[s] = 0                                     # $80B9
+
+
+## $82FB -- [$19] a thing with no will of its own: it wears one animation out
+## and is then gone, and while it lasts it drifts by the two pairs the slot
+## keeps -- $0610:$0620 down and $0630:$0640 along.
+static func _82fb(o: SolObjects, s: int) -> void:
+	o.anim_second(s, 0x08, 3)                           # $99DB
+	if o.left[s] == 0xFF:
+		o.id[s] = 0                                     # $80B9
+	o.z52 = o.a[s] | o.b[s] << 8                        # $8307
+	o.z50 = o.c[s] | o.d[s] << 8                        # $8B8A
+	o.move(s)                                           # $813F
+
+## $A511 -- [$1A] it drifts down until its own height is eleven whole pictures
+## below the top of the view, and settles there: one animation plays out and
+## the behaviour after its own takes over.
+static func _a511(o: SolObjects, s: int) -> void:
+	o.face_hero(s)                                      # $8118
+	o.z52 = (o.z52 & 0x00FF) | 0x0100                   # $A516
+	o.carry = 0                                         # $A518
+	var want: int = o._adc(0x0B, (o.cam_y >> 8) & 0xFF)  # $A519
+	if want != ((o.y[s] >> 8) & 0xFF):                  # $A51D
+		o.anim_second(s, 0x0F)                          # $A535
+		o.move(s)                                       # $813F
+		return
+	o.anim_second(s, 0x14)                              # $A521
+	if o.left[s] != 0xFF:
+		return                                          # $A526
+	# $A528 -- the noise it makes ($F1 = $07) is not modelled.
+	o.mind[s] = (o.mind[s] + 1) & 0xFF                  # $A52C
+	o.kind[s] = 0x01                                    # $A531
+
+
+# ---------------------------------------------- the pair that runs the walls
+
+## $AD50 -- the question that turns it round.  On the pictures the second bit
+## of the count is up it asks what is a whole picture diagonally ahead of it,
+## the way it faces and the way it is going, and turns where there is nothing
+## there; on the rest it asks what is a whole picture the other way down, and
+## turns where there is something.  Turning flips the top bit of $0690, which
+## is both which way it runs and which animation it wears.
+static func _ad50(o: SolObjects, s: int) -> void:
+	if (o.clock & 0x02) != 0:                           # $AD52
+		var dx: int = 0x0100 if (o.face[s] & 0x80) != 0 else 0xFF00
+		var dy: int = 0x0100 if ((o.z52 >> 8) & 0xFF) < 0x80 else 0xFF00
+		o.z90 = (o.x[s] + dx) & 0xFFFF                  # $AD6F
+		o.z92 = (o.y[s] + dy) & 0xFFFF                  # $AD7A
+		o.z9d = o.z92 & 0xFF                            # $D08F
+		if o.probe(o.z90, o.z92) >= 0x80:               # $C00C
+			return                                      # $AD8E
+	else:
+		o.z92 = 0xFF00                                  # $AD8F
+		if ((o.z52 >> 8) & 0xFF) >= 0x80:               # $AD97
+			o.z92 = 0x0100                              # $AD9B
+		if o.probe_above(s, o.z92) < 0x80:              # $B151
+			return                                      # $ADB9
+	if o.d[s] != 0:                                     # $ADA4
+		o.finish(s)                                     # $80BF
+	o.d[s] = 0x03                                       # $ADAE
+	o.kind[s] = (o.kind[s] ^ 0x80) & 0xFF               # $ADB4
+
+
+## $AD08 -- how fast it runs and which way.  It keeps to $10 a picture, and
+## goes up to $30 only once its wait has run past $20 and the hero is within a
+## whole picture along and on the side it is already running towards.
+static func _ad08(o: SolObjects, s: int) -> void:
+	if o.d[s] != 0:                                     # $AD0B
+		o.d[s] = (o.d[s] - 1) & 0xFF                    # $AD0D
+	o.z52 = (o.z52 & 0xFF00) | 0x10                     # $AD12
+	var near := true
+	if o.cool[s] >= 0x20:                               # $AD17
+		o.carry = 1
+		o._sbc(o.x[s] & 0xFF, o.hero_x & 0xFF)          # $AD1D
+		var dx: int = o._sbc((o.x[s] >> 8) & 0xFF,
+				(o.hero_x >> 8) & 0xFF)
+		o.carry = 0                                     # $AD23
+		if o._adc(dx, 0x01) >= 0x02:                    # $AD26
+			near = false                                # $AD28
+		else:
+			o.carry = 1
+			o._sbc(o.y[s] & 0xFF, o.hero_y & 0xFF)      # $AD2C
+			var dy: int = o._sbc((o.y[s] >> 8) & 0xFF,
+					(o.hero_y >> 8) & 0xFF)
+			if ((dy ^ o.kind[s]) & 0x80) == 0:          # $AD32
+				near = false
+	if near:
+		o.z52 = (o.z52 & 0xFF00) | 0x30                 # $AD39
+	var n := 0x0A                                       # $AD3B
+	if (o.kind[s] & 0x80) != 0:                         # $AD40
+		n = 0x09                                        # $AD42
+		o.carry = 1                                     # $818F
+		o.z52 = o._neg16(o.z52)
+	o.anim_second(s, n)                                 # $AD47
+	_ad50(o, s)                                         # $AD4A
+	o.move(s)                                           # $AD4D
+
+
+## $ACB5 and $ACB9 -- [$11] and [$0F] the pair that runs up and down a wall,
+## one looking each way.  They are looked at only every other picture, and only
+## while something is holding slot twelve and the count is at a whole $80 do
+## they let a shot go straight out of the wall.
+static func _acb5(o: SolObjects, s: int, way: int) -> void:
+	o.face[s] = way                                     # $ACBB
+	if ((s ^ o.clock) & 0x01) != 0:
+		return                                          # $ACC4
+	if o.id[0x0C] != 0 and (o.clock & 0x7E) == 0:       # $ACC5, $ACCA
+		var j: int = SolShots.free_slot(o)              # $ADBA
+		if j >= 0:
+			var c: int = (o.face[s] >> 7) & 1           # $ACD8
+			o.s_a[j] = 0xE2 if c == 1 else 0x22         # $ACD9
+			o.s_b[j] = 0x08                             # $ACE2
+			SolShots.put(o, j, 0x81)                    # $907B
+			o.s_x[j] = o.x[s]                           # $ACEC
+			o.carry = c                                 # what $ACD8 left
+			var lo: int = o._adc(o.y[s] & 0xFF, 0x80)   # $ACF8
+			var hi: int = o._adc((o.y[s] >> 8) & 0xFF, 0x00)
+			o.s_y[j] = lo | hi << 8
+			# $AD04 -- the noise ($F1 = $12) is not modelled.
+	_ad08(o, s)                                         # $AD08
