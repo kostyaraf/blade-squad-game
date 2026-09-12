@@ -85,8 +85,9 @@ def spots():
 
     A room is sixteen columns by thirteen rows of camera, and a room that is a
     script of several steps only shows one of them per visit, so each room is
-    stood in three times with the step counters started in three different
-    places.
+    stood in `REPS` times with the step counters started in a different place
+    each time.  The longest of the second-level tables is twenty one steps
+    long, and the strides are picked so that no room sees the same step twice.
 
     The room the last picture stood in ($05EB) is poked along with the camera,
     and to the room the camera is being put in.  Without it the script would
@@ -94,12 +95,12 @@ def spots():
     no step but the first of any script would ever run.
     """
     out = []
-    for rep in range(3):
+    for rep in range(REPS):
         i = 0
         for row in range(0, 0xD0, 0x10):
             for col in range(0x10):
-                out.append((col, row, (i + rep * 7) % 21,
-                            (i * 3 + rep * 5) % 21))
+                out.append((col, row, (i * 3 + rep) % 21,
+                            (i + rep * 3) % 21))
                 i += 1
     return out
 
@@ -107,6 +108,11 @@ def spots():
 # One poke row is five bytes, and the emulator takes two hundred and fifty six
 # pokes in a run, so a stage is walked in a handful of runs.
 PER_RUN = 51
+
+# How many times over every room is stood in.  Each rep moves both step
+# counters on by a stride of its own, so seven of them is seven of the twenty
+# one steps a room's own script can be at.
+REPS = 7
 
 
 def play(state, scratch, first, chunk, tag):
