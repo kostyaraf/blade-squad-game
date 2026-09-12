@@ -28,6 +28,11 @@ const CROWDED := 0x3A
 const FWD_WRAP := 0x30
 const BACK_WRAP := 0xFF
 const BACK_FLOOR := 0x20
+## $C742 -- below this the table belongs to the bar, and neither end goes there.
+const FWD_START := 0x20
+## $C74E -- the down byte Solbrain parks an unused sprite at.  Power Blade uses
+## $F4 for the same thing; both are simply below the picture.
+const HIDDEN := 0xF7
 
 
 ## What the drawing carries from one picture to the next: $6A..$6D and the
@@ -37,6 +42,7 @@ class Table:
 	var turn := 0                           # $6B
 	var fwd := 0                            # $6C
 	var back := 0                           # $6D
+	var start := 0x20                       # $69 -- where the two ends begin
 	var banks := PackedByteArray([0, 0, 0, 0])   # $42..$45
 	var oam := PackedByteArray()            # $0200..$02FF
 
@@ -133,6 +139,90 @@ static func _walk(parts: Array, m: int, hflip: bool, vflip: bool,
 		t.oam[(at + 3) & 0xFF] = px
 		t.count = (t.count + 1) & 0xFF               # $F5CE
 	return cur
+
+
+## $C72D -- the top of the frame: nothing of the last picture is kept, the
+## count starts again, and where the two ends start walking from is moved on by
+## $50 each frame so that the sprite the console drops is a different one every
+## time.  `frame` is $00, which decides which end goes first.
+static func reset(t: Table, frame: int) -> void:
+	t.turn = frame & 0xFF
+	t.count = 0
+	var at: int = (t.start + 0x50) & 0xFF
+	if at < FWD_START:
+		at = (at + 0xE0) & 0xFF
+	t.start = at
+	t.fwd = at
+	t.back = (at - 1) & 0xFF
+	if t.back < FWD_START:
+		t.back = BACK_WRAP
+	for i in range(FWD_START, 0x100, 4):
+		t.oam[i] = HIDDEN
+
+
+## $E554 -- two sprites side by side, which is how both flat pools draw: no
+## picture and no script behind them, only two tiles and where their middle is.
+## The place is in sixteenths and half a sprite comes off both axes before the
+## shift down to whole pixels; whatever will not fit in a byte after that is
+## off the picture and is not drawn at all.
+static func pair(t: Table, x: int, y: int, tile_l: int, tile_r: int,
+		attr_l: int, attr_r: int) -> void:
+	var px: int = ((x - 0x80) & 0xFFFF) >> 4
+	var py: int = ((y - 0x80) & 0xFFFF) >> 4
+	if px > 0xFF or py > 0xFF:
+		return
+	t.turn = (t.turn + 1) & 0xFF                     # $E58C
+	if (t.turn & 1) != 0:
+		var at: int = t.fwd
+		_four(t, at, py, tile_l, attr_l, px)
+		at = _fwd_on(at)
+		_four(t, at, py, tile_r, attr_r, (px + 8) & 0xFF)
+		t.fwd = _fwd_on(at)
+		return
+	if t.count >= CROWDED:                           # $E5DE
+		return
+	var at: int = t.back
+	_four(t, (at - 3) & 0xFF, py, tile_l, attr_l, px)
+	at = _back_on(at, BACK_FLOOR)                    # $E5FB
+	_four(t, (at - 3) & 0xFF, py, tile_r, attr_r, (px + 8) & 0xFF)
+	t.back = _back_on(at, BACK_FLOOR)
+
+
+## $EA0E -- one sprite, and half of one comes off instead of half of two.
+static func one(t: Table, x: int, y: int, tile: int, attr: int) -> void:
+	var px: int = ((x - 0x40) & 0xFFFF) >> 4
+	var py: int = ((y - 0x40) & 0xFFFF) >> 4
+	if px > 0xFF or py > 0xFF:
+		return
+	t.turn = (t.turn + 1) & 0xFF
+	if (t.turn & 1) != 0:
+		var at: int = t.fwd
+		_four(t, at, py, tile, attr, px)
+		t.fwd = _fwd_on(at)
+		return
+	if t.count >= CROWDED:
+		return
+	# $EA91 -- the single stops one row of four higher than the pair does.
+	_four(t, (t.back - 3) & 0xFF, py, tile, attr, px)
+	t.back = _back_on(t.back, FWD_WRAP)
+
+
+## The four bytes of one sprite: down, tile, colour, along.
+static func _four(t: Table, at: int, py: int, tile: int, attr: int,
+		px: int) -> void:
+	t.oam[at & 0xFF] = py
+	t.oam[(at + 1) & 0xFF] = tile
+	t.oam[(at + 2) & 0xFF] = attr
+	t.oam[(at + 3) & 0xFF] = px
+
+
+static func _fwd_on(at: int) -> int:
+	return FWD_WRAP if ((at + 4) & 0xFF) == 0 else (at + 4) & 0xFF
+
+
+static func _back_on(at: int, floor_at: int) -> int:
+	var v: int = (at - 4) & 0xFF
+	return BACK_WRAP if v < floor_at else v
 
 
 ## $F4E2's own question, asked of one axis: where the little sprite lands, or

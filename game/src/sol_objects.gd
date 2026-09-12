@@ -194,6 +194,11 @@ var hero_bonus := 0                 # $05C6:$05C7 -- points still to be counted
 ## The hero himself, because being touched writes back into him.  A stand that
 ## has no hero simply never touches anything.
 var hero: SolPlayer = null
+
+## Э4.5 -- where the two flat pools put their sprites, or nothing at all.  A
+## stand that runs the pool for the numbers alone hands no table over and then
+## none of the drawing happens; the live game hands one over every picture.
+var table: SolSprites.Table = null
 var skipped := {}                   # which behaviours have not been read yet
 
 var _types: Array

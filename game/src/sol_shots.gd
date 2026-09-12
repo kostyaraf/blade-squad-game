@@ -60,23 +60,35 @@ static func _live(o: SolObjects, i: int, m: int) -> void:
 		0x0A:
 			_countdown(o, i)                # $B8F5
 		0x0B:
-			_plain(o, i)                    # $B918
+			_plain(o, i, 0x0B)              # $B918
 		0x0C, 0x26:
-			_gain(o, i)                     # $B896, $BC47
-		0x0D, 0x10, 0x11:
-			_ring(o, i)                     # $B7F2, $B86F, $B87A
+			_gain(o, i, m)                  # $B896, $BC47
+		0x0D:
+			_ring(o, i, 0)                  # $B7F2
+		0x10:
+			_ring(o, i, 1)                  # $B86F
+		0x11:
+			_ring(o, i, 2)                  # $B87A
 		0x0E:
 			_becomes(o, i, 0x90)            # $B859
 		0x0F:
 			_becomes(o, i, 0x91)            # $B864
-		0x12, 0x15, 0x16:
-			_ring_up(o, i)                  # $B788, $B7A9, $B7B4
+		0x12:
+			_ring_up(o, i, 0)               # $B788
+		0x15:
+			_ring_up(o, i, 1)               # $B7A9
+		0x16:
+			_ring_up(o, i, 2)               # $B7B4
 		0x13:
 			_becomes(o, i, 0x95)            # $B793
 		0x14:
 			_becomes(o, i, 0x96)            # $B79E
-		0x17, 0x1A, 0x1B:
-			_ring_down(o, i)                # $B7BD, $B7DE, $B7E9
+		0x17:
+			_ring_down(o, i, 0)             # $B7BD
+		0x1A:
+			_ring_down(o, i, 1)             # $B7DE
+		0x1B:
+			_ring_down(o, i, 2)             # $B7E9
 		0x18:
 			_becomes(o, i, 0x9A)            # $B7C8
 		0x19:
@@ -91,8 +103,10 @@ static func _live(o: SolObjects, i: int, m: int) -> void:
 			_drop(o, i)                     # $B618
 		0x20:
 			_gain_until(o, i)               # $B740
-		0x21, 0x22:
-			_slide(o, i)                    # $B721, $B70F
+		0x21:
+			_slide(o, i, 0xBF)              # $B721
+		0x22:
+			_slide(o, i, 0xE9)              # $B70F
 		0x23:
 			_bounce(o, i)                   # $B65B
 		0x24:
@@ -103,10 +117,12 @@ static func _live(o: SolObjects, i: int, m: int) -> void:
 			_carried(o, i)                  # $B564
 		0x28:
 			_thrown(o, i)                   # $B506
-		0x29, 0x2D:
-			_along_only(o, i)               # $B4CC, $B4A2
+		0x29:
+			_along_only(o, i, 0x29)         # $B4CC
+		0x2D:
+			_along_only(o, i, 0x2D)         # $B4A2
 		0x2A, 0x2B:
-			_plain(o, i)                    # $B4BC, $B4AF
+			_plain(o, i, m)                 # $B4BC, $B4AF
 		0x2C:
 			_turning(o, i)                  # $BD0E
 		0x2E:
@@ -133,20 +149,32 @@ static func _dead(o: SolObjects, i: int, m: int) -> void:
 			_turn_world(o, i)               # $B953
 		0x0A:
 			_countdown(o, i)                # $B8F5
-		0x0D, 0x10, 0x11:
-			_ring(o, i)                     # $B7F2, $B86F, $B87A
+		0x0D:
+			_ring(o, i, 0)                  # $B7F2
+		0x10:
+			_ring(o, i, 1)                  # $B86F
+		0x11:
+			_ring(o, i, 2)                  # $B87A
 		0x0E:
 			_becomes(o, i, 0x90)            # $B859
 		0x0F:
 			_becomes(o, i, 0x91)            # $B864
-		0x12, 0x15, 0x16:
-			_ring_up(o, i)                  # $B788, $B7A9, $B7B4
+		0x12:
+			_ring_up(o, i, 0)               # $B788
+		0x15:
+			_ring_up(o, i, 1)               # $B7A9
+		0x16:
+			_ring_up(o, i, 2)               # $B7B4
 		0x13:
 			_becomes(o, i, 0x95)            # $B793
 		0x14:
 			_becomes(o, i, 0x96)            # $B79E
-		0x17, 0x1A, 0x1B:
-			_ring_down(o, i)                # $B7BD, $B7DE, $B7E9
+		0x17:
+			_ring_down(o, i, 0)             # $B7BD
+		0x1A:
+			_ring_down(o, i, 1)             # $B7DE
+		0x1B:
+			_ring_down(o, i, 2)             # $B7E9
 		0x18:
 			_becomes(o, i, 0x9A)            # $B7C8
 		0x19:
@@ -159,6 +187,56 @@ static func _dead(o: SolObjects, i: int, m: int) -> void:
 			_drop(o, i)                     # $B618
 		_:
 			o.missed_shot(m, true)
+
+
+# ---- the drawing ----------------------------------------------------------
+
+## Э4.5 -- neither flat pool has a picture behind it the way an object does:
+## every one of them draws itself with two tiles side by side ($C01B) or one
+## tile alone ($C030), put where the slot stands less where the view does.
+## $BCF7 has already asked whether the place fits and given the slot up where
+## it did not -- but only four of the behaviours ask whether it did, and the
+## rest draw anyway, at whatever the scratch is left holding.  That is the
+## cartridge's own doing and it is kept; the four that ask say so themselves.
+static func _pair(o: SolObjects, i: int, tile_l: int, tile_r: int,
+		attr_l: int, attr_r: int) -> void:
+	if o.table == null:
+		return
+	SolSprites.pair(o.table, (o.s_x[i] - o.cam_x) & 0xFFFF,
+			(o.s_y[i] - o.cam_y) & 0xFFFF, tile_l, tile_r, attr_l, attr_r)
+
+
+## The same with one tile.
+static func _one(o: SolObjects, i: int, tile: int, attr: int) -> void:
+	if o.table == null:
+		return
+	SolSprites.one(o.table, (o.s_x[i] - o.cam_x) & 0xFFFF,
+			(o.s_y[i] - o.cam_y) & 0xFFFF, tile, attr)
+
+
+## $B842 -- what the ring draws: the tile handed in, twice, and a colour that
+## changes every other picture.  Past fifteen screens along nothing is drawn.
+static func _ring_art(o: SolObjects, i: int, tile: int) -> void:
+	if (((o.s_x[i] - o.cam_x) >> 8) & 0xFF) >= 0x0F:
+		return                              # $B848
+	if (o.clock & 0x02) != 0:
+		_pair(o, i, tile, tile, 0x02, 0xC2)  # $BB8C
+	else:
+		_pair(o, i, tile, tile, 0x01, 0xC1)  # $BB97
+
+
+## $B880 -- and the other half of the ring, which is one tile instead of two.
+static func _ring_dot(o: SolObjects, i: int) -> void:
+	if (((o.s_x[i] - o.cam_x) >> 8) & 0xFF) >= 0x0F:
+		return                              # $B884
+	# $B886 -- two shifts down, so it is the second bit of the clock again.
+	_one(o, i, 0xBF, 0x02 if (o.clock & 0x02) != 0 else 0x01)
+
+
+## $B733 -- the colour the ones that slide along are drawn in: which way they
+## are going, and nothing else.
+static func _slide_attr(o: SolObjects, i: int) -> int:
+	return 0x02 if (o.s_a[i] & 0x80) != 0 else 0x42
 
 
 # ---- the behaviours ------------------------------------------------------
@@ -180,6 +258,7 @@ static func _bubble(o: SolObjects, i: int) -> void:
 	# byte with $FF over it, so it is always upwards.
 	move(o, i, int(step[0]), (o.s_b[i] | 0xFF00) & 0xFFFF)
 	on_screen(o, i)
+	_one(o, i, 0xBF, 0x01)                  # $B8DE
 
 
 ## $BB5B -- the thrown thing: it keeps the step along it was given and gains
@@ -190,12 +269,16 @@ static func _arc(o: SolObjects, i: int) -> void:
 	o.s_b[i] = o.z7f if (b & 0x80) != 0 else b
 	drift(o, i)                             # $BC77
 	on_screen(o, i)                         # $BCF7
+	if o.s_kind[i] == 0:
+		return                              # $BB73
+	_one(o, i, 0xB5, 0x01)                  # $BB74
 
 
 ## $B638 -- the plain falling shot: half a tile down every picture, and gone
 ## the moment the map it has reached is solid.
 static func _fall(o: SolObjects, i: int) -> void:
 	on_screen(o, i)                         # $BCF7
+	_one(o, i, 0xFD, 0x02)                  # $B63D
 	# $B8E5 -- the map at the shot's own place, with no offset at all.
 	if (o.probe_point(o.s_x[i], o.s_y[i]) & 0x80) != 0:
 		gone(o, i)                          # $B64B
@@ -411,6 +494,9 @@ static func _drift_down(o: SolObjects, i: int) -> void:
 		dx = 0                              # $B433
 	move(o, i, dx, dy)                      # $BC7A
 	on_screen_up(o, i)                      # $BCDF
+	# $B43F -- one of two tiles, twice, and it changes every other picture.
+	var t: int = 0xF7 + (o.clock & 0x02)
+	_pair(o, i, t, t, 0x03, 0x43)
 
 
 ## $BC54 -- the step packed into one byte: the top nibble is the step along and
@@ -430,12 +516,29 @@ static func _nibble_step(o: SolObjects, i: int) -> void:
 ## $BC2C -- and nothing else: it goes the way its byte says until it is off.
 static func _nibble(o: SolObjects, i: int) -> void:
 	_nibble_step(o, i)
+	if (o.s_a[i] & 0x80) != 0:
+		_pair(o, i, 0xFD, 0xFD, 0xC2, 0x02)  # $BC40
+	else:
+		_pair(o, i, 0xFD, 0xFD, 0x42, 0x82)  # $BC3A
 
 
-## $B918 -- the plainest of the lot: both of its bytes are the step.
-static func _plain(o: SolObjects, i: int) -> void:
+## $B918 -- the plainest of the lot: both of its bytes are the step.  Three
+## kinds share it and each paints itself its own way, so which is handed in.
+static func _plain(o: SolObjects, i: int, art: int) -> void:
 	drift(o, i)                             # $BC77
 	on_screen(o, i)                         # $BCF7
+	match art:
+		0x0B:
+			if (o.s_a[i] & 0x80) != 0:
+				_pair(o, i, 0xFD, 0xFF, 0x01, 0x01)  # $B92F
+			else:
+				_pair(o, i, 0xFF, 0xFD, 0x41, 0x41)  # $B923
+		0x2A:
+			# $B4C2 -- one of four tiles, twice, by the clock.
+			var t: int = 0xE7 + (o.clock & 0x06)
+			_pair(o, i, t, t, 0x01, 0xC1)
+		0x2B:
+			_one(o, i, 0xDF, 0x02)          # $B4B5
 
 
 ## $B8F5 / $BB7B -- it counts down and is gone when the count runs out; the two
@@ -445,6 +548,10 @@ static func _countdown(o: SolObjects, i: int) -> void:
 	o.s_b[i] = (o.s_b[i] - 1) & 0xFF
 	if o.s_b[i] == 0:
 		gone(o, i)                          # $B8FD
+		return
+	# $B900 -- one of two tiles, twice, and it changes every fourth picture.
+	var t: int = 0xF9 if (o.clock & 0x04) != 0 else 0xFB
+	_pair(o, i, t, t, 0x01, 0xC1)
 
 
 static func _wearout(o: SolObjects, i: int) -> void:
@@ -453,6 +560,7 @@ static func _wearout(o: SolObjects, i: int) -> void:
 		gone(o, i)
 		return
 	on_screen(o, i)
+	_pair(o, i, 0xB9, 0xB9, 0x02, 0xC2)     # $BB86
 
 
 ## $BC17 -- it waits its count out where it is and then becomes the one that
@@ -463,6 +571,7 @@ static func _wear(o: SolObjects, i: int) -> void:
 		o.s_b[i] = 1                        # $BC1C
 		o.s_kind[i] = 0x82
 	on_screen(o, i)
+	_pair(o, i, 0xFF, 0xFF, 0x01, 0xC1)     # $BC27 -> $BB93
 
 
 ## $BBE6 -- one of the four pieces it breaks into: the same place, its own
@@ -487,6 +596,10 @@ static func _shatter(o: SolObjects, i: int) -> void:
 		o.s_kind[i] = o.s_kind[i] & 0x7F    # $BBBB
 		return
 	_nibble_step(o, i)                      # $BBC4
+	if (o.s_a[i] & 0x80) != 0:
+		_pair(o, i, 0xB1, 0xB3, 0x02, 0x02)  # $BBD8
+	else:
+		_pair(o, i, 0xB3, 0xB1, 0x42, 0x42)  # $BBC7
 
 
 ## $BA22 -- one of the ring: while the thing that let it go is still winding up
@@ -494,9 +607,15 @@ static func _shatter(o: SolObjects, i: int) -> void:
 static func _held(o: SolObjects, i: int) -> void:
 	if o.kind[0] == 0x04 and o.frame[0] < 0x03:
 		on_screen(o, i)                     # $BA30
+		# $BA33 -- while it is on the very first turn they all share one
+		# colour; after that each takes its own from the clock and its slot.
+		var c: int = 0x03 if o.frame[0] == 0x01 \
+				else (i + (o.clock >> 1)) & 0x03
+		_one(o, i, 0xB1, c)
 		return
 	drift(o, i)                             # $BA4F
 	on_screen(o, i)
+	_one(o, i, 0xB1, 0x03)                  # $BA55
 
 
 ## $8ECB -- the step the side a thing faces gives its shot: the byte itself
@@ -561,8 +680,12 @@ static func _gain_step(o: SolObjects, i: int) -> bool:
 
 
 ## $B896 and $BC47 -- and nothing else but that.
-static func _gain(o: SolObjects, i: int) -> void:
+static func _gain(o: SolObjects, i: int, art: int) -> void:
 	_gain_step(o, i)
+	if art == 0x0C:
+		_pair(o, i, 0xFF, 0xFF, 0x01, 0xC1)  # $B89C -> $BB93
+	else:
+		_one(o, i, 0xFF, 0x03)              # $BC4D
 
 
 ## $B832 -- two further round the ring every picture, and the step that ring at
@@ -583,23 +706,34 @@ static func _ring_move(o: SolObjects, i: int) -> void:
 
 
 ## $B81F -- the ring as it comes.
-static func _ring(o: SolObjects, i: int) -> void:
+static func _ring(o: SolObjects, i: int, art: int) -> void:
 	_ring_step(o, i)
 	_ring_move(o, i)
+	_ring_paint(o, i, art)
+
+
+## $B78E and its fellows -- which of the three paintings the kind asks for.
+static func _ring_paint(o: SolObjects, i: int, art: int) -> void:
+	match art:
+		0: _ring_art(o, i, 0xBB)
+		1: _ring_art(o, i, 0xBD)
+		_: _ring_dot(o, i)
 
 
 ## $B7FD -- the ring, lifted a tile and a half.
-static func _ring_up(o: SolObjects, i: int) -> void:
+static func _ring_up(o: SolObjects, i: int, art: int) -> void:
 	_ring_step(o, i)
 	o.z92 = (o.z92 - 0x18) & 0xFFFF         # $B800
 	_ring_move(o, i)
+	_ring_paint(o, i, art)
 
 
 ## $B80E -- and the ring dropped by the same.
-static func _ring_down(o: SolObjects, i: int) -> void:
+static func _ring_down(o: SolObjects, i: int, art: int) -> void:
 	_ring_step(o, i)
 	o.z92 = (o.z92 + 0x18) & 0xFFFF         # $B811
 	_ring_move(o, i)
+	_ring_paint(o, i, art)
 
 
 ## $B793 and its five fellows -- the slot sits still until its count is out and
@@ -621,6 +755,10 @@ static func _sink(o: SolObjects, i: int) -> void:
 	o.z92 = 0x0010                          # $B768
 	move_y(o, i, o.z92)                     # $BC7D
 	on_screen(o, i)                         # $BCF7
+	if (o.clock & 0x02) != 0:
+		_pair(o, i, 0xFF, 0xFF, 0x02, 0xC2)  # $B77E -> $BB8C
+	else:
+		_pair(o, i, 0xFF, 0xFF, 0x03, 0xC3)  # $B781
 
 
 ## $B740 -- it gains downwards until the map under it is solid, and then it is
@@ -630,11 +768,13 @@ static func _gain_until(o: SolObjects, i: int) -> void:
 		puff(o, i)                          # $B752
 		return
 	_gain_step(o, i)                        # $B745
+	_one(o, i, 0xFD, 0x01)                  # $B74B
 
 
 ## $B618 -- a whole tile down every picture and nothing else at all.
 static func _drop(o: SolObjects, i: int) -> void:
 	on_screen(o, i)                         # $BCF7
+	_pair(o, i, 0xFB, 0xFD, 0x02, 0x02)     # $B61D
 	o.z92 = 0x0100                          # $B62D
 	move_y(o, i, o.z92)                     # $BC7D
 
@@ -645,6 +785,7 @@ static func _drop(o: SolObjects, i: int) -> void:
 ## gone and a $24 is left standing there.
 static func _bore(o: SolObjects, i: int) -> void:
 	on_screen(o, i)                         # $BCF7
+	_pair(o, i, 0xD3, 0xD5, 0x01, 0x01)     # $B5C8
 	if (under(o, i) & 0x80) != 0:
 		o.s_kind[i] = 0                     # $B60D
 		o.hatch(o.s_x[i], o.s_y[i], 0x24)   # $B93E -> $AAC2
@@ -680,6 +821,7 @@ static func _bounce_off(o: SolObjects, i: int) -> bool:
 ## the way along is shut it simply stops going that way.
 static func _bounce(o: SolObjects, i: int) -> void:
 	on_screen(o, i)                         # $BCF7
+	_one(o, i, 0xE7, _slide_attr(o, i))     # $B660
 	var dy: int = 0xFFA0 if (o.s_b[i] & 0x80) != 0 else 0x0060
 	if (under_at(o, i, 0x0000, dy) & 0x80) != 0:
 		if not _bounce_off(o, i):           # $B6B1
@@ -699,7 +841,9 @@ static func _wait_then_down(o: SolObjects, i: int) -> void:
 	on_screen(o, i)                         # $BCF7
 	if o.s_b[i] != 0:
 		o.s_b[i] = (o.s_b[i] - 1) & 0xFF    # $B707
+		_pair(o, i, 0xE1, 0xE1, 0x02, 0xC2)  # $B70A -> $BB88
 		return
+	_one(o, i, 0xDF, _slide_attr(o, i))     # $B6D5
 	o.z90 = along(o, i)                     # $BCC3
 	o.z92 = o.z90                           # $B6DF
 	o.z90 = 0                               # $B6E7
@@ -711,23 +855,38 @@ static func _wait_then_along(o: SolObjects, i: int) -> void:
 	on_screen(o, i)                         # $BCF7
 	if o.s_b[i] != 0:
 		o.s_b[i] = (o.s_b[i] - 1) & 0xFF    # $B707
+		_pair(o, i, 0xE1, 0xE1, 0x02, 0xC2)  # $B70A -> $BB88
 		return
+	_one(o, i, 0xDF, _slide_attr(o, i))     # $B6FA
 	o.z90 = along(o, i)                     # $BCC3
 	move_x(o, i, o.z90)                     # $BC8F
 
 
 ## $B70F and $B721 -- along by its own byte, and the view asked first.
-static func _slide(o: SolObjects, i: int) -> void:
+static func _slide(o: SolObjects, i: int, tile: int) -> void:
 	on_screen(o, i)                         # $BCF7
+	_one(o, i, tile, _slide_attr(o, i))     # $B714 / $B726
 	o.z90 = along(o, i)                     # $BCC3
 	move_x(o, i, o.z90)                     # $BC8F
 
 
 ## $B4A2 and $B4CC -- the same, but the move comes first.
-static func _along_only(o: SolObjects, i: int) -> void:
+static func _along_only(o: SolObjects, i: int, art: int) -> void:
 	o.z90 = along(o, i)                     # $BCC3
 	move_x(o, i, o.z90)                     # $BC8F
 	on_screen(o, i)                         # $BCF7
+	if art == 0x2D:
+		_one(o, i, 0xFF, 0x02)              # $B4AB
+		return
+	# $B4D5 -- two tiles out of a run of eight, the pair chosen by the clock
+	# and which way it is going.
+	var at: int = (o.clock & 0x02) + (0 if (o.s_a[i] & 0x80) != 0 else 4)
+	_pair(o, i, ALONG_TILES[at], ALONG_TILES[at + 1],
+			0x03 if at < 4 else 0x43, 0x03 if at < 4 else 0x43)
+
+
+## $B4FE -- the eight tiles the one that only travels along is drawn from.
+const ALONG_TILES := [0xE1, 0xE5, 0xE1, 0xE3, 0xE5, 0xE1, 0xE3, 0xE1]
 
 
 ## $B451 -- it goes the way its own byte says, and on a map that drags things
@@ -740,6 +899,16 @@ static func _dragged(o: SolObjects, i: int) -> void:
 		o.z92 = 0xFFF8                      # $B45B
 	move(o, i, o.z90, o.z92)                # $BC7A
 	on_screen(o, i)                         # $BCF7
+	# $B467 -- four bytes out of a run of sixteen: two tiles and two colours,
+	# the four chosen by the clock and by which way it is going.
+	var at: int = (o.clock & 0x04) + (0 if (o.s_a[i] & 0x80) != 0 else 8)
+	_pair(o, i, DRAG_TILES[at], DRAG_TILES[at + 1],
+			DRAG_TILES[at + 2], DRAG_TILES[at + 3])
+
+
+## $B492 -- the sixteen bytes the dragged one is drawn out of.
+const DRAG_TILES := [0xED, 0xFF, 0x01, 0x02, 0xED, 0xEF, 0x01, 0x02,
+		0xFF, 0xED, 0x42, 0x41, 0xEF, 0xED, 0x42, 0x41]
 
 
 ## $B564 -- the carried one: its own first byte names a slot of the other pool,
@@ -751,9 +920,11 @@ static func _carried(o: SolObjects, i: int) -> void:
 		return                              # $B56C
 	if o.s_b[i] != 0:
 		o.s_b[i] = (o.s_b[i] - 1) & 0xFF    # $B574
+		_one(o, i, 0xED, _slide_attr(o, i))  # $B577 -> $B59E
 		o.z90 = 0                           # $8121
 		o.z92 = 0
 	else:
+		_one(o, i, 0xEB, _slide_attr(o, i))  # $B582 -> $B59E
 		o.z92 = 0x0080                      # $B585
 	# $B58D -- the whole byte is the index in the cartridge, and a slot number
 	# is all anything ever puts there, so it is held to the sixteen.
@@ -773,6 +944,8 @@ static func _thrown(o: SolObjects, i: int) -> void:
 			o.z90 = o.z92                   # $B51D
 			move_x(o, i, o.z90)             # $BC8F
 			on_screen(o, i)                 # $BCF7
+			# $B52B -- while the count runs it is always the one tile.
+			_pair(o, i, 0xCF, 0xCF, 0x01, 0x41)
 			return
 		o.s_b[i] = 0x08                     # $B510
 	var b: int = o.s_b[i]                   # $B52E
@@ -791,6 +964,11 @@ static func _thrown(o: SolObjects, i: int) -> void:
 	o.z92 = down(o, i)                      # $BCD1
 	move_y(o, i, o.z92)                     # $BC7D
 	on_screen(o, i)                         # $BCF7
+	if o.s_kind[i] == 0:
+		return                              # $B54F
+	# $B550 -- and once it is out, one of two tiles by the clock.
+	var t: int = 0xD1 if (o.clock & 0x01) != 0 else 0xCF
+	_pair(o, i, t, t, 0x01, 0x41)
 
 
 ## $BD0E -- the sinking one that turns as it goes.  Every fourth picture it
@@ -813,6 +991,8 @@ static func _turning(o: SolObjects, i: int) -> void:
 		o.s_a[i] = (o.s_a[i] + 1) & 0xFF    # $BD3A
 	while (o.s_a[i] & 0x03) == 0x03:        # $BD3D
 		o.s_a[i] = (o.s_a[i] + 1) & 0xFF
+	# $BD46 -- one of three tiles, two apart, by the step it has turned to.
+	_one(o, i, 0xF1 + ((o.s_a[i] & 0x03) << 1), 0x02)
 
 
 ## $BB4F -- the four ways it can crawl, read at four offsets into one run of
@@ -870,6 +1050,9 @@ static func _crawl(o: SolObjects, i: int) -> void:
 	move(o, i, CRAWL[y] | (CRAWL[y + 6] << 8),
 			CRAWL[y + 2] | (CRAWL[y + 8] << 8))
 	on_screen(o, i)                         # $BCF7
+	# $BAEB -- two shifts down, so it is the second bit of the clock.
+	var t: int = 0xB7 if (o.clock & 0x02) != 0 else 0xB9
+	_pair(o, i, t, t, 0x02, 0xC2)           # $BAF5 -> $BB88
 
 
 ## $B9EA -- the three numbers of the tile set each way up asks for.
@@ -900,6 +1083,11 @@ static func _turn_world(o: SolObjects, i: int) -> void:
 		o.z92 = down(o, i)                  # $BCD1
 		move_y(o, i, o.z92)                 # $BC7D
 		on_screen(o, i)                     # $BCF7
+		# $B9D8 -- which way up it wants him decides the colour it is drawn in.
+		if (o.s_b[i] & 0x80) != 0:
+			_pair(o, i, 0xBD, 0xBD, 0x03, 0x43)  # $B9DC
+		else:
+			_pair(o, i, 0xBD, 0xBD, 0x83, 0xC3)  # $B9E2
 		return
 	if o.z26 == 0x00 or o.z26 == 0x06:      # $B95B
 		var row := -1

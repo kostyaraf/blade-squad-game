@@ -43,6 +43,7 @@ func _ready() -> void:
 	var solcam := ""
 	var solshot := ""
 	var solobj := ""
+	var sollive := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -72,6 +73,7 @@ func _ready() -> void:
 		elif a.begins_with("--solcam="): solcam = a.substr(9)
 		elif a.begins_with("--solshot="): solshot = a.substr(10)
 		elif a.begins_with("--solobj="): solobj = a.substr(9)
+		elif a.begins_with("--sollive="): sollive = a.substr(10)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -102,6 +104,10 @@ func _ready() -> void:
 		return
 	if solplay != "":
 		_run_sol_play(solplay)
+		get_tree().quit()
+		return
+	if sollive != "":
+		_run_sol_live(sollive, stage)
 		get_tree().quit()
 		return
 	if hud != "":
@@ -202,6 +208,52 @@ func _run_sol_play(path: String) -> void:
 				p.pose, p.scripted, p.step_t, p.step_i,
 				p.pic_lo, p.pic_hi, p.anim])
 	print("\n".join(out))
+
+
+## A look at the whole live Solbrain picture: --sollive=BUTTONS,FRAMES, where
+## BUTTONS is one pad byte in hex held the whole way.  What is printed is how
+## much of the frame is actually filled -- how many object slots are alive, how
+## many shots and how many things the satellite has thrown, and how many
+## sprites the table came out holding.  It is a smoke test, not a stand: the
+## stands compare against the cartridge, this only says the parts are wired.
+func _run_sol_live(spec: String, st: int) -> void:
+	var f := spec.split(",")
+	var pad := int("0x%s" % f[0])
+	var n: int = int(f[1])
+	pads = [Pad.player_one(), Pad.player_two()]
+	pads[0].held = pad
+	_load("sol", st, 0)
+	_start_sol()
+	var slots := 0
+	var shot := 0
+	var wep := 0
+	var drawn := 0
+	for i in range(n):
+		# The buttons that are read on the press and not on the hold are let
+		# go every eighth picture, or nothing would ever be fired twice.
+		pads[0].held = pad if ((i >> 3) & 1) == 0 else pad & ~0xC0
+		_step_sol()
+		var a := 0
+		for k in range(SolObjects.SLOTS):
+			if sol_pool.id[k] != 0:
+				a += 1
+		var b := 0
+		var c := 0
+		for k in range(SolObjects.WALKED):
+			if sol_pool.s_kind[k] != 0:
+				b += 1
+			if sol_pool.w_kind[k] != 0:
+				c += 1
+		var d := 0
+		for k in range(64):
+			if sol_table.oam[k * 4] != SolSprites.HIDDEN:
+				d += 1
+		slots = maxi(slots, a)
+		shot = maxi(shot, b)
+		wep = maxi(wep, c)
+		drawn = maxi(drawn, d)
+	print("stage %d  slots %d  shots %d  weapons %d  sprites %d  hero %04X %04X"
+			% [st, slots, shot, wep, drawn, sol_hero.x, sol_hero.y])
 
 
 ## Э4.1 -- the view, $F1EA and $F24B, held against the cartridge picture by
@@ -971,6 +1023,10 @@ func _start_sol() -> void:
 	sol_table = SolSprites.Table.new()
 	for i in range(4):
 		sol_table.banks[i] = level_sol.spr_banks[i]
+	# The two flat pools draw straight into the table ($C01B/$C030); a stand
+	# that runs the pool for the numbers alone leaves this nought and then
+	# nothing of theirs is drawn at all.
+	sol_pool.table = sol_table
 	oam = PackedByteArray()
 	oam.resize(Pb2Sprites.OAM)
 	oam.fill(Pb2Sprites.HIDDEN)
@@ -1007,6 +1063,10 @@ func _step_sol() -> void:
 	# still owed; neither is ported, so both stay nought.
 	pool.z7f = 0
 	pool.z26 = 0
+	# $C72D -- a picture starts with an empty table: both ends are put back
+	# where they start, which moves on by $50 every time so that the sprite
+	# the console drops on a crowded line is a different one each picture.
+	SolSprites.reset(sol_table, pool.clock)
 	pool.drew()
 	sol_view.step(p.vx, p.vy, p.x, p.y)
 	pool.born_wait = sol_view.hold
@@ -1027,6 +1087,10 @@ func _step_sol() -> void:
 		p.step(held)                                     # $91B5
 	else:
 		p.skip(held)
+	# $91C0 -- where he is, counted from the corner of the view.  He goes into
+	# the table here, before the pools do, exactly as the cartridge has it.
+	SolSprites.hero(p, (p.x - sol_view.x) & 0xFFFF,
+			(p.y - sol_view.y) & 0xFFFF, sol_table)
 	_hero_into(pool, p)
 	# $B862 -- one step of a handful of his animations strikes, and what it
 	# strikes with goes into slot fifteen while he is still the one running.
@@ -1050,17 +1114,6 @@ func _step_sol() -> void:
 	p.jump = pool.hero_jump
 	p.gravity = pool.hero_grav
 	p.hold_max = pool.hero_hold_max
-	# A picture starts with an empty table: the game walks it from both ends
-	# every frame ($F4E2 forward, $F5E1 back) and nothing is kept.
-	sol_table.count = 0
-	sol_table.turn = 0
-	sol_table.fwd = 0
-	sol_table.back = SolSprites.BACK_WRAP
-	for i in range(sol_table.oam.size()):
-		sol_table.oam[i] = Pb2Sprites.HIDDEN
-	# $91C0 -- where he is, counted from the corner of the view.
-	SolSprites.hero(p, (p.x - sol_view.x) & 0xFFFF,
-			(p.y - sol_view.y) & 0xFFFF, sol_table)
 	pool.step(sol_view.x, sol_view.y, sol_table)         # $CDDD
 
 

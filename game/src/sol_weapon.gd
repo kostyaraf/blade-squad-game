@@ -173,11 +173,71 @@ static func gone(o: SolObjects, i: int) -> void:
 	o.w_kind[i] = 0
 
 
+# ---- the drawing -----------------------------------------------------------
+#
+# The pool draws nothing composed: every behaviour ends in one of the two flat
+# emitters, $C01B ($E554, two sprites side by side) or $C030 ($EA0E, one), and
+# both read the place out of the same scratch $90..$93 the behaviour has just
+# filled.  So the drawing here is handed no coordinates of its own.
+
+## $C01B -- two sprites side by side, at the scratch as it stands.
+static func _draw_pair(o: SolObjects, tile_l: int, tile_r: int,
+		attr_l: int, attr_r: int) -> void:
+	if o.table == null:
+		return
+	SolSprites.pair(o.table, o.z90 & 0xFFFF, o.z92 & 0xFFFF,
+			tile_l, tile_r, attr_l, attr_r)
+
+
+## $C030 -- one sprite, at the scratch as it stands.
+static func _draw_one(o: SolObjects, tile: int, attr: int) -> void:
+	if o.table == null:
+		return
+	SolSprites.one(o.table, o.z90 & 0xFFFF, o.z92 & 0xFFFF, tile, attr)
+
+
+## $B43C -- the puff, which three different behaviours end in.
+static func _draw_puff(o: SolObjects) -> void:
+	_draw_pair(o, 0x57, 0x57, 0x01, 0xC1)
+
+
+## $B577 -- the tail the widening one and the crawling one share: the puff
+## every other picture and a smaller one between.
+static func _draw_577(o: SolObjects) -> void:
+	if (o.clock & 0x02) != 0:
+		_draw_puff(o)                       # $B580
+	else:
+		_draw_pair(o, 0x55, 0x55, 0x02, 0xC2)       # $B585
+
+
+## $B5FE -- what the thrown one and the one coming back are both drawn as.
+static func _draw_5fe(o: SolObjects) -> void:
+	var t: int = 0x5D if (o.clock & 0x04) != 0 else 0x5F
+	_draw_pair(o, t, t, 0x02, 0xC2)
+
+
+## $B76F -- where it stands on the screen, and unlike $B595 nothing is given
+## up when it will not fit.
+static func _place(o: SolObjects, i: int) -> void:
+	o.carry = 1
+	var lo: int = o._sbc(o.w_x[i] & 0xFF, o.cam_x & 0xFF)
+	var hi: int = o._sbc((o.w_x[i] >> 8) & 0xFF, (o.cam_x >> 8) & 0xFF)
+	o.z90 = lo | hi << 8
+	o.carry = 1
+	var ly: int = o._sbc(o.w_y[i] & 0xFF, o.cam_y & 0xFF)
+	var hy: int = o._sbc((o.w_y[i] >> 8) & 0xFF, (o.cam_y >> 8) & 0xFF)
+	o.z92 = ly | hy << 8
+
+
 ## $B595 -- sixteen cells out of the picture in either direction and it is
 ## gone.  What is left in the scratch is where it stands on the screen.
 static func on_screen(o: SolObjects, i: int) -> bool:
 	o.carry = 1
 	var lo: int = o._sbc(o.w_x[i] & 0xFF, o.cam_x & 0xFF)
+	# $B59B writes the low byte before the high one is looked at, so a slot
+	# given up here still leaves half a place behind it -- and the caller goes
+	# on to draw with it.
+	o.z90 = lo | (o.z90 & 0xFF00)
 	var hi: int = o._sbc((o.w_x[i] >> 8) & 0xFF, (o.cam_x >> 8) & 0xFF)
 	if hi >= 0x10:
 		gone(o, i)                          # $B5BC
@@ -185,6 +245,7 @@ static func on_screen(o: SolObjects, i: int) -> bool:
 	o.z90 = lo | hi << 8
 	o.carry = 1
 	var ly: int = o._sbc(o.w_y[i] & 0xFF, o.cam_y & 0xFF)
+	o.z92 = ly | (o.z92 & 0xFF00)
 	var hy: int = o._sbc((o.w_y[i] >> 8) & 0xFF, (o.cam_y >> 8) & 0xFF)
 	if hy >= 0x10:
 		gone(o, i)
@@ -222,6 +283,7 @@ static func _quiet(o: SolObjects, i: int) -> void:
 static func _pop(o: SolObjects, i: int) -> void:
 	gone(o, i)                              # $B5BC
 	on_screen(o, i)                         # $B595
+	_draw_puff(o)                           # $B213 -> $B43C
 
 
 ## $B294 -- the bang: slot thirteen of the other pool is made into the blast,
@@ -262,6 +324,11 @@ static func _rebound(o: SolObjects, i: int) -> int:
 		hit += 1
 	_move(o, i)                             # $B2CA
 	on_screen(o, i)                         # $B595
+	# $B3CD -- it flickers between two tiles as it goes.
+	if (o.clock & 0x02) != 0:
+		_draw_pair(o, 0x51, 0x51, 0x01, 0xC1)       # $B3D5
+	else:
+		_draw_pair(o, 0x53, 0x53, 0x02, 0xC2)       # $B3E1
 	return hit
 
 
@@ -282,6 +349,7 @@ static func _straight(o: SolObjects, i: int) -> void:
 		return
 	_move(o, i)                             # $B2CA
 	on_screen(o, i)
+	_draw_one(o, 0x55, 0x41 if (o.clock & 0x04) != 0 else 0x01)     # $B41C
 
 
 ## $B42C -- it rides the satellite while its count runs down, and once the
@@ -292,6 +360,7 @@ static func _carried(o: SolObjects, i: int) -> void:
 	o.w_vy[i] = (o.w_vy[i] - 1) & 0xFF
 	if o.w_vy[i] != 0:
 		on_screen(o, i)                     # $B439
+		_draw_puff(o)                       # $B43C
 		return
 	o.w_vy[i] = 0x01                        # $B434
 	var v: int = o.w_vx[i]                  # $B449
@@ -299,6 +368,26 @@ static func _carried(o: SolObjects, i: int) -> void:
 	o.z92 = _spread((v << 4) & 0xF0)
 	_add_both(o, i)                         # $B2CD
 	on_screen(o, i)
+	# $B46C -- which of two pairs, and which way round, comes from the step it
+	# carries: the low nibble folded about eight says how steep it is and bit
+	# seven which way along, while bit three is passed on as the flip.
+	var lo: int = v & 0x0F                  # $B470
+	if lo >= 0x08:
+		lo = lo ^ 0x0F                      # $B476
+	var steep: bool = lo >= 0x05            # $B478
+	var tl: int
+	var tr: int
+	var base: int
+	if v < 0x80:
+		tl = 0x5D if steep else 0x59        # $B485 / $B47F
+		tr = 0x5F if steep else 0x5B
+		base = 0x01
+	else:
+		tl = 0x5F if steep else 0x5B        # $B499 / $B493
+		tr = 0x5D if steep else 0x59
+		base = 0x41
+	var at: int = ((v << 4) & 0x80) | base  # $B4A5
+	_draw_pair(o, tl, tr, at, at)           # $B4B1
 
 
 ## $B4B4 -- the one that widens: five pictures of a step that is half noise,
@@ -321,6 +410,7 @@ static func _grow(o: SolObjects, i: int) -> void:
 		o.z92 = o._neg16(o.z92)
 	_add_both(o, i)                         # $B2CD
 	on_screen(o, i)                         # $B577
+	_draw_577(o)
 
 
 ## $B4ED -- the one that crawls along whatever it is on: while the map below it
@@ -340,6 +430,7 @@ static func _beam(o: SolObjects, i: int) -> void:
 		o.z92 = 0x0030 if (o.hero_flags & 0x80) != 0 else 0xFFD0
 		_add_y(o, i)                        # $B2D0
 		on_screen(o, i)                     # $B577
+		_draw_577(o)
 		return
 	# $B52B -- the way ahead is only looked at every other picture.
 	if ((i ^ o.clock) & 0x01) != 0:
@@ -356,12 +447,14 @@ static func _beam(o: SolObjects, i: int) -> void:
 				gone(o, i)                  # $B571
 				return
 			o.w_vx[i] = r                   # $B574
-			on_screen(o, i)
+			on_screen(o, i)             # and falls into $B577
+			_draw_577(o)
 			return
 	# $B54B -- it slides along, by the step it keeps in its second byte.
 	o.z90 = _spread(o.w_vy[i])
 	_add_x(o, i)                            # $B2E2
 	on_screen(o, i)                         # $B577
+	_draw_577(o)
 
 
 ## $B225 -- the slash: one thing in the pool stands for a whole row of pictures
@@ -370,6 +463,7 @@ static func _beam(o: SolObjects, i: int) -> void:
 ## still happen is that the row is found to be off the top of the screen.
 static func _slash(o: SolObjects, i: int) -> void:
 	o.z92 = (o.w_vx[i] | 0xFF00) & 0xFFFF   # $B229, always upwards
+	var tile := 0xFF                        # $B232 -- $4C, the top of the row
 	_add_y(o, i)                            # $B2D0
 	var n: int = o.w_vy[i]                  # $B237
 	while true:
@@ -385,9 +479,18 @@ static func _slash(o: SolObjects, i: int) -> void:
 			return
 		# $B260 -- the rest of the turn only draws, and the pool is not
 		# touched again.
-		var a: int = 0x01 if n == 0x01 else n
+		var a: int = n
+		if n == 0x01:
+			tile = 0xFB                     # $B266, the last one is its own
+			a = 0x01
 		o.carry = 0
-		o._adc(a, hy)                       # $B26C
+		var down: int = o._adc(a, hy)       # $B26C, one cell further down
+		o.z92 = ly | down << 8
+		# $B271 -- anything past fifteen cells is off the picture anyway; what
+		# is inside is only drawn as far down as the lift the stage keeps.
+		if (down & 0xF0) != 0 or ((o.z75 >> 4) & 0x0F) >= down:
+			_draw_one(o, tile, 0x01)        # $B285
+		tile = 0xFD                         # $B28A
 		n = (n - 1) & 0xFF                  # $B290
 		if n == 0:
 			return
@@ -407,12 +510,23 @@ static func _spin(o: SolObjects, i: int) -> void:
 	o.z92 = int(st[1])
 	_add_both(o, i)                         # $B2CD
 	on_screen(o, i)
+	# $B5DE -- the tile comes from how much of its life is left: the first
+	# stretch and the last are steady, and in the middle it flickers.
+	var tile: int
+	if v < 0x04:
+		tile = 0x49                         # $B5F1
+	elif v >= 0x0D:
+		tile = 0x4B                         # $B5ED
+	else:
+		tile = 0x4B if (o.clock & 0x02) != 0 else 0x49
+	_draw_pair(o, tile, tile, 0x02, 0x42)   # $B5FB
 
 
 ## $B6A7 -- the thrown one: it flies out on the step packed into its first
 ## byte, and when its count runs out it turns into the one that comes back.
 static func _thrown(o: SolObjects, i: int) -> void:
 	on_screen(o, i)                         # $B5FE
+	_draw_5fe(o)                            # $B615
 	o.w_vy[i] = (o.w_vy[i] - 1) & 0xFF
 	if o.w_vy[i] == 0:
 		o.w_kind[i] = (o.w_kind[i] + 1) & 0xFF          # $B6AF
@@ -432,6 +546,7 @@ static func _thrown(o: SolObjects, i: int) -> void:
 ## the same cell both ways.
 static func _coming_back(o: SolObjects, i: int) -> void:
 	on_screen(o, i)                         # $B5FE
+	_draw_5fe(o)                            # $B615
 	var sx: int = o.x[SolObjects.SAT]       # $AC:$BC
 	var sy: int = o.y[SolObjects.SAT]       # $CC:$DC
 	if ((sx >> 8) & 0xFF) == ((o.w_x[i] >> 8) & 0xFF) \
@@ -495,6 +610,12 @@ static func _orbit(o: SolObjects, i: int) -> void:
 		o.carry = 1                         # $8FD6 SEC
 		o.z90 = o._neg16(o.z90)
 	_add_both(o, i)                         # $B76C -> $B2CD
+	_place(o, i)                            # $B76F, which gives nothing up
+	# $B753 -- it flickers between two tiles and two colours every picture.
+	if (o.clock & 0x01) != 0:
+		_draw_pair(o, 0x55, 0x55, 0x01, 0x41)       # $B758
+	else:
+		_draw_pair(o, 0x57, 0x57, 0x02, 0x42)       # $B75E
 
 
 ## $AEBD -- throw one weapon of kind `m` from slot `s` of the object pool.
