@@ -45,6 +45,7 @@ func _ready() -> void:
 	var solobj := ""
 	var sollive := ""
 	var solflow := ""
+	var solscript := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -76,6 +77,7 @@ func _ready() -> void:
 		elif a.begins_with("--solobj="): solobj = a.substr(9)
 		elif a.begins_with("--sollive="): sollive = a.substr(10)
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
+		elif a.begins_with("--solscript="): solscript = a.substr(12)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -86,6 +88,10 @@ func _ready() -> void:
 		return
 	if orbit != "":
 		_run_orbit(orbit)
+		get_tree().quit()
+		return
+	if solscript != "":
+		_run_sol_script(solscript)
 		get_tree().quit()
 		return
 	if solflow != "":
@@ -878,6 +884,31 @@ func _run_sol_flow(path: String) -> void:
 				h.table.count, h.table.turn, h.table.fwd, h.table.back])
 		if h.asked != "":
 			break
+	print("\n".join(out))
+
+
+## Э4.5 acceptance: --solscript=FILE, the stage's own script.
+##
+## The file holds a list of pictures, each one the whole two kilobytes of the
+## console's memory as it stood the moment $93B5 was entered.  The engine seeds
+## its own shadow from each in turn, runs the script once, and hands the two
+## kilobytes back; what is compared is picked on the other side.
+func _run_sol_script(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var sc := SolScript.new()
+	var out := PackedStringArray()
+	for rec in cfg["ram"]:
+		sc.m = PackedByteArray(String(rec).hex_decode())
+		sc.cf = 0
+		sc.wild = false
+		sc.owed = false
+		sc.trail.clear()
+		sc.step()
+		var mark := "!" if sc.wild else ("?" if sc.owed else "")
+		var seen := PackedStringArray()
+		for a in sc.trail:
+			seen.append("%04X" % a)
+		out.append(mark + sc.m.hex_encode() + " " + ",".join(seen))
 	print("\n".join(out))
 
 
