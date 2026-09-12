@@ -173,6 +173,15 @@ var was_y := 0
 ## on the frame he gets control back.
 var pad_held := 0
 
+## The sixteen slots of the object pool, or nothing at all.  Seventeen of his
+## twenty one states read and write slot $0C, which is where his own machinery
+## -- the satellite, and the wire it throws -- lives, so the pool has to be
+## within his reach.  The stand that plays buttons at him alone hands him none,
+## and the four states that stand for walking about never look at it.
+var pool = null
+
+const SAT := 0x0C               # $060C and the rest: his satellite's own slot
+
 
 func _init(level: SolLevel) -> void:
 	lvl = level
@@ -204,7 +213,28 @@ func skip(pad: int) -> void:
 	was_x = x
 	was_y = y
 	clock = (clock + 1) & 0xFF
+	_aura()
 	pad_held = pad
+
+
+## $9159 -- what being hit costs him, which runs before $9477 and so before
+## anything else of his picture.  The aura itself is drawing and is left out;
+## what is kept is that it wipes how hard he has been working the fire button,
+## and that every thirty second picture a step of the hurt wears off.
+func _aura() -> void:
+	if hurt == 0:
+		return
+	anim = 0                                    # $9170
+	if (clock & 0x1F) != 0:
+		return                                  # $917E
+	if hurt == 1:
+		# $91A8 -- $43, which is the noise, and nothing here has one.
+		return
+	if hurt == 2:
+		_clear_script()                         # $918F
+		state = 0x0F                            # $9194
+	if state < 0x11:
+		hurt = (hurt - 1) & 0xFF                # $91A2
 
 
 ## $9477 -- one frame of him, start to finish.  `pad` is the controller as it
@@ -215,6 +245,7 @@ func step(pad: int) -> void:
 	# The frame counter the whole game shares has already moved on by the time
 	# the hero is asked to run: ice reads it, and reads it after the step.
 	clock = (clock + 1) & 0xFF
+	_aura()                                 # $9159, and it runs before $9477
 	# The kind of ground he is on is worked out afresh every frame: the level's
 	# own frame routine clears it ($AAA9 in bank 9) before the hero runs, and
 	# water ($95B7) and ice ($9672) put it back while he is still in them.  So
@@ -437,19 +468,53 @@ func _shove(v: int) -> void:
 				speed += 1 if speed < 0 else -1
 
 
-## $9689 -- up and down, which is really the state's own handler.  Four of the
-## twenty one are ported; the rest fall back to standing, which is what the
-## engine can honestly do with them so far.
+## $9689 -- up and down, which is really the state's own handler.  $96C0 holds
+## twenty one pointers and $05A2 picks one; all twenty one are here, in the
+## order of the table and not of the code.
 func _vertical(held: int, pressed: int) -> void:
 	match state:
+		ST_GROUND:
+			_ground(held, pressed)          # $9ED3
 		ST_AIR:
-			_air(held, pressed)
+			_air(held, pressed)             # $A005
 		ST_LAND:
-			_landing(held, pressed)
+			_landing(held, pressed)         # $9EA1
 		ST_CROUCH:
-			_crouch(held, pressed)
+			_crouch(held, pressed)          # $9C7D
+		0x04:
+			_wire_hold(held)                # $98CF
+		0x05:
+			_wire_out(held, pressed)        # $9938
+		0x06:
+			_wire_climb(held, pressed)      # $99A8
+		0x07:
+			_wire_ride(held, pressed)       # $99FB
+		0x08:
+			_door(pressed)                  # $98A8
+		0x09:
+			_arrive()                       # $9896
+		0x0A:
+			_door_out(held)                 # $986A
+		0x0B:
+			_door_up()                      # $9886
+		0x0C:
+			_dying()                        # $978A
 		ST_BURST:
-			_bursting()
+			_bursting()                     # $97D4
+		0x0E:
+			_dead()                         # $97A7
+		0x0F:
+			_hurt_out()                     # $9816
+		0x10:
+			_riding()                       # $982E
+		0x11:
+			_waiting()                      # $96FF
+		0x12:
+			_leaving()                      # $9729
+		0x13:
+			_landed()                       # $9751
+		0x14:
+			pass                            # $9783, and $0C is not his to keep
 		_:
 			_ground(held, pressed)
 
@@ -458,6 +523,7 @@ func _vertical(held: int, pressed: int) -> void:
 ## taken down four a picture and when it will not go any lower he is put back
 ## on his feet and left alone for $7F pictures.
 func _bursting() -> void:
+	_floor()                                    # $97D4
 	timer = 0x20                                # $8825
 	if burst >= 4:
 		burst -= 4                              # $97DA
@@ -469,6 +535,367 @@ func _bursting() -> void:
 	pose = 0
 	anim = 0                                    # $97F5
 	hurt = 0x7F                                 # $97FA
+
+
+# ---- the seventeen states a hero who is only walking never reaches ----
+#
+# The wire, the two rides, the doors and dying.  Most of them read and write
+# slot $0C of the object pool, so `pool` has to be there; where it is not the
+# state does as much of itself as it honestly can and no more.
+
+
+## $98C9 -- ducking, which is where every one of the wire's states goes once
+## whatever it was holding on to has gone.
+func _to_crouch() -> void:
+	state = ST_CROUCH
+
+
+## $8806 -- the animation a state wears, and whether it has reached the step
+## that never ends.
+func _posed(id: int) -> bool:
+	_pose(id)
+	return step_t == 0xFF
+
+
+## $B7AC -- the little script put away entirely, and nought handed back.
+func _clear_script() -> int:
+	scripted = 0
+	step_t = 0
+	step_i = 0
+	return 0
+
+
+## $A2F3 -- a push up at full strength: letting go of the wire while climbing
+## is a whole jump, not the weakened one $A2BE gives.
+func _spring_full() -> void:
+	rise = jump - 0x100
+	jump_flags = JUMP_USED
+	hold = 0x80
+	state = ST_AIR
+
+
+## $9A7C -- letting go of the wire.  The satellite is told to reel itself back
+## in and he is thrown out the way he is not looking.
+func _let_go() -> void:
+	if pool == null:
+		return
+	pool.mind[SAT] |= 0x80                      # $9A80
+	fuel = 0x60                                 # $9A8C
+	pool.c[SAT] = 0xA0 if face_left else 0x60   # $9A95
+	speed = 0x20 if face_left else -0x20        # $9AA2
+
+
+## $9347 and $934C -- the satellite's slot wiped clean.  The first of the two
+## gives it a life as well; the ride comes in at the top and the stage's own
+## landing comes in one line down.
+func _clear_sat(alive: bool) -> void:
+	if pool == null:
+		return
+	if alive:
+		pool.life[SAT] = 0x10                   # $9347
+	pool.cool[SAT] = 0xFF                       # $934C
+	pool.mind[SAT] &= 0x7F
+	pool.b[SAT] = 0
+	pool.c[SAT] = 0
+	pool.d[SAT] = 0
+	pool.kind[SAT] = 0
+	pool.left[SAT] = 0
+	pool.frame[SAT] = 0
+	pool.anim_a[SAT] = 0
+	pool.anim_b[SAT] = 0
+	pool.pic_lo[SAT] = 0
+	pool.pic_hi[SAT] = 0
+
+
+## Whether the satellite's slot still holds anything at all.  $FF is the mark
+## it wears while it is being taken away, and counts as gone.
+func _sat_gone() -> bool:
+	if pool == null:
+		return true
+	var who: int = pool.id[SAT]
+	return who == 0 or who == 0xFF
+
+
+## $98CF -- [$04] holding on to the wire while it winds him in.  The count in
+## $05AB is what paces it, and every whole turn of the satellite costs him a
+## step of fuel until there is not enough left for another.
+func _wire_hold(held: int) -> void:
+	_apply_speed()                              # $98CF
+	if _under() < 0x80:
+		_fall()                                 # $98D9
+		return
+	if _sat_gone():
+		_to_crouch()                            # $98E5
+		return
+	pool.anim_second(SAT, 0x14, 1)              # $98EC
+	if (held & A) == 0:
+		_to_crouch()                            # $98F1
+		return
+	# $98F3 -- which quarter of its turn counts depends which way up he is.
+	var want: int = 0x10 if (flags & UPSIDE_DOWN) != 0 else 0x30
+	if (pool.a[SAT] & 0x3F) != want:
+		_pose(0x03)                             # $9933
+		return
+	burst = (burst - 1) & 0xFF                  # $990C
+	if burst != 0:
+		_pose(0x03)
+		return
+	burst = (burst + 1) & 0xFF                  # $9911
+	if fuel < 0x30:
+		state = 0x05                            # $991F
+		return
+	fuel = (fuel - 0x10) & 0xFF                 # $9925
+	_pose(0x11)                                 # $992E
+
+
+## $9938 -- [$05] the wire thrown and still going out.  B lets go of it, down
+## keeps him where he is, and the wire reaching its end ($06CC of $FF) is what
+## starts him climbing.
+func _wire_out(held: int, pressed: int) -> void:
+	_apply_speed()                              # $9938
+	if _under() < 0x80:
+		_fall()                                 # $9942
+		return
+	if pool == null:
+		_to_crouch()
+		return
+	pool.face[SAT] = face                       # $9945
+	if _sat_gone():
+		_to_crouch()                            # $99A0
+		return
+	if (pressed & B) != 0:                      # $9954
+		_script(0x15)
+		state = ST_CROUCH                       # $995D
+		pool.b[SAT] = ST_CROUCH                 # $9962
+		_let_go()
+		fuel = 0x10                             # $9968
+		return
+	pool.anim_second(SAT, 0x15, 1)              # $9972
+	# $9975 -- while it is still going out its head flickers between two.
+	if pool.left[SAT] != 0xFF:
+		pool.pic_lo[SAT] = (0x62 + (clock & 0x02)) & 0xFF
+	if (held & A) == 0:
+		_to_crouch()                            # $99A0
+		return
+	if (held & DOWN) != 0:
+		_pose(0x11)                             # $99A3
+		return
+	if pool.left[SAT] != 0xFF:
+		_pose(0x11)
+		return
+	fuel = 0x60                                 # $9995
+	state = 0x06
+
+
+## $99A8 -- [$06] climbing the wire.  B lets go of it, and letting go from here
+## is a whole jump.
+func _wire_climb(held: int, pressed: int) -> void:
+	_apply_speed()                              # $99A8
+	if _under() < 0x80:
+		_fall()                                 # $99B2
+		return
+	# $99B5 -- a noise every eighth picture, which is not modelled.
+	if _sat_gone():
+		_to_crouch()                            # $99EB
+		return
+	pool.anim_second(SAT, 0x16, 1)              # $99CC
+	pool.face[SAT] = face                       # $99CF
+	if (pressed & B) != 0:                      # $99D5
+		pool.b[SAT] = _script(0x14)             # $99DE
+		_let_go()
+		_spring_full()                          # $99E4
+		return
+	if (held & A) == 0:
+		_to_crouch()                            # $99EB
+		return
+	if _posed(0x12):                            # $99EE
+		state = 0x07
+
+
+## $99FB -- [$07] at the top of the wire, where the view itself carries him.
+## It is the one wire state with no ground under it: letting go here falls.
+func _wire_ride(held: int, pressed: int) -> void:
+	# $99FB -- a noise every eighth picture, which is not modelled.
+	if _sat_gone():
+		_fall()                                 # $9A31
+		return
+	pool.anim_second(SAT, 0x16, 1)              # $9A12
+	pool.face[SAT] = face                       # $9A15
+	if (pressed & B) != 0:                      # $9A1B
+		pool.b[SAT] = _script(0x14)             # $9A24
+		_let_go()
+		_spring_full()                          # $9A2A
+		return
+	if (held & A) == 0:
+		_fall()                                 # $9A31
+		return
+	# $9A39 and $9A5A -- the satellite's own place against the top edge of the
+	# view, a tile in on the right way up and fourteen on the wrong one.  The
+	# hero is pulled after it a pixel a picture while it is past that line.
+	if (flags & UPSIDE_DOWN) != 0:
+		if pool.y[SAT] < ((pool.cam_y + 0x0E00) & 0xFFFF):
+			vy = 0x0010                         # $9A4A
+			_ceiling()                          # $A253
+	else:
+		if pool.y[SAT] >= ((pool.cam_y + 0x0100) & 0xFFFF):
+			vy = -0x0010                        # $9A6A
+			_ceiling()
+	_pose(0x13)                                 # $9A77
+
+
+## $98A8 -- [$08] standing in a door.  A takes him out of it downward, B takes
+## him through it.
+func _door(pressed: int) -> void:
+	if scripted != 0:
+		_script(0x18)                           # $98AD
+		return
+	if (pressed & A) != 0:
+		state = 0x0A                            # $98B6
+		return
+	if (pressed & B) == 0:
+		_pose(0x17)                             # $98BE
+		return
+	_script(0x18)                               # $98C3, and a noise with it
+
+
+## $9896 -- [$09] coming down into a door.  A pixel a picture until the little
+## script is over.
+func _arrive() -> void:
+	vy = _s16((vy & 0xFF00) | 0x04)             # $9896
+	if _posed(0x19):
+		state = 0x08                            # $98A2
+
+
+## $986A -- [$0A] stepping out of a door.  Holding down lets him drop; anything
+## else springs him out.
+func _door_out(held: int) -> void:
+	if not _posed(0x1A):                        # $986C
+		return
+	if (held & DOWN) != 0:
+		_fall()                                 # $9877
+	else:
+		_launch()                               # $987D
+	_apply_speed()                              # $9880
+
+
+## $9886 -- [$0B] the same, and this one always springs.
+func _door_up() -> void:
+	if not _posed(0x1B):
+		return
+	_launch()                                   # $988D
+	_apply_speed()                              # $9890
+
+
+## $978A -- [$0C] dying.  $05AB counts the picture down and what it reaches is
+## the state that hands the game on.
+func _dying() -> void:
+	_floor()                                    # $978A
+	burst = (burst - 1) & 0xFF
+	if burst != 0:
+		return
+	# $9792 -- $26 and $27, what the screen still owes, are the blanking's
+	# business and nothing here has a model of it.
+	state = 0x0E                                # $9799
+	shield = 0                                  # $979E
+	hurt = 0
+
+
+## $97A7 -- [$0E] dead.  What is left after the count is the stage flow: which
+## screen comes next ($02), how the view is put back ($2E) and the noise ($F0).
+## Those are Э4.5's, so all that is kept here is the try being spent.
+func _dead() -> void:
+	_floor()                                    # $97A7
+	_pose(0x20)                                 # $97AA
+	if pool == null or pool.z26 != 0:
+		return                                  # $97AF
+	var left: int = pool.w_x[0x0C] & 0xFF       # $071C
+	if left != 0:
+		pool.w_x[0x0C] = (pool.w_x[0x0C] & 0xFF00) | ((left - 1) & 0xFF)
+
+
+## $9816 -- [$0F] the picture a hit ends on.  Everything the hit left is put
+## away and he falls straight into the state after this one.
+func _hurt_out() -> void:
+	_floor()                                    # $9816
+	timer = 0x20                                # $8825
+	_clear_script()                             # $B7AC
+	hurt = 0                                    # $981F
+	if pool != null:
+		pool.id[0x0F] = 0                       # $9822
+		pool.d[SAT] = 0x10                      # $9827
+	state = (state + 1) & 0xFF                  # $982A
+
+
+## $982E -- [$10] being carried.  He wears one of two pictures depending on
+## whether there is anything under him at all, and $064C counts the ride out.
+func _riding() -> void:
+	timer = 0x20                                # $8825
+	_pose(0x00 if _floor() >= 0x80 else 0x06)   # $983A, $9836
+	# $983F -- and the count climbs by four a picture, bit seven thrown away.
+	var b: int = burst & 0x7F
+	if b < 0x7C:
+		burst = (b + 0x04) & 0xFF
+	if pool == null:
+		return
+	# $984D -- while something is in the slot the ride only counts down on the
+	# quarter of its turn that $061C names.
+	if pool.id[SAT] != 0 and ((pool.a[SAT] + 0xE8) & 0x3F) >= 0x10:
+		return
+	pool.d[SAT] = (pool.d[SAT] - 1) & 0xFF      # $985E
+	if pool.d[SAT] != 0:
+		return
+	state = ST_GROUND                           # $8830
+	_clear_sat(true)                            # $9347
+
+
+## $96FF -- [$11] waiting for what his satellite threw to burn out.  While any
+## of the eight is still flying nothing happens at all; once they are gone the
+## little script runs and its fourth step throws him upward.
+func _waiting() -> void:
+	if pool == null:
+		return
+	var any := 0
+	for i in range(8):
+		any |= pool.w_kind[i]                   # $9703
+	if any != 0:
+		return
+	_pose(0x05)                                 # $970E
+	if step_i < 0x04:
+		return                                  # $9716
+	# $971A -- a noise on the one picture the step turns over, and nothing else.
+	vy = -0x0080                                # $971E
+
+
+## $9729 -- [$12] leaving a stage.  With nothing under him he slides out of the
+## picture; standing on something he waits out the script and the fuel.
+func _leaving() -> void:
+	# $9783 -- $0C, the picture counter the whole game shares, is handed to the
+	# engine frame by frame, so a bit set in it here would be thrown away.
+	if _under() < 0x80:
+		vx = _s16((vx & 0xFF00) | 0x20)         # $9731
+		vy = _s16((vy & 0xFF00) | 0x20)
+		return
+	if not _posed(0x0E):                        # $973A
+		return
+	if fuel != 0:
+		return                                  # $9741
+	state = 0x13                                # $9746
+	burst = 0x14
+
+
+## $9751 -- [$13] the picture the ride into a stage ends on.  The whole pool
+## but his own four slots is emptied, and what it reads out of $0757 and $07F0
+## is the stage's own bookkeeping, which is Э4.5's and not his.
+func _landed() -> void:
+	burst = (burst - 1) & 0xFF                  # $9754
+	if burst != 0:
+		return
+	_pose(0x00)                                 # $9770
+	state = ST_GROUND                           # $8830
+	if pool != null:
+		for i in range(0x0C):
+			pool.id[i] = 0                      # $977A
+	_clear_sat(false)                           # $934C
 
 
 ## $9ED3 -- on the ground, standing or running.
@@ -648,7 +1075,9 @@ func _pose(id: int) -> void:
 
 ## $B78E -- a named animation, which puts itself away once it reaches the step
 ## that never ends.
-func _script(id: int) -> void:
+## What it hands back is the step's own length, or nought where the step was
+## the one that never ends -- $99D9 and $9A1F keep it.
+func _script(id: int) -> int:
 	if id != scripted:
 		scripted = id
 		step_t = 0
@@ -658,6 +1087,8 @@ func _script(id: int) -> void:
 		scripted = 0
 		step_t = 0
 		step_i = 0
+		return 0
+	return step_t
 
 
 ## $B7CE -- one frame of whichever little script is running.  A step's length

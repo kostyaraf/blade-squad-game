@@ -265,6 +265,52 @@ func _poke_pool(pool: SolObjects, a: int, v: int) -> void:
 		0x07F0: pool.s_life[s] = v
 
 
+## Э4.5 -- one byte of the hero himself, named by the address the cartridge
+## keeps it at.  The state stand pokes $05A2 by hand to ask for a state the
+## first seconds of a stage would never reach on their own.
+func _poke_hero(p: SolPlayer, a: int, v: int) -> void:
+	match a:
+		0x0080: p.x = (p.x & 0xFF00) | v
+		0x0081: p.x = (p.x & 0x00FF) | (v << 8)
+		0x0082: p.y = (p.y & 0xFF00) | v
+		0x0083: p.y = (p.y & 0x00FF) | (v << 8)
+		0x0035: p.speed = v - 0x100 if v >= 0x80 else v
+		0x005B: p.step_down = v
+		0x05A2: p.state = v
+		0x05A3: p.timer = v
+		0x05A4: p.step_t = v
+		0x05A5: p.scripted = v
+		0x05AB: p.burst = v
+		0x05AC: p.hold = v
+		0x05AD: p.rise = _s16((p.rise & 0xFF00) | v)
+		0x05AE: p.rise = _s16((p.rise & 0x00FF) | (v << 8))
+		0x05AF: p.fuel = v
+		0x05B2: p.face = v
+		0x05B4: p.step_i = v
+		0x05B5: p.pose = v
+		0x05B6: p.vx = _s16((p.vx & 0xFF00) | v)
+		0x05B7: p.vx = _s16((p.vx & 0x00FF) | (v << 8))
+		0x05B8: p.vy = _s16((p.vy & 0xFF00) | v)
+		0x05B9: p.vy = _s16((p.vy & 0x00FF) | (v << 8))
+		0x05C2: p.hurt = v
+		0x05C5: p.suit = v
+		0x05C8: p.shield = v
+		0x05C9: p.jump_flags = v
+		0x05CA: p.seen = v
+		0x05CB: p.flags = v
+		0x05CC: p.swim = v
+		0x05CD: p.ground = v
+		0x05CE: p.anim = v
+		0x05E8: p.jump = v
+		0x05E9: p.gravity = v
+		0x05EA: p.hold_max = v
+
+
+## A sixteen bit number the cartridge keeps as two bytes, read back signed.
+func _s16(v: int) -> int:
+	v &= 0xFFFF
+	return v - 0x10000 if v >= 0x8000 else v
+
 ## Э4.2 -- who is in the sixteen slots and where, held against the cartridge
 ## picture by picture.  The hero and the view are seeded and driven exactly as
 ## the other two stands drive them; what is printed is the pool.  The stand is
@@ -362,6 +408,8 @@ func _run_sol_objects(path: String) -> void:
 	# Э4.4 -- the crate stand writes a whole slot rather than one byte of it,
 	# and names each byte by the address the cartridge keeps it at.
 	var put: Array = cfg["put"] if cfg.has("put") else []
+	# Э4.5 -- and the same for the hero, whose bytes are not in the pool.
+	var hero_put: Array = cfg["hero_put"] if cfg.has("hero_put") else []
 	var want_crates: bool = cfg.has("crates")
 	var crates := PackedStringArray()
 	var n := 0
@@ -371,6 +419,8 @@ func _run_sol_objects(path: String) -> void:
 				pool.mind[int(e[0])] = int(e[1])
 			for e in put:
 				_poke_pool(pool, int(e[0]), int(e[1]))
+			for e in hero_put:
+				_poke_hero(p, int(e[0]), int(e[1]))
 		# A picture the cartridge did not have time for: $0C does not move on,
 		# and neither does anything else.  The stand still asks for a row, so
 		# the one before is given again.
@@ -402,6 +452,9 @@ func _run_sol_objects(path: String) -> void:
 		pool.drew()
 		view.step(p.vx, p.vy, p.x, p.y)
 		pool.hero = p
+		# Seventeen of his twenty one states read and write slot $0C, so he is
+		# handed the pool the same way the pool is handed him.
+		p.pool = pool
 		pool.born_wait = view.hold
 		pool.map_kind = view.map_kind
 		pool.stage = int(cfg["stage"]) if cfg.has("stage") else 0
@@ -483,8 +536,10 @@ func _run_sol_objects(path: String) -> void:
 		# difference in his own slots came from.  It is kept apart from the
 		# arms so that a picture the cartridge did not finish repeats one row
 		# of each and not two of one.
-		heroes.append("P %d,%d,%d,%d,%d,%d,%d" % [p.state, p.pose, p.step_i,
-				p.step_t, p.anim, p.scripted, p.burst])
+		heroes.append("P %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d"
+				% [p.x, p.y, p.vx, p.vy, p.state, p.speed, p.pose, p.scripted,
+				p.step_t, p.step_i, p.pic_lo, p.pic_hi, p.anim, p.face,
+				p.timer, p.fuel])
 		var hrow := PackedStringArray()
 		for i in range(SolSat.FIRST, SolSat.LAST + 1):
 			hrow.append("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d"

@@ -168,27 +168,64 @@ handler for the state runs. `$96EA` is a flag per state, one byte each.
 | `$01` | `$A005` | 0 | in the air |
 | `$02` | `$9EA1` | 0 | landing |
 | `$03` | `$9C7D` | 0 | crouching |
-| `$04` | `$98CF` | 0 | |
-| `$05` | `$9938` | 0 | |
-| `$06` | `$99A8` | 0 | |
-| `$07` | `$99FB` | 0 | |
-| `$08` | `$98A8` | 0 | |
-| `$09` | `$9896` | 0 | |
-| `$0A` | `$986A` | 0 | |
-| `$0B` | `$9886` | 0 | |
-| `$0C` | `$978A` | 0 | |
-| `$0D` | `$97D4` | 1 | |
-| `$0E` | `$97A7` | 0 | |
-| `$0F` | `$9816` | 1 | |
-| `$10` | `$982E` | 1 | |
-| `$11` | `$96FF` | 1 | |
-| `$12` | `$9729` | 0 | |
-| `$13` | `$9751` | 0 | |
-| `$14` | `$9783` | 0 | |
+| `$04` | `$98CF` | 0 | holding the wire while it winds him in |
+| `$05` | `$9938` | 0 | the wire thrown and still going out |
+| `$06` | `$99A8` | 0 | climbing the wire |
+| `$07` | `$99FB` | 0 | at the top of it, where the view carries him |
+| `$08` | `$98A8` | 0 | standing in a door |
+| `$09` | `$9896` | 0 | coming down into one |
+| `$0A` | `$986A` | 0 | stepping out of one |
+| `$0B` | `$9886` | 0 | the same, and this one always springs |
+| `$0C` | `$978A` | 0 | dying |
+| `$0D` | `$97D4` | 1 | the doubled weapon burning off |
+| `$0E` | `$97A7` | 0 | dead, and the game handed on |
+| `$0F` | `$9816` | 1 | the picture a hit ends on |
+| `$10` | `$982E` | 1 | being carried |
+| `$11` | `$96FF` | 1 | waiting for what the satellite threw to burn out |
+| `$12` | `$9729` | 0 | leaving a stage |
+| `$13` | `$9751` | 0 | the picture the ride into one ends on |
+| `$14` | `$9783` | 0 | nothing at all but a bit of `$0C` |
 
-Measured so far: pressing DOWN on the ground goes 0 -> 3 and letting go goes
+All twenty one are read and ported.  The stand is
+`work/extract/verify_sol_states.py`: on a settled picture `$05A2` is written by
+hand and both sides are let run, and the sixteen numbers of the hero and the
+eighteen of each of his own four slots must agree picture by picture.
+
+### The wire, `$04` to `$07`
+
+The four of them are one mechanism.  Slot `$0C` of the object pool is the
+satellite, and the wire is what it throws; every one of the four reads
+`$060C` first and drops straight back to ducking (`$98C9`) when it is empty or
+marked `$FF`.  `$99FB` is the exception: with the slot gone it falls instead.
+
+* `$05` throws it.  While its head is still going out (`$06CC` is not `$FF`)
+  the head flickers between two pictures, `$62` and `$64`, on the parity of
+  `$0C`.  The head reaching the end and A still held goes to `$06`.
+* `$06` climbs it.  `$8806` on animation `$12` reaching its last step goes
+  to `$07`.
+* `$07` is the top.  It pulls him after the satellite a pixel a picture while
+  the satellite is above a line one tile down from the top of the view -- or
+  fourteen tiles down, with the world the other way up.
+* `$04` is the wire attached and winding in.  Every whole turn of the
+  satellite (`$061C & $3F` at `$30`, or `$10` upside down) costs him `$10` of
+  fuel, and running under `$30` of it drops him back to `$05`.
+
+B lets go of it from any of them, through `$9A7C`: the satellite is told to
+reel itself in (`$065C` bit 7), his fuel is put back to `$60`, and he is thrown
+`$20` of speed the way he is **not** facing.  From `$06` and `$07` letting go is
+a whole jump (`$A2F3`) and not the weakened one `$A2BE` gives.
+
+### Being hit, `$9159`
+
+`$9159` runs before `$9477`, so before anything else of his picture, and only
+while `$05C2` is not nought.  Most of it is the aura it draws, but two things
+are not drawing: it wipes `$05CE`, which is how hard he has been working the
+fire button, and every thirty second picture (`$0C & $1F`) a step of the hurt
+wears off -- `$05C2` of two first putting him into state `$0F`, and `$05C2` of
+one doing nothing at all but asking for a noise.
+
+Measured: pressing DOWN on the ground goes 0 -> 3 and letting go goes
 back; pressing A goes 0 -> 1, landing goes 1 -> 2 and after eight frames 2 -> 0.
-The rest are named as they are pinned down.
 
 ### The jump
 
@@ -316,12 +353,29 @@ at **x = 631.75**, and the first solid column there begins at 640.
 
 ## 6. What is still open
 
-* The 17 unnamed states, and which button or event reaches each.
-* The wire and the grapple — states 4..7, `$98CF`, `$9938`, `$99A8`, `$99FB`,
-  object slot `$0C`, `$9A7C`, `$A2F3`.
-* The cutscene, death and transition states `$08`..`$13`.
-* `$05C5` and what each suit changes.
-* `$9689`'s first half (`$05C8`, `$0112`) — the afterimage trail.
+* `$05C5` and what each suit changes, and the suitless branch of `$937A`.
+* `$9689`'s first half (`$05C8`, `$0112`) — the afterimage trail.  It is
+  drawing: with a shield up, on a state whose flag byte at `$96EA` is nought
+  and with `$05FA` clear, `$0112` is written from `$96BC[(0C >> 1) & 3]`.
+* What the states hand on to but do not do themselves, all of it Э4.5's: which
+  screen comes next (`$02`, `$2E`, `$97CD`), the stage's own bookkeeping that
+  `$9751` reads out of `$0757` and `$07F0`, and the noises (`$F0`, `$F1`,
+  `$43`).
+
+All twenty one state handlers, `$9159` and `$9A7C` are read and ported.
+
+## 6a. Acceptance
+
+`work/extract/verify_sol_states.py` — on a settled picture (frame 40) `$05A2`
+is written by hand with each of the twenty one states in turn and both sides
+are let run for ninety pictures.  Compared are the hero's sixteen numbers
+(place, speed, state, the two of the little script, the picture, which way he
+looks, his clock and his fuel) and the eighteen of each of his own four slots
+`$0C..$0F`.  Where a state hands the game on the comparison stops on the
+picture `$02` changes, because past that the cartridge is not playing the same
+thing at all.
+
+Measured: **0 of 189** — the twenty one states over nine stages.
 
 ## 7. How to measure any of it again
 
