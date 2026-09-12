@@ -19,9 +19,16 @@ class_name SolMinds
 
 ## $819D -- one slot, one frame.
 static func run(o: SolObjects, s: int) -> void:
+	# $819D -- a ride under way holds the whole slot still: neither its own
+	# turn nor anything it might touch.
+	if o.ride_hold != 0 and o.ride_hold < 0x30:
+		return
 	_body(o, s)
-	# $81A9 -- a thing that has been finished off touches nobody; the hero's
-	# own contact ($C02A) and the weapon's ($C02D) are the rest of Э4.3.
+	# $81A9 -- a thing that has been finished off touches nobody.
+	if (o.mind[s] & 0x80) != 0:
+		return
+	if o.touch_box(s):                      # $C02A
+		o.touch(s)                          # $C02D
 
 
 ## $81B7 -- the step before the jump: no movement owed, and a thing that was

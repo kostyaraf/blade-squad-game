@@ -150,6 +150,8 @@ def seed(base):
     cfg['z75'] = base[0x75]
     cfg['z58'] = base[0x58]
     cfg['z26'] = base[0x26]
+    cfg['suits'] = base[0x05C4]
+    cfg['bonus'] = base[0x05C6] | base[0x05C7] << 8
     cfg['mark'] = [base[0x0560 + i] for i in range(MARKS)]
     cfg['id'] = [base[0x0600 + i] for i in range(SLOTS)]
     cfg['ox'] = [base[0xA0 + i] | base[0xB0 + i] << 8 for i in range(SLOTS)]

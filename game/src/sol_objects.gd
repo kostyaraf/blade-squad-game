@@ -106,6 +106,27 @@ var hero_state := 0                 # $05A2 -- what the hero is busy with
 var stage := 0                      # $55 -- which stage is up
 var map_kind := 0                   # $70 -- $3C is the stage that is all water
 var z9d := 0                        # $9D -- what the last probe left over
+## $54 and $88..$8F -- the hero's own box.  It is built once a picture, at
+## $80DE, before the pool is walked at all, so every slot is laid over the same
+## one.
+var hero_box_flags := 0             # $54
+var hero_bx := 0                    # $88:$89
+var hero_by := 0                    # $8A:$8B
+var hero_bw := 0                    # $8C:$8D
+var hero_bh := 0                    # $8E:$8F
+## $60..$68 -- and the box of the thing whose turn it is.
+var z60 := 0                        # $60, what touching it means
+var z61 := 0                        # $61:$62
+var z63 := 0                        # $63:$64
+var z65 := 0                        # $65:$66
+var z67 := 0                        # $67:$68
+var z9c := 0                        # $9C, which side the overlap came from
+var ride_hold := 0                  # $05C3 -- a ride holds the whole pool still
+var hero_suits := 0                 # $05C4 -- which of the three suits are had
+var hero_bonus := 0                 # $05C6:$05C7 -- points still to be counted
+## The hero himself, because being touched writes back into him.  A stand that
+## has no hero simply never touches anything.
+var hero: SolPlayer = null
 var skipped := {}                   # which behaviours have not been read yet
 
 var _types: Array
@@ -118,6 +139,11 @@ var _born: PackedByteArray
 var _gone: PackedByteArray
 var _room_group: PackedByteArray
 var _groups: Dictionary
+## $8A19, $91B5 and $CFF1 -- what a picture does when it is touched, the box
+## it does it with, and which behaviours are only tested every other picture.
+var _hit_pic: Array
+var _hit_box: Array
+var _hit_slow: PackedByteArray
 
 
 func _init(lvl: SolLevel) -> void:
@@ -129,6 +155,10 @@ func _init(lvl: SolLevel) -> void:
 	_hatch = PackedByteArray(t["hatch"])
 	_steps = PackedByteArray(t["steps"])
 	_arctan = PackedByteArray(t["arctan"])
+	var h: Dictionary = Nes._load_json("%s/sol/hits.json" % Nes.DATA)
+	_hit_pic = h["pic"]
+	_hit_box = h["box"]
+	_hit_slow = PackedByteArray(h["slow"])
 	_born = PackedByteArray(t["born"])
 	_gone = PackedByteArray(t["gone"])
 	_room_group = lvl.room_group
@@ -806,3 +836,253 @@ func _neg16(v: int) -> int:
 
 static func _signed(v: int) -> int:
 	return v - 0x10000 if v >= 0x8000 else v
+
+
+# ---------------------------------------------------------------------------
+# Touching.  Every picture in the game -- the hero's and everything else's --
+# carries two bytes in bank eight's table at $8A19: what touching it means and
+# which of the boxes at $91B5 it is.  A box is where it starts from the thing's
+# own place and how big it is, in sixteenths of a pixel.
+#
+# The hero's box is built before the pool is walked ($CDBE); each thing's is
+# built as its turn comes ($C02A), and the two are then laid over one another
+# ($C02D).  What the cartridge does with a hit is in `work/re/sol_hits.md`.
+# ---------------------------------------------------------------------------
+
+const NO_BOX := [0, 0, 0, 0]
+
+
+## $814C -- the two bytes a picture carries and the box they lead to.  A
+## picture numbered past the end of the table has none: the cartridge would
+## read whatever stands after it, and nothing the game draws is that high.
+func _hit_of(pic: int) -> Array:
+	if pic < 0 or pic >= _hit_pic.size():
+		return [0, NO_BOX]
+	var e: Array = _hit_pic[pic]
+	return [int(e[0]), _hit_box[int(e[1])]]
+
+
+## Two bytes added, and the carry the add leaves, because the boxes are built
+## with the carry chained from one pair to the next the way the cartridge
+## chains it.
+func _add2(p: int, q: int, c: int) -> Array:
+	var lo: int = (p & 0xFF) + (q & 0xFF) + c
+	var hi: int = ((p >> 8) & 0xFF) + ((q >> 8) & 0xFF) + ((lo >> 8) & 1)
+	return [((hi & 0xFF) << 8) | (lo & 0xFF), (hi >> 8) & 1]
+
+
+## And two taken away.  The carry is the borrow the 6502 keeps: one means
+## there was none.
+func _sub2(p: int, q: int, c: int) -> Array:
+	var lo: int = (p & 0xFF) - (q & 0xFF) - (1 - c)
+	var cl: int = 1 if lo >= 0 else 0
+	var hi: int = ((p >> 8) & 0xFF) - ((q >> 8) & 0xFF) - (1 - cl)
+	return [((hi & 0xFF) << 8) | (lo & 0xFF), 1 if hi >= 0 else 0]
+
+
+func _ge2(p: int, q: int) -> bool:
+	return (p & 0xFFFF) >= (q & 0xFFFF)
+
+
+## $80DE -- the hero's box, in front of the whole pool walk.
+func hero_box() -> void:
+	hero_box_flags = 0
+	if hero == null:
+		return
+	# $8133 -- his picture, and the one next door when he looks left.
+	var pic: int = hero.pic_lo | (hero.pic_hi << 8)
+	if pic != 0 and hero.face_left:
+		pic += 1
+	var got: Array = _hit_of(pic & 0xFFFF)
+	var box: Array = got[1]
+	hero_box_flags = int(got[0])
+	hero_bw = int(box[2])
+	hero_bh = int(box[3])
+	var r: Array = _add2(int(box[0]), hero.x, 0)
+	hero_bx = r[0]
+	if (hero.flags & 0x80) != 0:
+		# $810D -- hung upside down, the box grows the other way from his feet.
+		var u: Array = _sub2(hero.y, int(box[1]), r[1])
+		hero_by = _sub2(u[0], hero_bh, u[1])[0]
+	else:
+		hero_by = _add2(int(box[1]), hero.y, r[1])[0]
+
+
+## $CF96 -- the box of the thing whose turn it is.  False when its picture has
+## none, and then nothing else is asked at all.
+func touch_box(s: int) -> bool:
+	var pic: int = pic_lo[s] | (pic_hi[s] << 8)
+	if (face[s] & 0x80) != 0:
+		pic += 1
+	var got: Array = _hit_of(pic & 0xFFFF)
+	z60 = int(got[0])
+	if z60 == 0:
+		return false
+	# $817B -- and the box put where the thing itself stands.
+	var box: Array = got[1]
+	var r: Array = _add2(int(box[0]), x[s], 0)
+	z61 = r[0]
+	z63 = _add2(int(box[1]), y[s], r[1])[0]
+	z65 = int(box[2])
+	z67 = int(box[3])
+	return true
+
+
+## $CFBA -- the hero laid over the thing.  A behaviour the table at $CFF1 marks
+## is only tested on every other picture, and which picture depends on the slot
+## as well, so the sixteen of them are spread over the two.
+func touch(s: int) -> void:
+	if hero == null or hero_box_flags == 0:
+		return
+	if (hero_box_flags & 0x80) == 0 and _hit_slow[mind[s] & 0x7F] != 0 \
+			and ((s ^ clock) & 0x01) != 0:
+		return
+	if hero.suit == 0:
+		return
+	_overlap(s)
+	# $CFE8 and $CFEB -- the hero's own shots against the thing ($869C) and
+	# what his sub-weapons do ($83E2).  Neither pool is ported yet.
+
+
+## $81B7 -- the two boxes laid over one another.  $9C and $9D say which way he
+## came at it; what the touch then does is $8244.
+func _overlap(s: int) -> void:
+	z9c = 0
+	z9d = 0
+	var p: Array
+	if _ge2(hero_bx, z61):
+		# $81CB -- the far side of the thing, and one further along than it is
+		# because the compare before this left its carry standing.
+		p = _add2(z61, z65, 1)
+		if _ge2(hero_bx, p[0]):
+			return
+	else:
+		# $81E4 -- and one short of its near side, by the hero's own width.
+		p = _sub2(z61, hero_bw, 0)
+		if not _ge2(hero_bx, p[0]):
+			return
+	if _ge2(hero_by, z63):
+		p = _add2(z63, z67, 1)
+		# $8210 -- the carry that add left is the borrow this takes with.
+		p = _sub2(p[0], hero_by, p[1])
+		if p[1] == 0:
+			return
+		z9c = 1
+	else:
+		p = _sub2(z63, hero_bh, 0)
+		p = _sub2(hero_by, p[0], p[1])
+		if p[1] == 0:
+			return
+		z9d = 1
+	_react(s)
+
+
+## $8244 -- what the touch comes to.  The top bit makes it something to pick
+## up; without it the thing hurts, and how much depends on the suit.
+func _react(s: int) -> void:
+	if (z60 & 0x80) != 0:
+		_pick_up(s)
+		return
+	var dmg: int
+	if (z60 & 0x40) != 0:
+		# $824A -- these hurt for one, and only where they name no other
+		# amount at all.
+		if (z60 & 0x0F) != 0:
+			return
+		dmg = 1
+	elif hero.hurt != 0 and (z60 & 0x20) != 0:
+		dmg = 1                         # $8259 -- the suit takes one, no more
+	else:
+		dmg = z60 & 0x0F
+	_hurt_hero(s, dmg)
+
+
+## $833C -- the hero is touched.  In the suit he hurts the thing back and the
+## suit takes the blow; without it the blow is his own.
+func _hurt_hero(s: int, dmg: int) -> void:
+	if hero.hurt != 0:
+		# $8343 -- a thing hit in the last eight pictures is not hit again.
+		if cool[s] < 0x08:
+			return
+		_wear(s, 1)                     # $83BC
+		if hero.timer < 0x20:
+			return                      # $8359
+		# $8360 -- a step of the suit, and the low three bits back on.
+		var left: int = hero.hurt - 0x10
+		hero.hurt = (left | 0x07) if left >= 0 else 0x02
+		hero.timer = 0
+		return
+	# $8377 -- no suit, and then it costs him his own life.
+	if hero.suit == 0 or hero.timer < 0x70:
+		return
+	if hero.shield != 0:
+		hero.shield -= 1                # $8388
+	hero.timer = 0
+	# $839D -- anything of eight or more takes one instead and puts him in the
+	# water, which is how the deep places drown him.
+	var d: int = dmg & 0x0F
+	if d >= 0x08:
+		d = 1
+		hero.swim = 1
+	hero.suit = hero.suit - d if hero.suit >= d else 0
+
+
+## $83BC -- the thing loses what the hero's own body took off it.
+func _wear(s: int, n: int) -> void:
+	cool[s] = 0
+	mind[s] = mind[s] | 0x40
+	if life[s] > n:
+		life[s] -= n
+		return
+	life[s] = 0
+	_done(s)                            # $8850
+
+
+## $8850 -- the thing is finished off: its walk is thrown away with it.
+func _done(s: int) -> void:
+	if (mind[s] & 0x80) != 0:
+		return
+	mind[s] = mind[s] | 0x80
+	left[s] = 0
+	frame[s] = 0
+	a[s] = 0
+
+
+## $8266 -- something to pick up.  The low three bits say which of the six, and
+## nought means it is not one after all.
+func _pick_up(s: int) -> void:
+	match z60 & 0x07:
+		0x01: _worth(s, 0x05)           # $827E
+		0x02: _worth(s, 0x14)           # $8299
+		0x03: kind[s] = 0x02            # $82AE
+		0x04: pass                      # $82B4 -- nothing at all
+		0x05: _suit(s, 0x01, 0x04, 0x10)    # $82B5
+		0x06: _suit(s, 0x02, 0x08, 0x20)    # $82F3
+
+
+## $827E and $8299 -- the two that are only worth points.
+func _worth(s: int, n: int) -> void:
+	hero_bonus = (hero_bonus + n) & 0xFFFF
+	mind[s] = mind[s] | 0x80            # $8290
+
+
+## $82B5 and $82F3 -- one half of a suit.  $05C4 holds three pairs of bits, a
+## pair to a suit, and the pick-up belongs to the first pair still empty; when
+## all three are full the slot is simply let go instead.
+func _suit(s: int, one: int, two: int, three: int) -> void:
+	var bit := one
+	var which := 0
+	if (hero_suits & 0x03) != 0:
+		which = 1
+		bit = two
+		if (hero_suits & 0x0C) != 0:
+			which = 2
+			bit = three
+			if (hero_suits & 0x30) != 0:
+				id[s] = 0               # $8336
+				return
+	b[s] = hero_suits | bit             # $82DE
+	if which != 2:
+		pass                            # $82EB -- $070C,Y, the weapon's own
+	a[s] = 0xFF                         # $832E
+	mind[s] = mind[s] | 0x80

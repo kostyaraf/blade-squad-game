@@ -254,6 +254,8 @@ func _run_sol_objects(path: String) -> void:
 	pool.z75 = int(cfg["z75"]) if cfg.has("z75") else 0
 	pool.z58 = int(cfg["z58"]) if cfg.has("z58") else 0
 	pool.z26 = int(cfg["z26"]) if cfg.has("z26") else 0
+	pool.hero_suits = int(cfg["suits"]) if cfg.has("suits") else 0
+	pool.hero_bonus = int(cfg["bonus"]) if cfg.has("bonus") else 0
 	for i in range(SolObjects.MARKS):
 		pool.mark[i] = int(cfg["mark"][i])
 	for i in range(SolObjects.SLOTS):
@@ -310,6 +312,8 @@ func _run_sol_objects(path: String) -> void:
 		# is not ported yet -- so the hero is handed the byte rather than the
 		# pad.  Where no script interferes the two are the same.
 		p.step(int(sixes[n]) if cfg.has("six_at") else int(f))
+		pool.hero = p
+		pool.ride_hold = view.hold
 		pool.hero_x = p.x
 		pool.hero_y = p.y
 		pool.hero_vx = p.vx
@@ -323,6 +327,9 @@ func _run_sol_objects(path: String) -> void:
 		pool.scrolled(view.x, view.y)
 		pool.room = pool.room_of(view.x, view.y)
 		pool.scan(view.x, view.y, p.x, p.state)
+		# $CDBE -- the hero's own box is built once, before the pool is walked,
+		# so every slot is laid over the same one.
+		pool.hero_box()
 		pool.step(view.x, view.y)
 		var row := PackedStringArray()
 		for i in range(SolObjects.SLOTS):
