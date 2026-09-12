@@ -792,13 +792,22 @@ static func _9954(o: SolObjects, s: int, n: int) -> void:
 
 
 ## $9905 -- the shot: near enough, hurt enough and on the right picture it
-## would let one fly.  The pool of shots is not ported, so it never does.
+## lets one fly.
 static func _9905(o: SolObjects, s: int) -> void:
 	if _9961(o, s) == 0:
 		return
 	if o.far_x(s) >= 0x04 or o.cool[s] < 0x40:
 		_9954(o, s, 0x37)
 		return
+	if o.frame[s] == 0x01:                  # $991D -- one picture of the walk
+		var i: int = SolShots.free_slot(o)  # $9924
+		if i >= 0:
+			SolShots.put(o, i, 0x9C)        # $992D -> $907B
+			# $9936 -- which way it goes is the top bit of the thing's own
+			# first byte, and that same bit is left in the carry, which is
+			# what $A1D7 then adds the place with.
+			var c: int = (o.a[s] >> 7) & 1
+			SolShots.place(o, s, i, 0xFF60 if c == 1 else 0x00A0, 0x0160, c)
 	o.anim_second(s, 0x39)                  # $994F
 
 
@@ -1119,10 +1128,18 @@ static func _9b05(o: SolObjects, s: int) -> void:
 			_9c50(o, s)
 		0x01:
 			o.anim_second(s, 0x2F)
-			if o.frame[s] != 0x01 and o.frame[s] != 0x02 \
-					and o.left[s] == 0xFF:
-				o.kind[s] = (o.kind[s] + 1) & 0xFF
-			_9c50(o, s)
+			# $9C14 -- on two pictures of the walk it lets something out of
+			# itself, and bank six is the one that knows what.
+			if o.frame[s] == 0x01:
+				_9c50(o, s)
+				SolStage.call_at(o, s, 0x82)    # $9C2E
+			elif o.frame[s] == 0x02:
+				_9c50(o, s)
+				SolStage.call_at(o, s, 0x91)
+			else:
+				if o.left[s] == 0xFF:
+					o.kind[s] = (o.kind[s] + 1) & 0xFF
+				_9c50(o, s)
 		0x02:
 			o.far_x(s)
 			o.carry = 1
@@ -1745,6 +1762,10 @@ static func _a2a7(o: SolObjects, s: int) -> void:
 	if _busy(o):
 		return
 	o.anim_second(s, 0x1D)
+	# $A2AF -- one picture of the wind-up, and only while the walk has just
+	# that much of itself left, lets a whole ring of them go.
+	if o.frame[s] == 0x01 and o.left[s] == 0x20:
+		SolStage.call_at(o, s, 0x07)                # $A2C1 -> $A1BD
 	if o.frame[s] == 0x03:
 		return
 	if o.left[s] == 0xFF:
@@ -1793,7 +1814,8 @@ static func _a53d(o: SolObjects, s: int) -> void:
 		0x02, 0x07, 0x0C:
 			o.anim_second(s, 0x10)
 			if o.frame[s] == 0x04:
-				return                          # $A70B -- only a flash
+				SolStage.call_at(o, s, 0x7C)    # $A70B
+				return
 			if o.left[s] == 0xFF:
 				o.kind[s] = (o.kind[s] + 1) & 0xFF
 		0x03, 0x08:
@@ -2553,13 +2575,24 @@ static func _k865c(o: SolObjects, s: int) -> void:
 	o.x[s] = (o.x[s] & 0xFF) | hi << 8
 	if ((s ^ o.clock) & 0x3F) != 0:
 		return
-	var gone := false
-	if o.level.stage == 1 and ((o.cam_x >> 8) & 0xFF) >= 0x70:
-		gone = true
-	elif o.level.stage == 2 and ((o.cam_y >> 8) & 0xFF) >= 0x90:
-		gone = true
-	if gone:
+	# $8670 -- and then it drops one, unless the stage has already scrolled
+	# past the part of itself these belong to.
+	var drop := true
+	if o.level.stage == 1:
+		if ((o.cam_x >> 8) & 0xFF) >= 0x70:
+			drop = false                    # $8689
+	elif o.level.stage == 2:
+		if ((o.cam_y >> 8) & 0xFF) < 0x90:
+			drop = false
+	if not drop:
 		o.id[s] = 0                         # $80B9
+		return
+	var i: int = SolShots.free_slot(o)      # $868D
+	if i < 0:
+		return
+	SolShots.put(o, i, 0xAF)                # $8692 -> $907B
+	SolShots.place_at(o, i, s)              # $A1C2
+	o.s_a[i] = 0x40                         # $869A
 
 
 ## $86A1 -- it hangs there until the hero is close, then picks which way to go.

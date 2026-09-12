@@ -277,6 +277,14 @@ func _run_sol_objects(path: String) -> void:
 		pool.life[i] = int(cfg["olife"][i])
 		pool.pic_lo[i] = int(cfg["opic_lo"][i])
 		pool.pic_hi[i] = int(cfg["opic_hi"][i])
+	if cfg.has("skind"):
+		for i in range(SolObjects.SHOTS):
+			pool.s_kind[i] = int(cfg["skind"][i])
+			pool.s_x[i] = int(cfg["sx"][i])
+			pool.s_y[i] = int(cfg["sy"][i])
+			pool.s_a[i] = int(cfg["sa"][i])
+			pool.s_b[i] = int(cfg["sb"][i])
+			pool.s_life[i] = int(cfg["slife"][i])
 	# $0C is a plain count of pictures, but $0E is a hash of the whole of RAM
 	# ($CD57) and is not ported yet, so both are handed over as the cartridge
 	# had them.  `work/re/sol_minds.md` says what that still owes.
@@ -286,6 +294,7 @@ func _run_sol_objects(path: String) -> void:
 	var steps: Array = cfg["step_at"] if cfg.has("step_at") else noises
 	var rides: Array = cfg["ride_at"] if cfg.has("ride_at") else []
 	var out := PackedStringArray()
+	var shots := PackedStringArray()
 	var n := 0
 	for f in cfg["pads"]:
 		# A picture the cartridge did not have time for: $0C does not move on,
@@ -293,11 +302,16 @@ func _run_sol_objects(path: String) -> void:
 		# the one before is given again.
 		if n > 0 and int(clocks[n]) == int(clocks[n - 1]):
 			out.append(out[n - 1])
+			shots.append(shots[n - 1])
 			n += 1
 			continue
-		# The order of one picture: what the background owed is paid at the
-		# top, then the view moves, then the hero, then the scroll is looked
-		# at again, then the room, then the scan, then the pool itself.
+		# The order of one picture, as $CDB0 keeps it: what the background
+		# owed is paid at the top, then the view moves, then his breath
+		# ($CDB3), then the scan ($CDBB), then his own box ($CDBE) and what
+		# has been thrown at him ($CDCC) -- and only after all of that does he
+		# take his step ($CDD2), the shots theirs ($CDDA) and the pool its
+		# own ($CDDD).  A hit therefore lands one picture before his own clock
+		# counts it, which is what his being thrown back leans on.
 		pool.clock = int(clocks[n])
 		pool.noise = int(noises[n])
 		pool.six = int(sixes[n])
@@ -306,41 +320,62 @@ func _run_sol_objects(path: String) -> void:
 			pool.z58 = int(rides[n])
 		pool.drew()
 		view.step(p.vx, p.vy, p.x, p.y)
+		pool.hero = p
+		pool.ride_hold = view.hold
+		pool.map_kind = view.map_kind
+		pool.stage = int(cfg["stage"]) if cfg.has("stage") else 0
+		pool.z34 = view.fall
+		pool.cam_x = view.x
+		pool.cam_y = view.y
+		# $CDB3 -- his breath, and the bubbles it leaves behind in the pool.
+		SolShots.breathe(pool, p)
+		pool.scrolled(view.x, view.y)
+		pool.room = pool.room_of(view.x, view.y)
+		_hero_into(pool, p)
+		pool.scan(view.x, view.y, p.x, p.state)          # $CDBB
+		# $CDBE -- his box is built once, and every slot is laid over the same
+		# one; $CDCC then asks what has already been thrown at him.
+		pool.hero_box()
+		pool.shots_hit_hero()
 		# $06 is the buttons the cartridge's own hero saw.  It is the pad as
 		# read at $C895, except that a stage's own script may wipe it ($9E73
 		# in bank 8 does, all through stage twenty's opening), and that script
 		# is not ported yet -- so the hero is handed the byte rather than the
 		# pad.  Where no script interferes the two are the same.
-		p.step(int(sixes[n]) if cfg.has("six_at") else int(f))
-		pool.hero = p
-		pool.ride_hold = view.hold
-		pool.hero_x = p.x
-		pool.hero_y = p.y
-		pool.hero_vx = p.vx
-		pool.hero_face = 0x80 if p.face_left else 0x00
-		pool.hero_suit = p.suit
-		pool.hero_flags = p.flags
-		pool.hero_state = p.state
-		pool.map_kind = view.map_kind
-		pool.stage = int(cfg["stage"]) if cfg.has("stage") else 0
-		pool.z34 = view.fall
-		pool.scrolled(view.x, view.y)
-		pool.room = pool.room_of(view.x, view.y)
-		pool.scan(view.x, view.y, p.x, p.state)
-		# $CDBE -- the hero's own box is built once, before the pool is walked,
-		# so every slot is laid over the same one.
-		pool.hero_box()
-		pool.step(view.x, view.y)
+		p.step(int(sixes[n]) if cfg.has("six_at") else int(f))   # $CDD2
+		_hero_into(pool, p)
+		SolShots.step(pool)                              # $CDDA
+		pool.step(view.x, view.y)                        # $CDDD
 		var row := PackedStringArray()
 		for i in range(SolObjects.SLOTS):
 			row.append("%d,%d,%d,%d,%d,%d,%d" % [pool.id[i], pool.x[i],
 					pool.y[i], pool.mind[i], pool.kind[i],
 					pool.pic_lo[i], pool.pic_hi[i]])
 		out.append(" ".join(row))
+		var srow := PackedStringArray()
+		for i in range(SolObjects.SHOTS):
+			srow.append("%d,%d,%d,%d,%d,%d" % [pool.s_kind[i], pool.s_x[i],
+					pool.s_y[i], pool.s_a[i], pool.s_b[i], pool.s_life[i]])
+		shots.append("S " + " ".join(srow))
 		n += 1
 	print("\n".join(out))
+	print("\n".join(shots))
 	if not pool.skipped.is_empty():
 		printerr("minds not read yet: ", pool.skipped)
+	if not pool.shots_skipped.is_empty():
+		printerr("shots not read yet: ", pool.shots_skipped)
+
+
+## The hero's own numbers, copied into the pool.  $CDBB and $CDBE read them
+## before his step and $CDDD after it, so the pool is handed them twice.
+func _hero_into(pool: SolObjects, p: SolPlayer) -> void:
+	pool.hero_x = p.x
+	pool.hero_y = p.y
+	pool.hero_vx = p.vx
+	pool.hero_face = 0x80 if p.face_left else 0x00
+	pool.hero_suit = p.suit
+	pool.hero_flags = p.flags
+	pool.hero_state = p.state
 
 
 ## Everything the cartridge had in the hero when the buttons started, put back

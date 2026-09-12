@@ -19,6 +19,7 @@ class_name SolObjects
 const SLOTS := 16               # $0600..$060F
 const LAST_SPAWNED := 0x0B      # $AEF9 -- the stage's own list only reaches here
 const MARKS := 64               # $0560..$059F, a byte per spawn id
+const SHOTS := 16               # $0780..$078F, the second pool
 
 ## $8059 / $CE44 -- the ring, three screens across and three down, in cells of
 ## 64 px.  Only rows 3..8 are ever looked at, so that is all the data holds.
@@ -61,6 +62,17 @@ var cool := PackedByteArray()       # $06E0: frames since it was last hit
 var life := PackedByteArray()       # $06F0
 
 var mark := PackedByteArray()       # $0560: 0 gone for good, bit7 out already
+
+# The other pool: what things throw at the hero.  Sixteen slots of its own,
+# walked by $B2E9 of bank three before the objects are walked at all, with its
+# own table of behaviours.  `work/re/sol_shots.md` says what each one does.
+var s_kind := PackedByteArray()     # $0780: behaviour, bit7 "still flying"
+var s_x := PackedInt32Array()       # $0790 lo / $07A0 hi
+var s_y := PackedInt32Array()       # $07B0 lo / $07C0 hi
+var s_a := PackedByteArray()        # $07D0
+var s_b := PackedByteArray()        # $07E0
+var s_life := PackedByteArray()     # $07F0
+var shots_skipped := {}             # behaviours not read out of the ROM yet
 
 # Where it is on the screen, in whole pixels, filled by the frame walk.
 var at_x := PackedInt32Array()      # $5C:$5D
@@ -144,6 +156,9 @@ var _groups: Dictionary
 var _hit_pic: Array
 var _hit_box: Array
 var _hit_slow: PackedByteArray
+## $9060 -- fifteen rings of sixteen, the quarter circle $8FF6 turns an angle
+## into a step with.
+var _aim: PackedByteArray
 
 
 func _init(lvl: SolLevel) -> void:
@@ -159,6 +174,7 @@ func _init(lvl: SolLevel) -> void:
 	_hit_pic = h["pic"]
 	_hit_box = h["box"]
 	_hit_slow = PackedByteArray(h["slow"])
+	_aim = PackedByteArray(Nes._load_json("%s/sol/aim.json" % Nes.DATA)["ring"])
 	_born = PackedByteArray(t["born"])
 	_gone = PackedByteArray(t["gone"])
 	_room_group = lvl.room_group
@@ -166,6 +182,10 @@ func _init(lvl: SolLevel) -> void:
 	for arr in [id, mind, pic_lo, pic_hi, face, a, b, c, d, kind,
 			anim_a, anim_b, left, frame, cool, life]:
 		arr.resize(SLOTS)
+	for arr in [s_kind, s_a, s_b, s_life]:
+		arr.resize(SHOTS)
+	s_x.resize(SHOTS)
+	s_y.resize(SHOTS)
 	x.resize(SLOTS)
 	y.resize(SLOTS)
 	at_x.resize(SLOTS)
@@ -695,6 +715,18 @@ func missed(m: int, done: bool) -> void:
 	skipped[key] = int(skipped.get(key, 0)) + 1
 
 
+## And the same for the pool of shots, counted apart from the objects.
+func missed_shot(m: int, done: bool) -> void:
+	var key := "%02X%s" % [m, "-dead" if done else ""]
+	shots_skipped[key] = int(shots_skipped.get(key, 0)) + 1
+
+
+## And an entry of bank six that has not been read either.
+func missed_stage(n: int) -> void:
+	var key := "stage%02X" % n
+	shots_skipped[key] = int(shots_skipped.get(key, 0)) + 1
+
+
 ## $8E44 in bank 12 -- which way the slot lies from the hero, as a heading.
 ## Answers $FF when the two are on top of each other or too far apart to say.
 func angle_to_hero(s: int) -> int:
@@ -801,7 +833,12 @@ func probe_ahead(s: int, ox: int, oy: int) -> int:
 ## height looked at, not of the place along.
 func probe_at(s: int, ox: int, oy: int) -> int:
 	var px: int = (x[s] - ox) if (face[s] & 0x80) != 0 else (x[s] + ox)
-	var py: int = y[s] + oy
+	return probe_point(px, y[s] + oy)
+
+
+## $D032 itself -- the map at a plain place, whoever is asking.  The shots ask
+## it too ($B8E5), with no offset at all.
+func probe_point(px: int, py: int) -> int:
 	if map_kind == 0x3C:
 		# $D03B -- on the carrying map the lift itself is the ground, and it
 		# is solid from its own line down to a whole picture below it.
@@ -997,14 +1034,21 @@ func _react(s: int) -> void:
 	_hurt_hero(s, dmg)
 
 
-## $833C -- the hero is touched.  In the suit he hurts the thing back and the
-## suit takes the blow; without it the blow is his own.
+## $833C -- the hero is touched by a thing.  In the suit he wears the thing
+## down first, and only then does the blow itself land.
 func _hurt_hero(s: int, dmg: int) -> void:
 	if hero.hurt != 0:
 		# $8343 -- a thing hit in the last eight pictures is not hit again.
 		if cool[s] < 0x08:
 			return
 		_wear(s, 1)                     # $83BC
+	blow(dmg)                           # $8354
+
+
+## $8354 -- the blow itself, whatever threw it.  A shot that has reached the
+## hero jumps straight in here ($88F0) with one.
+func blow(dmg: int) -> void:
+	if hero.hurt != 0:
 		if hero.timer < 0x20:
 			return                      # $8359
 		# $8360 -- a step of the suit, and the low three bits back on.
@@ -1025,6 +1069,58 @@ func _hurt_hero(s: int, dmg: int) -> void:
 		d = 1
 		hero.swim = 1
 	hero.suit = hero.suit - d if hero.suit >= d else 0
+
+
+## $8866 -- what has been thrown at the hero, laid over him.  $CDCC asks this
+## once a picture, before the shots have moved and before the pool is walked at
+## all, and only while the hero is old enough to be hurt ($05A3 >= $70).  The
+## first slot that reaches him ends the walk, so no more than one shot lands.
+func shots_hit_hero() -> void:
+	if hero == null or hero_box_flags == 0 or hero.timer < 0x70:
+		return
+	# $CDC8's compare is the last thing to touch the carry before the walk,
+	# and it left it standing.
+	var c := 1
+	for i in range(SHOTS - 1, -1, -1):
+		if (s_kind[i] & 0x80) == 0:
+			continue                    # $886B
+		var r: Array = _shot_on_hero(i, c)
+		c = int(r[1])
+		if not bool(r[0]):
+			continue
+		# $8876 -- it has given what it had, and stops flying.
+		if s_life[i] <= 1:
+			s_kind[i] = s_kind[i] & 0x7F
+			s_a[i] = 0
+			s_life[i] = 0
+		else:
+			s_life[i] -= 1
+		return
+
+
+## $889F -- one shot laid over the hero's box.  The shot is a point: only the
+## hero's own width and height are asked about.  Every compare here is a
+## subtraction that takes the carry the one before it left, so the box reads
+## one further along and one further down than its numbers say.
+func _shot_on_hero(i: int, c: int) -> Array:
+	var r: Array = _sub2(s_x[i], hero_bx, c)
+	if r[1] == 0:
+		return [false, r[1]]            # $88A9
+	var p: Array = _add2(hero_bx, hero_bw, r[1])
+	r = _sub2(s_x[i], p[0], p[1])
+	if r[1] == 1:
+		return [false, r[1]]            # $88C1
+	r = _sub2(s_y[i], hero_by, r[1])
+	if r[1] == 0:
+		return [false, r[1]]            # $88CD
+	p = _add2(hero_by, hero_bh, r[1])
+	r = _sub2(p[0], s_y[i], p[1])
+	if r[1] == 0:
+		return [false, r[1]]            # $88E5
+	if hero.suit == 0:
+		return [false, r[1]]            # $88EA
+	blow(1)                             # $88F0 -> $8354
+	return [true, r[1]]
 
 
 ## $83BC -- the thing loses what the hero's own body took off it.
@@ -1086,3 +1182,36 @@ func _suit(s: int, one: int, two: int, three: int) -> void:
 		pass                            # $82EB -- $070C,Y, the weapon's own
 	a[s] = 0xFF                         # $832E
 	mind[s] = mind[s] | 0x80
+
+
+# ---------------------------------------------------------------------------
+# Angles.  $8FF6 in bank twelve, reached through $C078, is the one place in the
+# game where a direction becomes a step.
+
+
+## $8FF6 -- the step for an angle.  `ring` is what $90 held on the way in: the
+## sixteen-byte ring to read, which is how far the step reaches.
+func aim(ang: int, ring: int) -> Array:
+	var k: int = ((ang & 0x0F) + ring) & 0xFF
+	var one: int = _aim[k] if k < _aim.size() else 0
+	var two := 0
+	if (k & 0x0F) != 0:
+		var j: int = ((k - 1) & 0xFF) ^ 0x0F
+		two = _aim[j] if j < _aim.size() else 0
+	var dx: int
+	var dy: int
+	if (ang & 0x10) == 0:
+		dx = one                        # $9005
+		dy = two
+	else:
+		dy = one                        # $901C
+		dx = two
+	match ang & 0x30:
+		0x10:
+			dx = (-dx) & 0xFFFF         # $9054
+		0x20:
+			dx = (-dx) & 0xFFFF
+			dy = (-dy) & 0xFFFF
+		0x30:
+			dy = (-dy) & 0xFFFF         # $9048
+	return [dx, dy]

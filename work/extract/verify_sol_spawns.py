@@ -29,6 +29,7 @@ GODOT = '/Applications/Godot_mono.app/Contents/MacOS/Godot'
 GAME = os.path.join(ROOT, 'game')
 
 SLOTS = 16
+SHOTS = 16
 MARKS = 64
 LEN = 40                  # short: nothing in the pool has started to move yet
 
@@ -153,6 +154,14 @@ def seed(base):
     cfg['suits'] = base[0x05C4]
     cfg['bonus'] = base[0x05C6] | base[0x05C7] << 8
     cfg['mark'] = [base[0x0560 + i] for i in range(MARKS)]
+    # The sixteen shots.  Э4.2 does not read them either, but a shot can reach
+    # the hero on the very first picture, so the seed carries them too.
+    cfg['skind'] = [base[0x0780 + i] for i in range(SHOTS)]
+    cfg['sx'] = [base[0x0790 + i] | base[0x07A0 + i] << 8 for i in range(SHOTS)]
+    cfg['sy'] = [base[0x07B0 + i] | base[0x07C0 + i] << 8 for i in range(SHOTS)]
+    cfg['sa'] = [base[0x07D0 + i] for i in range(SHOTS)]
+    cfg['sb'] = [base[0x07E0 + i] for i in range(SHOTS)]
+    cfg['slife'] = [base[0x07F0 + i] for i in range(SHOTS)]
     cfg['id'] = [base[0x0600 + i] for i in range(SLOTS)]
     cfg['ox'] = [base[0xA0 + i] | base[0xB0 + i] << 8 for i in range(SLOTS)]
     cfg['oy'] = [base[0xC0 + i] | base[0xD0 + i] << 8 for i in range(SLOTS)]
