@@ -107,7 +107,7 @@ func _ready() -> void:
 		get_tree().quit()
 		return
 	if sollive != "":
-		_run_sol_live(sollive, stage)
+		await _run_sol_live(sollive, stage)
 		get_tree().quit()
 		return
 	if hud != "":
@@ -210,15 +210,44 @@ func _run_sol_play(path: String) -> void:
 	print("\n".join(out))
 
 
+## $91DD -- the two things on the strip that are sprites and not background:
+## the mark of the suit he is wearing, in the top corner, and the five figures
+## of what he has still to be paid, along the bottom.
+##
+## They go into the first eight entries of the table, which is the only part
+## $C72D does not wipe at the top of the frame -- that corner of the table
+## belongs to the strip and nothing else is ever put there.
+func _sol_bar(pool: SolObjects) -> void:
+	# $91E5 -- under the third suit the mark blinks; from the third up it is
+	# steady.
+	var y: int = pool.hero_suit
+	if y < 0x03 and (pool.clock & 0x04) != 0:
+		y = 0                                            # $91F2
+	SolSprites.picture(y + 2, 0, 0x0010, 0x00C8, sol_table)
+	if (pool.clock & 0x01) != 0:
+		return                                           # $9201
+	# $9203 -- what is still to be paid, shown ten times over: four figures of
+	# it and a nought that is always a nought ($9236).
+	var fig := SolSprites.figures(pool.hero_bonus)
+	for i in range(5):
+		var at: int = (1 + i) * 4
+		sol_table.oam[at] = 0xD0                         # $9222
+		sol_table.oam[at + 1] = 0x81 if i == 4 else fig[2 + i]
+		sol_table.oam[at + 2] = 0x01                     # $922E
+		sol_table.oam[at + 3] = (i * 8 + 0x18) & 0xFF    # $9227
+
+
 ## A look at the whole live Solbrain picture: --sollive=BUTTONS,FRAMES[,LETTERS],
 ## where BUTTONS is one pad byte in hex held the whole way and LETTERS, when it
 ## is given, is a set of the three letters put straight into $05A4 so the
-## satellite is handed over without having to be walked to.  What is printed is how
+## satellite is handed over without having to be walked to.  A fourth field is
+## a path, and the picture as it stands at the end is saved there.  What is printed is how
 ## much of the frame is actually filled -- how many object slots are alive, how
 ## many shots and how many things the satellite has thrown, and how many
 ## sprites the table came out holding.  It is a smoke test, not a stand: the
 ## stands compare against the cartridge, this only says the parts are wired.
 func _run_sol_live(spec: String, st: int) -> void:
+	bg.z_index = -1
 	var f := spec.split(",")
 	var pad: int = f[0].hex_to_int()
 	var n: int = int(f[1])
@@ -258,6 +287,10 @@ func _run_sol_live(spec: String, st: int) -> void:
 		drawn = maxi(drawn, d)
 	print("stage %d  slots %d  shots %d  weapons %d  sprites %d  hero %04X %04X"
 			% [st, slots, shot, wep, drawn, sol_hero.x, sol_hero.y])
+	if f.size() > 3:
+		_apply()
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(f[3])
 
 
 ## Э4.1 -- the view, $F1EA and $F24B, held against the cartridge picture by
@@ -1027,6 +1060,12 @@ func _start_sol() -> void:
 	sol_table = SolSprites.Table.new()
 	for i in range(4):
 		sol_table.banks[i] = level_sol.spr_banks[i]
+	# $C72D never wipes the first eight entries: that corner of the table
+	# belongs to the strip, and in the cartridge the strip's own code fills it
+	# every frame.  Only two of the eight are written here so far, so the rest
+	# are parked off the picture once and left there.
+	for i in range(0, SolSprites.FWD_START, 4):
+		sol_table.oam[i] = SolSprites.HIDDEN
 	# The two flat pools draw straight into the table ($C01B/$C030); a stand
 	# that runs the pool for the numbers alone leaves this nought and then
 	# nothing of theirs is drawn at all.
@@ -1085,6 +1124,11 @@ func _step_sol() -> void:
 	pool.scan(sol_view.x, sol_view.y, p.x, p.state)      # $CDBB
 	pool.hero_box()                                      # $CDBE
 	pool.shots_hit_hero()                                # $CDCC
+	# $9163 -- being hit puts an aura round him, one of sixteen pictures by
+	# how much of the hurt is left.  It is drawn before he moves.
+	if p.hurt != 0:
+		SolSprites.picture(0x14 + ((p.hurt >> 3) & 0x0F), 0,
+				0x0080, 0x0018, sol_table)
 	# $91AC -- while the wait for a satellite is between one and $2F he does
 	# not move at all: $9477 is simply not called.
 	if sol_view.hold == 0 or sol_view.hold >= 0x30:
@@ -1095,6 +1139,7 @@ func _step_sol() -> void:
 	# the table here, before the pools do, exactly as the cartridge has it.
 	SolSprites.hero(p, (p.x - sol_view.x) & 0xFFFF,
 			(p.y - sol_view.y) & 0xFFFF, sol_table)
+	_sol_bar(pool)                                       # $91DD
 	_hero_into(pool, p)
 	# $B862 -- one step of a handful of his animations strikes, and what it
 	# strikes with goes into slot fifteen while he is still the one running.

@@ -225,6 +225,30 @@ static func _back_on(at: int, floor_at: int) -> int:
 	return BACK_WRAP if v < floor_at else v
 
 
+## $ECC8 -- what a number is pulled apart by to be shown.
+const FIGURES := [100000, 10000, 1000, 100, 10, 1]
+
+
+## $EC7C -- six figures out of one number, and $ECE7 -- the tile that shows
+## each.  A number too big for six comes out as six nines.
+static func figures(n: int) -> PackedByteArray:
+	var out := PackedByteArray()
+	out.resize(6)
+	var left: int = n
+	for i in range(6):
+		var c := 0
+		while left >= FIGURES[i]:
+			left -= int(FIGURES[i])
+			c += 1
+		out[i] = c
+	if out[0] >= 0x0A:                               # $ECB5
+		for i in range(6):
+			out[i] = 0x09
+	for i in range(6):
+		out[i] = (out[i] * 2 + 0x81) & 0xFF          # $ECE7
+	return out
+
+
 ## $F4E2's own question, asked of one axis: where the little sprite lands, or
 ## -1 when it lands off the screen.  `hi` is the high byte the place kept after
 ## the divide by sixteen, so $0F means "just off the left, or just above".
