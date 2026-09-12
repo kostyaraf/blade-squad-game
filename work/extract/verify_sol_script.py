@@ -246,6 +246,9 @@ def main():
         print('%d of %d stages differ, %d pictures compared, '
               '%d of %d routines seen run'
               % (bad, total, seen, len(SEEN & known), len(known)))
+        rest = sorted(known - SEEN)
+        if rest:
+            print('not seen run: ' + ' '.join(rest))
         return 1 if bad else 0
     finally:
         P.sweep(scratch)

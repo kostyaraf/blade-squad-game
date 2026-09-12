@@ -2464,3 +2464,194 @@ func _call(addr: int) -> void:
 		0xAE38: _xAE38()
 		0xAE4D: _xAE4D()
 		0xAE58: _xAE58()
+
+
+## ---------------------------------------------------------------------------
+## The live build.
+##
+## The script is written against the flat two kilobytes, and the engine keeps
+## the same things in objects of its own.  These two walk between them: `pack`
+## writes into the shadow what the engine owns, `unpack` reads back out what
+## the script changed.  Everything the script touches that the engine has no
+## home for -- the rows of background still owed, the tune stubs, the closing
+## scene's own counters -- simply stays in the shadow from one picture to the
+## next, which is exactly where the cartridge keeps it.
+
+
+## One row is an address, which of the engine's things holds it, the name it
+## goes by there, and how many bytes it takes.  Every row is walked both ways.
+const LINKS := [
+	[0x0002, "flow", "mode", 1],
+	[0x0004, "pool", "pad_new", 1],
+	[0x0006, "pool", "six", 1],
+	[0x000C, "pool", "clock", 1],
+	[0x000D, "flow", "z0d", 1],
+	[0x000E, "pool", "noise", 1],
+	[0x0026, "pool", "z26", 1],
+	[0x0030, "view", "x", 2],
+	[0x0032, "view", "y", 2],
+	[0x0034, "view", "fall", 1],
+	[0x0038, "view", "x_min", 2],
+	[0x003A, "view", "x_end", 2],
+	[0x003C, "view", "y_min", 2],
+	[0x003E, "view", "y_end", 2],
+	[0x0055, "pool", "stage", 1],
+	[0x0057, "flow", "z57", 1],
+	[0x0058, "pool", "z58", 1],
+	[0x005B, "hero", "step_down", 1],
+	[0x0070, "view", "map_kind", 1],
+	[0x0075, "pool", "z75", 1],
+	[0x007F, "pool", "z7f", 1],
+	[0x0080, "hero", "x", 2],
+	[0x0082, "hero", "y", 2],
+	[0x0090, "pool", "z90", 2],
+	[0x0092, "pool", "z92", 2],
+	[0x009D, "pool", "z9d", 1],
+	[0x00F0, "flow", "noise", 1],
+	[0x00F8, "pool", "zf8", 1],
+	[0x0399, "pool", "z399", 1],
+	[0x05A2, "hero", "state", 1],
+	[0x05A3, "hero", "timer", 1],
+	[0x05A6, "hero", "pic_lo", 1],
+	[0x05A7, "hero", "pic_hi", 1],
+	[0x05AB, "hero", "burst", 1],
+	[0x05AC, "hero", "hold", 1],
+	[0x05AD, "hero", "rise", 2],
+	[0x05B2, "hero", "face", 1],
+	[0x05C2, "hero", "hurt", 1],
+	[0x05C3, "view", "hold", 1],
+	[0x05C5, "hero", "suit", 1],
+	[0x05C8, "hero", "shield", 1],
+	[0x05C9, "hero", "jump_flags", 1],
+	[0x05CA, "hero", "seen", 1],
+	[0x05CB, "hero", "flags", 1],
+	[0x05CD, "hero", "ground", 1],
+	[0x05CE, "hero", "anim", 1],
+	[0x05E8, "hero", "jump", 1],
+	[0x05E9, "hero", "gravity", 1],
+	[0x05EA, "hero", "hold_max", 1],
+	[0x05EB, "pool", "room", 1],
+	[0x05F7, "pool", "wants", 1],
+	[0x05FA, "pool", "z5fa", 1],
+]
+
+## The pool's own pages: an address, the name of the list, and whether the list
+## is bytes or whole places kept as two.  Sixteen of each, one per slot.
+const PAGES := [
+	[0x0600, "id", 1], [0x0610, "a", 1], [0x0620, "b", 1], [0x0630, "c", 1],
+	[0x0640, "d", 1], [0x0650, "mind", 1], [0x0660, "pic_lo", 1],
+	[0x0670, "pic_hi", 1], [0x0680, "face", 1], [0x0690, "kind", 1],
+	[0x06A0, "anim_a", 1], [0x06B0, "anim_b", 1], [0x06C0, "left", 1],
+	[0x06D0, "frame", 1], [0x06E0, "cool", 1], [0x06F0, "life", 1],
+	[0x0700, "w_kind", 1], [0x0750, "w_vx", 1], [0x0760, "w_vy", 1],
+	[0x0770, "w_pen", 1], [0x0780, "s_kind", 1], [0x07D0, "s_a", 1],
+	[0x07E0, "s_b", 1], [0x07F0, "s_life", 1],
+]
+
+## The places, which are two bytes a page apart: the low page, the name, and
+## the high page follows it.
+const PLACES := [
+	[0x00A0, "x"], [0x00C0, "y"],
+	[0x0710, "w_x"], [0x0730, "w_y"],
+	[0x0790, "s_x"], [0x07B0, "s_y"],
+]
+
+
+func _who(pool, hero, view, flow) -> Dictionary:
+	return {"pool": pool, "hero": hero, "view": view, "flow": flow}
+
+
+## What the engine holds, into the shadow.
+func pack(pool, hero, view, table, flow) -> void:
+	var who := _who(pool, hero, view, flow)
+	for r in LINKS:
+		var o = who[r[1]]
+		if o == null:
+			continue
+		var v: int = int(o.get(r[2]))
+		p(r[0], v & 0xFF)
+		if r[3] == 2:
+			p(r[0] + 1, (v >> 8) & 0xFF)
+	for r in PAGES:
+		var list = pool.get(r[1])
+		for s in range(list.size()):
+			p(r[0] + s, int(list[s]) & 0xFF)
+	for r in PLACES:
+		var list = pool.get(r[1])
+		for s in range(list.size()):
+			var v: int = int(list[s])
+			p(r[0] + s, v & 0xFF)
+			p(r[0] + 0x10 + s, (v >> 8) & 0xFF)
+	for s in range(pool.mark.size()):
+		p(0x0560 + s, int(pool.mark[s]) & 0xFF)
+	if table != null:
+		for i in range(0x100):
+			p(0x0200 + i, int(table.oam[i]))
+
+
+## And back out again.
+func unpack(pool, hero, view, table, flow) -> void:
+	var who := _who(pool, hero, view, flow)
+	for r in LINKS:
+		var o = who[r[1]]
+		if o == null:
+			continue
+		var v: int = g(r[0])
+		if r[3] == 2:
+			v |= g(r[0] + 1) << 8
+		o.set(r[2], v)
+	for r in PAGES:
+		var list = pool.get(r[1])
+		for s in range(list.size()):
+			list[s] = g(r[0] + s)
+	for r in PLACES:
+		var list = pool.get(r[1])
+		for s in range(list.size()):
+			list[s] = g(r[0] + s) | g(r[0] + 0x10 + s) << 8
+	for s in range(pool.mark.size()):
+		pool.mark[s] = g(0x0560 + s)
+	if table != null:
+		for i in range(0x100):
+			table.oam[i] = g(0x0200 + i)
+	# The three that more than one thing holds a copy of.  $55 is the stage,
+	# which the script writes when a stage is done; $05C3 the wait for a
+	# satellite; $0C the picture count the hero reads as well as the pool.
+	pool.stage = g(0x55)
+	if flow != null:
+		flow.stage = g(0x55)
+	if hero != null:
+		# $05AD:$05AE is a speed and so has a sign; the shadow keeps it as the
+		# two bytes the cartridge does.
+		hero.rise = _s16(g(0x05AD) | g(0x05AE) << 8)
+		# $38:$39 and $3A:$3B are how far along the area may be walked, and both
+		# the view and the hero read them.  Widening them is half of what a
+		# script does, so his copy is put back in step with the view's.
+		hero.x_min = g(0x38) | g(0x39) << 8
+		hero.x_end = g(0x3A) | g(0x3B) << 8
+		hero.stage = g(0x55)
+		hero.clock = g(0x0C)
+		hero.map_kind = g(0x70)
+	pool.born_wait = g(0x05C3)
+	pool.hero_x = g(0x80) | g(0x81) << 8
+	pool.hero_y = g(0x82) | g(0x83) << 8
+	pool.cam_x = g(0x30) | g(0x31) << 8
+	pool.cam_y = g(0x32) | g(0x33) << 8
+	pool.z34 = g(0x34)
+
+
+## $CDB3 in one call: the shadow is filled, the script runs, and what it
+## changed is put back.
+func run(pool, hero, view, table, flow) -> void:
+	cf = 0
+	wild = false
+	owed = false
+	trail.clear()
+	pack(pool, hero, view, table, flow)
+	step()
+	unpack(pool, hero, view, table, flow)
+
+
+## Two bytes with a sign, which is how every speed is kept.
+static func _s16(v: int) -> int:
+	v &= 0xFFFF
+	return v - 0x10000 if v >= 0x8000 else v

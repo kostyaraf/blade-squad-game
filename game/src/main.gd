@@ -1296,10 +1296,6 @@ func _step_sol() -> void:
 	pool.six = held
 	pool.pad_new = held & ~sol_pad_was
 	sol_pad_was = held
-	# $7F is how far the stage's own script has got and $26 what the screen is
-	# still owed; neither is ported, so both stay nought.
-	pool.z7f = 0
-	pool.z26 = 0
 	# $C72D -- a picture starts with an empty table: both ends are put back
 	# where they start, which moves on by $50 every time so that the sprite
 	# the console drops on a crowded line is a different one each picture.
@@ -1311,7 +1307,10 @@ func _step_sol() -> void:
 	pool.z34 = sol_view.fall
 	pool.cam_x = sol_view.x
 	pool.cam_y = sol_view.y
-	SolShots.breathe(pool, p)                            # $CDB3
+	# $CDB3 -- the stage's own script, which is also where his breath and the
+	# bubbles it leaves come from ($A7B0): the script calls them, so nothing
+	# here does.
+	sol_script.run(pool, p, sol_view, sol_table, sol_flow)
 	pool.scrolled(sol_view.x, sol_view.y)
 	pool.room = pool.room_of(sol_view.x, sol_view.y)
 	_hero_into(pool, p)
@@ -2076,6 +2075,10 @@ var sol_table: SolSprites.Table
 ## $02 -- what the game is doing.  A stand that only wants one stage leaves it
 ## nought and steps the stage itself; a whole game hands the picture to this.
 var sol_flow: SolFlow
+## Э4.5 -- the stage's own script, $93B5.  It keeps its own two kilobytes from
+## one picture to the next, because a third of what it touches has no home in
+## the engine at all.
+var sol_script := SolScript.new()
 ## $94 of the picture before: the scan reads last picture's slide, not this
 ## one's ($CF0E runs before $CF11).
 var slid := 0
