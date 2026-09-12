@@ -849,6 +849,9 @@ class FlowStand:
 	func flow_pool():
 		return null
 
+	func flow_tune_end() -> bool:
+		return true
+
 	func flow_play() -> void:
 		asked = "play"
 
@@ -1105,6 +1108,9 @@ func _run_sol_boot(spec: String) -> void:
 			"score": sol_flow.score = int(start[k])
 			"z4c": sol_flow.z4c = int(start[k])
 			"tick": sol_flow.tick = int(start[k])
+			"suit": sol_flow.set_suits_of(flow_pool(), int(start[k]))
+			"bonus": sol_flow.set_owed_of(flow_pool(), int(start[k]))
+			"fd": sol_fd_at = int(start[k])
 	for one in bests:
 		sol_flow.best_scores[int(one[0])] = int(one[1])
 		sol_flow.best_names[int(one[0])] = one[2]
@@ -1120,6 +1126,7 @@ func _run_sol_boot(spec: String) -> void:
 		# so the pad itself is written.
 		pads[0].held = held
 		pads[0].pressed = sol_pad_edge
+		sol_walk_turn = i
 		sol_flow.step(self)
 		# The picture is drawn every turn in the game, and it is the drawing
 		# that hands a screen its own thirty two ($C6E9 with X = $1F).  A walk
@@ -1623,6 +1630,14 @@ func flow_pool() -> SolObjects:
 	return sol_pool
 
 
+## $FD -- the sound driver counts a tune it has played to its end into this,
+## and the paying out of a clearing waits on it once.  No tune is made here, so
+## it is over as soon as it is asked for; a walk that wants the cartridge's own
+## waiting names the turn with `fd:N`.
+func flow_tune_end() -> bool:
+	return sol_fd_at < 0 or sol_walk_turn >= sol_fd_at
+
+
 ## $E776 -- the tune the stage's own record names, which the stage raised is
 ## played to.  No tune is made, so the number is carried and nothing else.
 func flow_tune() -> int:
@@ -1676,6 +1691,10 @@ func _sol_flow_state() -> Dictionary:
 		"75": sol_flow.z75, "7d": sol_flow.z7d,
 		"010a": sol_flow.fade.out[0x0A],
 		"010b": sol_flow.fade.out[0x0B],
+		# $0100..$011F -- the thirty two as the game holds them, which is not
+		# the same as the thirty two the picture unit shows: four of those are
+		# wired to four others and never take what is written to them.
+		"0100": Array(sol_flow.fade.out),
 		"25": sol_flow.fade.count, "26": sol_flow.fade.kind,
 		"27": sol_flow.fade.mask, "28": sol_flow.fade.pace,
 		"0740": Array(sol_flow.z0740),
@@ -1692,6 +1711,11 @@ func _sol_flow_state() -> Dictionary:
 		"names": names, "scores": scores,
 		"lives": sol_flow.lives, "score": sol_flow.score,
 		"screen": sol_flow.screen,
+		# What the paying out of a clearing moves: the suits still on him, what
+		# is still to be paid, and which areas are done with.
+		"05c5": sol_flow.suits_of(flow_pool()),
+		"05c6": sol_flow.owed_of(flow_pool()),
+		"2d": sol_flow.z2d,
 	}
 
 
@@ -2569,6 +2593,11 @@ var sol_pad_edge := 0
 var sol_flow_was := 0
 ## While `--solwalk` is walking, the monitor's own stepping is off.
 var sol_walking := false
+## Which turn of a walk is running, and the turn $FD is to stand on from ($FD
+## is the end of a tune, which no engine here plays).  Below nought the tune is
+## over the moment it is asked for, which is what the live game wants.
+var sol_walk_turn := 0
+var sol_fd_at := -1
 var sol_view: SolCamera
 var sol_table: SolSprites.Table
 ## $02 -- what the game is doing.  A stand that only wants one stage leaves it

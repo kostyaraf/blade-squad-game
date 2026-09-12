@@ -50,6 +50,34 @@ OVER_BEST = 0x21B3
 ## $ECF5 -- where the digits stand in the tiles.
 DIGIT = 0x30
 
+## AREA CLEARED ($E09C and $E117).  The screen is $15, and over it go the
+## ground and the two plates of the area ($E223 by way of $E248 and $E24E).
+## Three counts are written into it every picture ($E28C): what the game has
+## scored at $21D0, how many suits are still on him at $2250 and what is still
+## to be paid at $220F.  The suits are a bar of $7B, the paying leads with $EF,
+## and both counts end with the nought that is always a nought and a blank.
+CLEAR_SCREEN = 0x15
+CLEAR_AT = (0x21D0, 0x2250, 0x220F)
+SUIT_TILE = 0x7B
+BONUS_TILE = 0xEF
+TAIL_TILE = 0x30
+BLANK = 0x00
+
+## $E100 -- how many lines each of the eight bands of the beam is, which the
+## clearing sets up before it begins.  The table is eight long and the last
+## three bytes of it are the routine that follows, which is what the cartridge
+## reads as well.
+CLEAR_BANDS = 0xE100
+CLEAR_BANDS_N = 8
+
+## $E1A9 and $E1DE -- what is paid a picture: one of what is owed, or ten of it
+## while more than a page is left, and $012C for a suit every sixteenth
+## picture.  $E18D -- how long the waits between the steps are.
+PAY_ONE = 1
+PAY_TEN = 10
+PAY_SUIT = 0x012C
+PAY_WAIT = 0x80
+
 ## $D774 low and $D779 high -- where each of the five lines of BEST 5 goes,
 ## and how much further along its name stands.
 BEST_LO = 0xD774
@@ -129,6 +157,17 @@ def main():
         'letter_n': LETTER_N,
         'letter_blank': LETTER_BLANK,
         'blank_tile': BLANK_TILE,
+        'clear_screen': CLEAR_SCREEN,
+        'clear_at': list(CLEAR_AT),
+        'clear_bands': at(CLEAR_BANDS, CLEAR_BANDS_N),
+        'suit_tile': SUIT_TILE,
+        'bonus_tile': BONUS_TILE,
+        'tail_tile': TAIL_TILE,
+        'blank': BLANK,
+        'pay_one': PAY_ONE,
+        'pay_ten': PAY_TEN,
+        'pay_suit': PAY_SUIT,
+        'pay_wait': PAY_WAIT,
     }
     size = write_json(os.path.join(outdir('sol'), 'over.json'), data)
     print('%d plates, %d lines, %d bytes'

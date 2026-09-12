@@ -59,6 +59,94 @@ static func plate(stage: int) -> Array:
 	return [int(_d["ground"]), int(_d["plate"][which])]
 
 
+## $E223 -- which of the six areas a stage belongs to.  AREA CLEARED names it
+## twice: once for the plate it lays, and once for the bit it sets in $2D.
+static func area_of(stage: int) -> int:
+	load_data()
+	var of: Array = _d["plate_of"]
+	return int(of[stage]) if stage < of.size() else 0
+
+
+## $E24E -- the second plate AREA CLEARED lays, on top of the ground and the
+## first.  It is the seven that follow the six of $E248 in the same table.
+static func clear_plate(stage: int) -> int:
+	load_data()
+	return int(_d["plate"][6 + area_of(stage)])
+
+
+## $E0A2 -- the screen AREA CLEARED is drawn on, and $E28C -- the three places
+## it writes a count into: what the game has scored, how many suits are still
+## on him, and what is still to be paid.
+static func clear_screen() -> int:
+	load_data()
+	return int(_d["clear_screen"])
+
+
+static func clear_at() -> Array:
+	load_data()
+	return _d["clear_at"]
+
+
+## $E100 -- how many lines each of the eight bands of the beam is.
+static func clear_bands() -> Array:
+	load_data()
+	return _d["clear_bands"]
+
+
+## $E2A7 -- the suits as a bar: one tile for each still on him, and nothing
+## where there is none.  Eight tiles, the leftmost the first.
+static func suit_bar(suit: int) -> Array:
+	load_data()
+	var out := []
+	for i in range(8):
+		out.append(int(_d["suit_tile"]) if i + 1 <= suit
+				else int(_d["blank"]))
+	return out
+
+
+## $E2CE -- what is still to be paid, as eight tiles: the mark it leads with,
+## five of its six digits, the nought that is always a nought, and a blank.
+static func owed_tiles(bonus: int) -> Array:
+	load_data()
+	var six := digits(bonus)
+	var out: Array = [int(_d["bonus_tile"])]
+	for i in range(1, 6):
+		out.append(int(six[i]))
+	out.append(int(_d["tail_tile"]))
+	out.append(int(_d["blank"]))
+	return out
+
+
+## $E28C -- the same for what the game has scored: six digits, the nought and
+## a blank.
+static func score_tiles(n: int) -> Array:
+	load_data()
+	var out: Array = digits(n)
+	out.append(int(_d["tail_tile"]))
+	out.append(int(_d["blank"]))
+	return out
+
+
+static func pay_one() -> int:
+	load_data()
+	return int(_d["pay_one"])
+
+
+static func pay_ten() -> int:
+	load_data()
+	return int(_d["pay_ten"])
+
+
+static func pay_suit() -> int:
+	load_data()
+	return int(_d["pay_suit"])
+
+
+static func pay_wait() -> int:
+	load_data()
+	return int(_d["pay_wait"])
+
+
 static func over_score_at() -> int:
 	load_data()
 	return int(_d["over_score"])

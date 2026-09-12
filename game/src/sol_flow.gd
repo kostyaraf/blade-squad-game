@@ -40,6 +40,8 @@ const PICK := 0x19          # $DAE3 -- the stage picked, on the way in
 const CHOSEN := 0x1A        # $DBAE -- STAGE SELECT, the five and the one
 const AREA := 0x32          # $DB4A -- the mark of the one picked flashed up
 const RAISE := 0x1D         # $E520 -- raise the stage named in $55
+const CLEAR := 0x1B         # $E09C -- AREA x CLEARED, and the plates of it
+const PAYING := 0x1C        # $E117 -- and what the clearing owes paid out
 ## $D79F -- TEST MODE, the maker's own menu, opened by sixteen buttons in a row
 ## on the title.  Its nine lines are the two tests and seven stages, and those
 ## seven are the only door in the game to the rooms the bosses stand in.
@@ -171,6 +173,9 @@ var z4d := 0                # $4D -- a second clock the screens keep
 var z4e := 0                # $4E -- how long the drawing of him is held
 var z4f := 0                # $4F -- and which drawing it is
 var z2d := 0                # $2D -- which stages are done with, a bit each
+## $05C5 and $05C6:$05C7 where there is no pool to hold them -- see `_suits`.
+var z05c5 := 0
+var z05c6 := 0
 var z05ab := 0              # $05AB -- how long STAGE SELECT waits to pick
 ## $05FD..$05FF -- what this game has scored, and $075B..$077F -- the five
 ## counts BEST 5 shows, the biggest last.  $072B..$074F are the three letters
@@ -253,8 +258,8 @@ var stuck := -1
 
 
 ## One picture: $C9B4.  `host` is what holds the stage itself and must answer
-## `flow_raise(stage)`, `flow_play()`, `flow_hero()`, `flow_view()` and
-## `flow_table()`; `main.gd` does.
+## `flow_raise(stage)`, `flow_play()`, `flow_hero()`, `flow_view()`,
+## `flow_table()` and `flow_tune_end()`; `main.gd` does.
 func step(host) -> void:
 	clock = (clock + 1) & 0xFF
 	# $FADE -- the other count of pictures, raised in the same breath as $0C
@@ -308,6 +313,10 @@ func step(host) -> void:
 			_chosen(host)
 		AREA:
 			_area(host)
+		CLEAR:
+			_area_clear(host)
+		PAYING:
+			_area_pay(host)
 		TEST_LAY:
 			_test_lay(host)
 		TEST_MENU:
@@ -1101,6 +1110,232 @@ func _test_menu(host) -> void:
 func _test_stage() -> void:
 	stage = SolTest.stage_of(mode)                # $CA91 -- $55
 	mode = RAISE                                  # $1D
+
+
+## $E09C, mode $1B -- AREA CLEARED.  The screen is laid, what the game has
+## scored is written into it, the eight bands the beam is cut into are set up,
+## and the mode walks straight on to the paying out below.
+func _area_clear(host) -> void:
+	# $D81F -- the four kilobytes the screen is drawn out of; $C5C9 -- the
+	# thirty two written black, every sprite put out of the picture and both
+	# boards wiped.
+	fade.blank()                                  # $E09F -> $C5C9 -> $C5B0
+	_no_sprites(host)                             # $C5CC -- $C618 with $0C
+	_screen("cleared", 0x00, 0x02)                # $D81F, then $EF8C A=$15
+	scroll_x = 0                                  # $C578 -- $0A and $0B
+	scroll_y = 0
+	# $E0C3 -- $E237 lays the ground and the plate of the area, and $E0C6 the
+	# second plate on top of those.  The laying wipes the board, so the count
+	# is written after it here and not before it as in the cartridge.
+	host.flow_relay([SolOver.clear_screen()] + SolOver.plate(stage)
+			+ [SolOver.clear_plate(stage)])
+	# $E0A7 -- $EC5D turns what the game has scored into six digits and $EF84
+	# writes them at $21D0.
+	SolOver.write(host, int(SolOver.clear_at()[0]), score)
+	mode = PAYING                                 # $E0D2 -- INC $02
+	z4c = 0                                       # $E0D4 -- $DAD8
+	z4d = 0
+	z4e = 0
+	z4f = 0
+	fade.name_table(0x8320)                       # $E0D7 -- $E9B1 A=$20 Y=$83
+	# $E0DE -- $F83D on its own, which is not $C6E9's $F861 and $F83D: every
+	# level back to nought and the table written out there, at whatever pace
+	# was standing.
+	for i in range(8):
+		fade.level[i] = 0
+	fade.ask(SolFade.ONCE, SolFade.ONCE)
+	fade.run()
+	z7d = 0x3F                                    # $E0E1 -- $E10A
+	z75 = 0x3C
+	# $C618 with bit seven -- the whole of $0700 is wiped bar eleven places in
+	# every sixteen below $0780, which is what leaves the five lines of BEST 5
+	# and the tries left standing and takes the two GAME OVER counts its asking
+	# by.
+	z0752 = 0
+	z0753 = 0
+	# $E0E4 -- and then the eight bands: how many lines each is out of $E100,
+	# the first page, and nothing along.
+	var bands: Array = SolOver.clear_bands()
+	for i in range(8):
+		z0740[i] = int(bands[i])
+		z0750[i] = 1
+		z0760[i] = 0
+	noise = 0x08                                  # $E0F9 -- $F0
+
+
+## $E117, mode $1C -- and what the clearing owes paid out.  $4D says which of
+## nine steps it stands on, and $E11C is the table of the nine.  Every step
+## but the last writes the three counts into the screen again ($E28C) and
+## walks the band the writing stands in along ($E255); which of the two comes
+## first is the step's own business, and so is whether it does both.
+func _area_pay(host) -> void:
+	var pool = host.flow_pool()
+	match z4d:
+		0, 6:                                     # $E12E
+			_pay_draw(host, pool)
+			_pay_tick()
+			_pay_bands()
+		1:                                        # $E17C
+			# The tune the clearing is played to, waited out.  No tune is
+			# made here, so the host says at once that it is over; a walk
+			# that wants the cartridge's own waiting says when.
+			if host.flow_tune_end():
+				z4d += 1
+			_pay_draw(host, pool)
+			_pay_tick()
+		2:                                        # $E185
+			_pay_bonus(pool)
+			_pay_draw(host, pool)
+			_pay_tick()
+		3, 5:                                     # $E173
+			z4c = (z4c - 1) & 0xFF
+			if z4c == 0:
+				z4d += 1
+			_pay_draw(host, pool)
+			_pay_tick()
+		4:                                        # $E1C3
+			_pay_suits(pool)
+			_pay_draw(host, pool)
+			_pay_tick()
+		7:                                        # $E1E8
+			fade.ask(SolFade.DOWN, 0xFF)          # $F86D A=$01 Y=$FF
+			z4d += 1
+			_pay_draw(host, pool)
+		8:                                        # $E1F4
+			_pay_end(host)
+
+
+## $E134 -- the seven bands that move: the even ones eight points along and
+## the odd ones eight points back, which is what slides the two halves of the
+## writing apart.  The fifth is left alone because $E255 walks that one, and
+## it is the one the counts are written in.  $E15D then puts eight on $4C, and
+## the step is over when that comes round -- two and thirty pictures.
+func _pay_bands() -> void:
+	for i in range(7, -1, -1):
+		if i == 4:
+			continue
+		if (i & 0x01) == 0:
+			var up: int = z0760[i] + 0x08
+			z0760[i] = up & 0xFF
+			if up > 0xFF:
+				z0750[i] = (z0750[i] + 1) & 0xFF
+		else:
+			var down: int = z0760[i] - 0x08
+			z0760[i] = down & 0xFF
+			if down < 0:
+				z0750[i] = (z0750[i] - 1) & 0xFF
+	var n: int = z4c + 0x08
+	z4c = n & 0xFF
+	if n > 0xFF:
+		z4c = 0x80
+		z4d += 1
+
+
+## $E255 -- the fifth band, one point along every fourth picture.
+func _pay_tick() -> void:
+	if (clock & 0x03) != 0:
+		return
+	z0760[4] = (z0760[4] + 1) & 0xFF
+	if z0760[4] == 0:
+		z0750[4] = (z0750[4] + 1) & 0xFF
+
+
+## $E185, step two -- what is still to be paid handed over to the count, ten a
+## picture while more than a page of it is left and one a picture after that.
+## When there is none left the step is over and the next waits $80 pictures.
+func _pay_bonus(pool) -> void:
+	var owed: int = owed_of(pool)
+	if owed == 0:
+		z4c = SolOver.pay_wait()                  # $E18D
+		z4d += 1
+		return
+	var by: int = SolOver.pay_one()               # $E196
+	if (owed >> 8) != 0:
+		by = SolOver.pay_ten()
+	set_owed_of(pool, (owed - by) & 0xFFFF)         # $E1A1
+	score = (score + by) & 0xFFFFFF               # $E1AF -- $E3D3 A=by Y=0
+	if (clock & 0x07) == 0:                       # $E1B6
+		noise2 = 0x04
+
+
+## $E1C3, step four -- and the suits still on him, one every sixteenth picture
+## and $012C on the count for each.
+func _pay_suits(pool) -> void:
+	var left: int = suits_of(pool)
+	if left == 0:
+		z4c = SolOver.pay_wait()                  # $E1C8
+		z4d += 1
+		return
+	if (tick & 0x0F) != 0:                        # $E1D1 -- $00 and not $0C
+		return
+	noise2 = 0x04                                 # $E1D7
+	set_suits_of(pool, left - 1)
+	score = (score + SolOver.pay_suit()) & 0xFFFFFF
+
+
+## $E1F4, the last step -- the picture walked down to black, and at the bottom
+## of it the bit of $2D that says this area is done with.
+func _pay_end(host) -> void:
+	fade.tick()                                   # $F806
+	if fade.kind != 0:                            # $E1F7 -- $26
+		# $E1FB -- $05F0, which says the queue of writing is empty.  The
+		# engine writes into the board straight and keeps no queue.
+		_pay_tick()
+		return
+	screen = ""                                   # $E203 -- $C578 and $C5DA
+	scroll_x = 0
+	scroll_y = 0
+	z7d = 0                                       # $E206 -- $E105
+	# $E20F -- the area the stage belongs to, through the same $E223 the plate
+	# came from.  The first area is the one the game opens on: it sets no bit
+	# and names the stage that follows outright.  Every other one turns its
+	# bit on in $2D, which is what STAGE SELECT reads and what says the game
+	# is over when all five stand.
+	var area: int = SolOver.area_of(stage)
+	if area == 0:
+		stage = 0x01                              # $E264
+	else:
+		z2d |= 1 << (area - 1)                    # $E27F
+	mode = PICK                                   # $19
+
+
+## $E28C -- the three counts written into the screen, which every step but the
+## last does once a picture: what the game has scored at $21D0, the suits
+## still on him at $2250 and what is still to be paid at $220F.
+func _pay_draw(host, pool) -> void:
+	var at: Array = SolOver.clear_at()
+	var rows: Array = [SolOver.score_tiles(score),
+			SolOver.suit_bar(suits_of(pool)),
+			SolOver.owed_tiles(owed_of(pool))]
+	for k in range(3):
+		var row: Array = rows[k]
+		for i in range(row.size()):
+			host.flow_poke(int(at[k]) + i, int(row[i]))
+
+
+## $05C5 and $05C6:$05C7 -- how many suits are still on him and what is still
+## to be paid.  Both are the pool's while a stage is played; a walk that stands
+## on a screen and nothing else has no pool, and then the flow holds them.
+func suits_of(pool) -> int:
+	return pool.hero_suit if pool != null else z05c5
+
+
+func set_suits_of(pool, v: int) -> void:
+	if pool != null:
+		pool.hero_suit = v
+	else:
+		z05c5 = v
+
+
+func owed_of(pool) -> int:
+	return pool.hero_bonus if pool != null else z05c6
+
+
+func set_owed_of(pool, v: int) -> void:
+	if pool != null:
+		pool.hero_bonus = v
+	else:
+		z05c6 = v
 
 
 ## $D847 -- the number a test stands on, written into the board as two digits,
