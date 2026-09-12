@@ -72,6 +72,8 @@ static func _live(o: SolObjects, s: int, m: int) -> void:
 			_9b05(o, s)
 		0x2A:
 			_99a2(o, s)
+		0x2B:
+			_962e(o, s)
 		0x2C:
 			_9683(o, s)
 		0x2F:
@@ -678,9 +680,7 @@ static func _95b9(o: SolObjects, s: int) -> void:
 	if o.b[s] != 0:
 		o.cool[s] = 0x01 if (o.clock & 0x02) != 0 else 0x03
 		return
-	# $95E7 fills the shot pool, which is not ported yet.
-	o.z90 = 0
-	o.z92 = 0
+	SolShots.shower(o, s)                   # $95E7
 	o.kind[s] = (o.kind[s] + 1) & 0xFF
 	o.cool[s] = 0xFF                        # $80D4
 
@@ -973,6 +973,23 @@ static func _96fc(o: SolObjects, s: int) -> void:
 		o.c[s] = 0x08
 		o.kind[s] = (o.kind[s] + 1) & 0xFF
 	o.move(s)
+
+
+## $962E -- the one that sinks: its own count is its step down, and it leaves
+## something behind at one height and halves its count at another.
+static func _962e(o: SolObjects, s: int) -> void:
+	# $966B -- one off the count, and the count is the step.
+	o.carry = 1
+	o.a[s] = o._sbc(o.a[s], 0x01)
+	o.b[s] = o._sbc(o.b[s], 0x00)
+	o.z52 = o.a[s] | o.b[s] << 8
+	o.move(s)                               # $813F
+	if ((o.y[s] >> 8) & 0xFF) == 0x61:
+		o.hatch(o.x[s] & 0xFF00, 0x6200, 0x36)          # $9652 -> $AAC2
+	if (o.b[s] & 0x80) != 0 and ((o.y[s] >> 8) & 0xFF) < 0x64:
+		o.b[s] = o.b[s] >> 1                # $9645
+		o.mind[s] = (o.mind[s] + 1) & 0xFF  # $964C
+	SolStage.call_at(o, s, 0x7F)            # $964F -> $9666
 
 
 ## $9683 -- twenty two turns, told apart by $0690.
@@ -1305,6 +1322,8 @@ static func _9a64(o: SolObjects, s: int, n: int, count: int) -> void:
 		o.far_x(s)                          # $AE30
 		o.a[s] = o.z94
 	o.anim_second(s, n)
+	if n == 0x33 and o.frame[s] == 0x02:
+		SolStage.call_at(o, s, 0x0A)        # $99EB -> $99FC
 	if o.left[s] != 0xFF:
 		return
 	o.a[s] = count
@@ -1737,7 +1756,17 @@ static func _a1f4(o: SolObjects, s: int) -> void:
 	if _busy(o):
 		return
 	o.anim_second(s, 0x1E)
-	# $A21D -- it would let a shot go on step two; the shot pool is not ported.
+	# $A21D -- and on step two it lets one go, which way round taken from the
+	# hero's own byte and from the side it faces.
+	var i: int = SolShots.free_slot(o)
+	if i >= 0:
+		o.s_b[i] = 0x40 if (o.hero_flags & 0x80) != 0 else 0xC0
+		o.z90 = 0                                   # $A22F
+		o.z92 = 0
+		var c: int = (o.face[s] >> 7) & 1           # $A235
+		SolShots.place(o, s, i, 0x0100 if c == 1 else 0xFF00, 0xFF80, c)
+		SolShots.put(o, i, 0x88)                    # $A247
+		return
 	if o.left[s] == 0xFF:
 		o.kind[s] = 0                               # $A2D4
 
@@ -2086,8 +2115,21 @@ static func _8829(o: SolObjects, s: int) -> void:
 	if far < 0x03 and o.kind[s] != 0x0E:
 		o.kind[s] = 0x0A
 		return
-	# $8848 -- on step two it would let a shot go, but the shot pool is not
-	# ported and always answers "no room".
+	# $8848 -- and on step two it lets one go.  It turns itself round for the
+	# length of the spawn, because $8ECB reads the side it faces, and turns
+	# straight back again.
+	if o.frame[s] != 0x02:                  # $80E6
+		return
+	var i: int = SolShots.free_slot(o)
+	if i < 0:
+		return
+	o.face[s] = (o.face[s] ^ 0xFF) & 0xFF   # $AE24
+	SolShots.put(o, i, 0xAD)                # $8855
+	var c: int = SolShots.face_step(o, s, i)        # $8ECB
+	o.z90 = 0                               # $885D -- and then $8121 wipes it
+	o.z92 = 0
+	SolShots.place(o, s, i, 0x0000, 0xFFC0, c)
+	o.face[s] = (o.face[s] ^ 0xFF) & 0xFF   # $8869
 
 
 ## $898A -- look at the hero and then turn the other way, and answer how far
@@ -2179,8 +2221,14 @@ static func _8e86(o: SolObjects, s: int) -> void:
 			return
 	else:
 		o.anim_second(s, 0x5F)
-		# $8EA9 -- it would let a shot go on step two, but the shot pool is
-		# not ported and always answers "no room".
+		# $8EA9 -- and while there is room it lets one go and does nothing
+		# else; only when the pool is full does the walk step on.
+		var i: int = SolShots.free_slot(o)
+		if i >= 0:
+			SolShots.put(o, i, 0xA1)            # $8EBC
+			var c: int = SolShots.face_step(o, s, i)    # $8ECB
+			SolShots.place(o, s, i, o.z90, 0xFF80, c)
+			return
 	if o.left[s] != 0xFF:                       # $80E0
 		return
 	o.kind[s] = (o.kind[s] + 1) & 0xFF
@@ -2330,10 +2378,21 @@ static func _89d6(o: SolObjects, s: int) -> void:
 	if o.b[s] == 0:
 		o.kind[s] = (o.kind[s] + 1) & 0xFF
 	if o.b[s] == 0x40:
-		# $89E8 -- it would let a puff of smoke go here, but the effects pool
-		# is not ported and always answers "no room", so nothing happens.
-		o.move(s)
-		return
+		# $89E8 -- it lets a puff of smoke go and gathers its own speed at the
+		# same moment; with the pool full it only moves.
+		var i: int = SolShots.free_slot(o)
+		if i < 0:
+			o.move(s)                                   # $8A26
+			return
+		SolShots.put(o, i, 0xAE)                        # $89ED
+		var c: int = SolShots.face_step(o, s, i)        # $8ECB
+		SolShots.place(o, s, i, o.z90, 0x0100, c)       # $89F5
+		if (o.face[s] & 0x80) == 0:                     # $89FA
+			o.c[s] = 0x20
+			o.d[s] = 0x00
+		else:
+			o.c[s] = 0xE0
+			o.d[s] = 0xFF
 	o.nudge(s, 0xFE if (o.d[s] & 0x80) == 0 else 0x02)   # $8B95
 	o.speed_to_step(s)
 	if (o.clock & 1) == 0:

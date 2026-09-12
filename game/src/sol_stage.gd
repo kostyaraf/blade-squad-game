@@ -24,24 +24,18 @@ static func call_at(o: SolObjects, s: int, n: int) -> void:
 			_862c(o, s)
 		0x7C:
 			_8553(o, s)
+		0x0A:
+			_85dc(o, s)
+		0x7F:
+			_84ff(o, s)
 		0x82:
 			_84bc(o, s)
+		0x8E:
+			_8094(o, s)
 		0x91:
 			_84ca(o, s)
 		_:
 			o.missed_stage(n)
-
-
-## $86AB -- the new shot starts at the thing's own place plus $90:$93, with the
-## carry the caller left standing.  What the last add leaves is handed back,
-## because $862C runs sixteen of these in a row on it.
-static func _place(o: SolObjects, s: int, i: int, dx: int, dy: int,
-		c: int) -> int:
-	var r: Array = o._add2(o.x[s], dx, c)
-	o.s_x[i] = r[0]
-	r = o._add2(o.y[s], dy, r[1])
-	o.s_y[i] = r[0]
-	return r[1]
 
 
 ## $84D8 -- the slot that both $84BC and $84CA start from: half a page to the
@@ -58,7 +52,7 @@ static func _84d8(o: SolObjects, s: int) -> int:
 	else:
 		o.s_a[i] = 0xC0                     # $84F0
 		dx = 0xFF50
-	_place(o, s, i, dx, 0xFF50, c)          # $84FB -> $86AB
+	SolShots.place(o, s, i, dx, 0xFF50, c)          # $84FB -> $86AB
 	return i
 
 
@@ -120,5 +114,65 @@ static func _862c(o: SolObjects, s: int) -> void:
 			continue                        # $866E
 		o.s_a[i] = RING_A[n]                # $865C
 		o.s_b[i] = RING_B[n]
-		c = _place(o, s, i, RING_X[n], RING_Y[n], c)
+		c = SolShots.place(o, s, i, RING_X[n], RING_Y[n], c)
 		SolShots.put(o, i, 0x87)            # $8669
+
+
+## $8094, entry $8E -- three bytes off the little table at $80A9 into
+## $011D:$011F, which is where the picture is drawn from.  Nothing of the two
+## pools is touched, so there is nothing here to keep.
+static func _8094(_o: SolObjects, _s: int) -> void:
+	pass
+
+
+## $84FF, entry $7F -- every other picture, one bubble somewhere along the top
+## of the thing, the stirred byte choosing both how far along and how fast.
+static func _84ff(o: SolObjects, s: int) -> void:
+	if (o.clock & 0x01) == 0:
+		return                              # $8502
+	var i: int = SolShots.free_slot(o)      # $8504
+	if i < 0:
+		return
+	o.s_kind[i] = 0x03                      # $8509
+	o.s_life[i] = 0x03
+	o.carry = 1                             # what $8502 left standing
+	o.s_b[i] = o._adc(o.noise & 0x3F, 0x81)
+	o.carry = 1                             # $851A SEC
+	var bx: int = (o.x[s] & 0xFF) \
+			| (o._sbc((o.x[s] >> 8) & 0xFF, 0x01) << 8)
+	var ylo: int = o.y[s] & 0xFF            # $8525
+	o.carry = 0                             # $852A CLC
+	o.s_y[i] = ylo | (o._adc((o.y[s] >> 8) & 0xFF, 0x01) << 8)
+	var along: int = ((o.noise & 0x1F) << 4) & 0xFFFF   # $8536
+	o.carry = 0                             # the last ROL leaves it down
+	var lo: int = o._adc(along & 0xFF, bx & 0xFF)
+	o.s_x[i] = lo | (o._adc((bx >> 8) & 0xFF, (along >> 8) & 0xFF) << 8)
+
+
+## $85DC, entry $0A -- three at once, at three speeds.
+static func _85dc(o: SolObjects, s: int) -> void:
+	_85e8(o, s, 0x10)
+	_85e8(o, s, 0x20)
+	_85e8(o, s, 0x30)
+
+
+## $85E8 -- one of the three.  $847D puts the speed in with the sign the side
+## it faces wants, and leaves in the carry which side that was.
+static func _85e8(o: SolObjects, s: int, n: int) -> void:
+	var i: int = SolShots.free_slot(o)      # $85EA
+	if i < 0:
+		return
+	var c: int = (o.face[s] >> 7) & 1       # $847D ASL
+	if c == 1:
+		o.s_a[i] = n
+	else:
+		o.carry = 0
+		o.s_a[i] = o._sbc(0x01, n)          # $8485
+		c = o.carry
+	o.carry = c                             # $85F6
+	o.s_x[i] = (o.x[s] & 0xFF) \
+			| (o._adc((o.x[s] >> 8) & 0xFF, 0x00 if c == 1 else 0xFF) << 8)
+	var ylo: int = o._adc(o.y[s] & 0xFF, 0x80)          # $8613
+	o.s_y[i] = ylo | (o._adc((o.y[s] >> 8) & 0xFF, 0x00) << 8)
+	SolShots.put(o, i, 0x8C)                # $8621
+	o.s_b[i] = 0xA0                         # $8626

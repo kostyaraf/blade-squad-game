@@ -132,9 +132,9 @@ There are seven call sites in all:
 | the same, one picture later | `$91` | `$84CA` | one `$8B` from the same place |
 | `$A2AF` (bank 3, `$A2A7`) | `$07` | `$862C` | a whole ring of sixteen `$87`, laid out from the four tables at `$866F`..`$869B`; the carry runs on from one to the next |
 | `$A6FB` (bank 3, turns 2/7/12 of `$A53D`) | `$7C` | `$8553` | one `$84`, a page to the side and two pages up |
-| `$9237` | `$8E` | `$8094` | **not read yet** |
-| `$9666` | `$7F` | `$84FF` | **not read yet** |
-| `$99FC` | `$0A` | `$85DC` | **not read yet** |
+| `$9237` (bank 2, `$91EE`) | `$8E` | `$8094` | nothing of either pool: three bytes into `$011D`..`$011F`, which is where the picture is drawn from |
+| `$9666` (bank 2, `$962E`) | `$7F` | `$84FF` | every other picture, one `$03` along the top of the thing — how far along is taken from the noise, and so is its second byte |
+| `$99FC` (bank 2, `$99E1`) | `$0A` | `$85DC` | three `$8C` at once, at the three speeds `$10`, `$20`, `$30`, each half a page below the thing |
 
 `SolStage.call_at` is the ported `$8081`; an entry that has not been read is
 counted as `stage<NN>` beside the behaviours that have not been read.
@@ -159,4 +159,5 @@ wrong was what kept the last object script failing.
   for them;
 * `$88F6` / `$8918` — a shot against an object, not the hero;
 * the hero's own pool at `$0700` (`$869C`), which is a separate sixteen slots;
-* the three bank 6 entries above that no acceptance script has asked for yet.
+* bank 6's entry `$79` (from `$A5BF` in bank 3), and the four entries `$86C8`,
+  `$8269`, `$8180`, `$80D3` that no known call site names.

@@ -280,10 +280,12 @@ static func place_at(o: SolObjects, i: int, s: int) -> void:
 ## the behaviour worked out.  The add takes the carry the last thing before it
 ## left standing, so every caller has to say what that was.
 static func place(o: SolObjects, s: int, i: int, dx: int, dy: int,
-		c: int) -> void:
+		c: int) -> int:
 	var r: Array = o._add2(o.x[s], dx, c)
 	o.s_x[i] = r[0]
-	o.s_y[i] = o._add2(o.y[s], dy, r[1])[0]
+	r = o._add2(o.y[s], dy, r[1])
+	o.s_y[i] = r[0]
+	return r[1]
 
 
 ## $B752 -- the shot is done with: a puff is let out where it stood and the
@@ -410,3 +412,36 @@ static func _held(o: SolObjects, i: int) -> void:
 		return
 	drift(o, i)                             # $BA4F
 	on_screen(o, i)
+
+
+## $8ECB -- the step the side a thing faces gives its shot: the byte itself
+## into $07D0 and a whole page either way into $90:$91.  What the side left in
+## the carry is handed back, because $A1D7 then adds the place with it.
+static func face_step(o: SolObjects, s: int, i: int) -> int:
+	var c: int = (o.face[s] >> 7) & 1       # $8ED3
+	o.s_a[i] = 0x30 if c == 1 else 0xD0
+	o.z90 = 0x0100 if c == 1 else 0xFF00
+	o.z92 = 0
+	return c
+
+
+# $9619 / $9622 -- what each of the nine is and what its second byte holds.
+const SHOWER_KIND := [0x8D, 0x8E, 0x8F, 0x92, 0x93, 0x94, 0x97, 0x98, 0x99]
+const SHOWER_B := [0x00, 0x03, 0x05, 0x00, 0x03, 0x05, 0x00, 0x03, 0x05]
+
+
+## $95E7 -- the shower: nine at once, written straight into the first nine
+## slots whether anything was in them or not.  The carry runs on from one to
+## the next, because nothing between two turns of the loop puts it back.
+static func shower(o: SolObjects, s: int) -> void:
+	o.z90 = 0                               # $8121
+	o.z92 = 0
+	var c: int = (o.face[s] >> 7) & 1       # $95F1
+	var a: int = 0x40 if c == 1 else 0xC0
+	var dx: int = 0x0100 if c == 1 else 0xFF00
+	for j in range(8, -1, -1):
+		o.s_kind[j] = SHOWER_KIND[j]        # $95FF
+		o.s_life[j] = SHOWER_KIND[j]
+		o.s_b[j] = SHOWER_B[j]              # $9608
+		c = place(o, s, j, dx, 0xFF00, c)   # $A1D7
+		o.s_a[j] = a                        # $9612
