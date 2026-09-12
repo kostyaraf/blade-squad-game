@@ -40,6 +40,7 @@ func _ready() -> void:
 	var orbit := ""
 	var solplay := ""
 	var soloam := ""
+	var solstrip := ""
 	var solcam := ""
 	var solshot := ""
 	var solobj := ""
@@ -75,6 +76,7 @@ func _ready() -> void:
 		elif a.begins_with("--orbit="): orbit = a.substr(8)
 		elif a.begins_with("--solplay="): solplay = a.substr(10)
 		elif a.begins_with("--soloam="): soloam = a.substr(9)
+		elif a.begins_with("--solstrip="): solstrip = a.substr(11)
 		elif a.begins_with("--solcam="): solcam = a.substr(9)
 		elif a.begins_with("--solshot="): solshot = a.substr(10)
 		elif a.begins_with("--solobj="): solobj = a.substr(9)
@@ -114,6 +116,10 @@ func _ready() -> void:
 		return
 	if soloam != "":
 		_run_sol_oam(soloam)
+		get_tree().quit()
+		return
+	if solstrip != "":
+		_run_sol_strip(solstrip)
 		get_tree().quit()
 		return
 	if solcam != "":
@@ -246,23 +252,34 @@ func _run_sol_play(path: String) -> void:
 ## $C72D does not wipe at the top of the frame -- that corner of the table
 ## belongs to the strip and nothing else is ever put there.
 func _sol_bar(pool: SolObjects) -> void:
+	_sol_strip(pool.hero_suit, pool.clock, pool.hero_bonus, sol_table)
+
+
+## The strip itself, with nothing round it: what $91DD does to the table, given
+## only the three cells it reads ($05C5, $0C and $05C6:$05C7).  The stand asks
+## for exactly this ($91DD to $923B) and the game calls it once a picture.
+static func _sol_strip(suit: int, clock: int, bonus: int,
+		t: SolSprites.Table) -> void:
 	# $91E5 -- under the third suit the mark blinks; from the third up it is
 	# steady.
-	var y: int = pool.hero_suit
-	if y < 0x03 and (pool.clock & 0x04) != 0:
+	var y: int = suit
+	if y < 0x03 and (clock & 0x04) != 0:
 		y = 0                                            # $91F2
-	SolSprites.picture(y + 2, 0, 0x0010, 0x00C8, sol_table)
-	if (pool.clock & 0x01) != 0:
+	# $91FB -- $C009, which is $F3F0: whole pixels and the forward walk, not
+	# the divider $CF73 goes through.  The mark stands at sixteen across and
+	# two hundred down, on the screen and not in the level.
+	SolSprites.forward(y + 2, 0, 0x10, 0xC8, t)
+	if (clock & 0x01) != 0:
 		return                                           # $9201
 	# $9203 -- what is still to be paid, shown ten times over: four figures of
 	# it and a nought that is always a nought ($9236).
-	var fig := SolSprites.figures(pool.hero_bonus)
+	var fig := SolSprites.figures(bonus)
 	for i in range(5):
 		var at: int = (1 + i) * 4
-		sol_table.oam[at] = 0xD0                         # $9222
-		sol_table.oam[at + 1] = 0x81 if i == 4 else fig[2 + i]
-		sol_table.oam[at + 2] = 0x01                     # $922E
-		sol_table.oam[at + 3] = (i * 8 + 0x18) & 0xFF    # $9227
+		t.oam[at] = 0xD0                                 # $9222
+		t.oam[at + 1] = 0x81 if i == 4 else fig[2 + i]
+		t.oam[at + 2] = 0x01                             # $922E
+		t.oam[at + 3] = (i * 8 + 0x18) & 0xFF            # $9227
 
 
 ## A look at the whole live Solbrain picture, run through $02 from the stage
@@ -1223,6 +1240,31 @@ func _run_sol_oam(path: String) -> void:
 		for i in range(256):
 			t.oam[i] = int(was[i])
 		SolSprites.hero(p, int(f["x"]), int(f["y"]), t)
+		out.append("%s %d %d %d %d %d %d %d %d" % [t.oam.hex_encode(),
+				t.count, t.turn, t.fwd, t.back,
+				t.banks[0], t.banks[1], t.banks[2], t.banks[3]])
+	print("\n".join(out))
+
+
+## Э4.11 acceptance: --solstrip=FILE, the strip at the bottom of the picture.
+## One record per picture, and each one is the whole table as it stood at $91DD
+## plus the three cells the strip reads.
+func _run_sol_strip(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var out := PackedStringArray()
+	for f in cfg["frames"]:
+		var t := SolSprites.Table.new()
+		t.count = int(f["count"])
+		t.turn = int(f["turn"])
+		t.fwd = int(f["fwd"])
+		t.back = int(f["back"])
+		var bk: Array = f["banks"]
+		for i in range(4):
+			t.banks[i] = int(bk[i])
+		var was: Array = f["oam"]
+		for i in range(256):
+			t.oam[i] = int(was[i])
+		_sol_strip(int(f["suit"]), int(f["clock"]), int(f["bonus"]), t)
 		out.append("%s %d %d %d %d %d %d %d %d" % [t.oam.hex_encode(),
 				t.count, t.turn, t.fwd, t.back,
 				t.banks[0], t.banks[1], t.banks[2], t.banks[3]])

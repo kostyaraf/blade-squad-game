@@ -405,6 +405,27 @@ thing at all.
 
 Measured: **0 of 189** — the twenty one states over nine stages.
 
+### The strip, `$91DD` (Э4.11)
+
+Everything the player is told while a stage plays stands in the bottom left
+corner, and all of it is sprites: the mark of the suit (`$05C5` plus two out of
+the picture list, blinking below the third suit) and five figures of what is
+still to be paid (`$05C6:$05C7` through `$EC7C`/`$ECE7`).  Nothing on the strip
+is background.
+
+The mark goes in through `$C009`, which is `$F3F0` -> `$F6E2`: **whole pixels
+and the forward walk**, not the divider `$CF73` (`$F3DC` -> `$F43F`) that every
+object goes through.  The port had it through the divider, so the mark stood at
+one across and twelve down instead of sixteen and two hundred — in the corner
+of the sky instead of on the strip.
+
+`work/extract/verify_sol_strip.py`: the cartridge is stopped at `$91DD` and at
+`$923B` (the instruction after the strip), the engine is handed the first
+record and must hand back the second — the whole table, the four cursors and
+the four tile books.  Eight walks, one per suit, and inside each the sum owed
+is stood at nought, at one of each figure, at the rollover and past what five
+figures hold.  **0 из 8.**
+
 ## 7. How to measure any of it again
 
 ```python
