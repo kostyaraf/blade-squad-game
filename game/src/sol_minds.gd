@@ -154,6 +154,10 @@ static func _live(o: SolObjects, s: int, m: int) -> void:
 			_acb5(o, s, 0x00)              # $ACB5
 		0x1A:
 			_a511(o, s)
+		0x3B:
+			_8cc9(o, s)
+		0x0C:
+			_ae7b(o, s)
 		0x3F:
 			_pickup(o, s)
 		_:
@@ -2197,8 +2201,8 @@ static func _a2db(o: SolObjects, s: int) -> void:
 			ty = (ty + 0x0200) & 0xFFFF
 		o.turn_step(s, o.angle_to(s, o.hero_x, ty))
 		o.heading(o.a[s], 0x00)
-		if (o.clock & 0x07) == 0:
-			o.b[s] = (o.b[s] + 1) & 0xFF
+	if (o.clock & 0x07) == 0:
+		o.b[s] = (o.b[s] + 2) & 0xFF        # $A36B -- twice, not once
 	o.spin(o.b[s], 0x10)                            # $A371
 	o.carry = 0
 	var lo: int = o._adc(o.z50 & 0xFF, o.z90 & 0xFF)
@@ -2914,17 +2918,27 @@ static func _8af5(o: SolObjects, s: int, n: int) -> void:
 ## other depending on which side of the thing the hero stands.
 static func _8b4d(o: SolObjects, s: int) -> void:
 	o.b[s] = 0
+	_8b55(o, s)
+
+
+## $8B55 -- the same without the clearing, and it answers with the carry: up
+## where it turned away early, down where it took the step.  What follows it
+## reads the map with that carry still in hand.
+static func _8b55(o: SolObjects, s: int) -> void:
 	o.face_hero(s)
 	if ((o.face[s] ^ o.d[s]) & 0x80) != 0:
 		if (o.b[s] & 0x01) != 0:
+			o.carry = 1                     # $8B64
 			return
 		o.nudge(s, 0x01 if (o.d[s] & 0x80) == 0 else 0xFF)
 	else:
 		if (o.b[s] & 0x02) != 0:
+			o.carry = 1                     # $8B7A
 			return
 		if o.z94 >= 0x02:
 			o.nudge(s, 0xFE if (o.d[s] & 0x80) == 0 else 0x02)
 	o.speed_to_step(s)
+	o.carry = 0                             # $8B88
 
 
 ## $8F8D -- the one that keeps its back to the hero: it takes its heading from
@@ -4269,3 +4283,149 @@ static func _acb5(o: SolObjects, s: int, way: int) -> void:
 			o.s_y[j] = lo | hi << 8
 			# $AD04 -- the noise ($F1 = $12) is not modelled.
 	_ad08(o, s)                                         # $AD08
+
+## $8DC5 -- how the hunter reads a place.  Solid is one answer and so are the
+## two kinds of floor it will not cross; only the one kind it may cross comes
+## back as nothing, and the compare on the way leaves a carry the next add
+## takes.
+static func _8dc5(o: SolObjects, v: int) -> int:
+	if v >= 0x80:
+		return v                                        # $8DD6
+	var w: int = v & 0xE0                               # $8DC7
+	o.carry = 1 if w >= 0x60 else 0                     # $8DC9
+	if w == 0x60:
+		return 0xFF                                     # $8DD4
+	if (w & 0x20) == 0:
+		return 0xFF
+	return 0x00                                         # $8DD1
+
+
+## $B189 -- the offset kept in $90:$92 is laid out around the slot: against it
+## where the byte handed in is negative, along it where it is not.  The add
+## along takes the carry standing, so the callers are careful with it.
+static func _b189(o: SolObjects, s: int, t: int) -> void:
+	if t >= 0x80:
+		o.carry = 1                                     # $B18B
+		var l: int = o._sbc(o.x[s] & 0xFF, o.z90 & 0xFF)
+		var h: int = o._sbc((o.x[s] >> 8) & 0xFF, (o.z90 >> 8) & 0xFF)
+		o.z90 = l | h << 8
+	else:
+		var l2: int = o._adc(o.x[s] & 0xFF, o.z90 & 0xFF)   # $B19B
+		var h2: int = o._adc((o.x[s] >> 8) & 0xFF,
+				(o.z90 >> 8) & 0xFF)
+		o.z90 = l2 | h2 << 8
+	o.carry = 0                                         # $B1A7
+	var yl: int = o._adc(o.y[s] & 0xFF, o.z92 & 0xFF)
+	var yh: int = o._adc((o.y[s] >> 8) & 0xFF, (o.z92 >> 8) & 0xFF)
+	o.z92 = yl | yh << 8
+
+
+## $8CC9 -- [$3B] the hunter that runs the floors.  It walks towards the hero
+## for $64 pictures, looking where it is going both down and along and stopping
+## dead where the floor it reads is one it will not cross.  The moment the hero
+## is within a picture of it -- down first, along second -- it settles into one
+## of two turns, and each of those lets a shot go on the third picture of its
+## animation and then starts the walk again.
+static func _8cc9(o: SolObjects, s: int) -> void:
+	var k: int = o.kind[s]
+	if k == 0x00:
+		o.d[s] = 0x64                                   # $8D2F
+		o.anim_second(s, 0x64)                          # $8D32
+		if (((o.clock >> 7) ^ s) & 0x01) != 0:          # $8D37
+			_8eb3(o, s)                                 # $8D40
+		return
+	if k == 0x01:
+		o.d[s] = (o.d[s] - 1) & 0xFF                    # $8D44
+		if o.d[s] == 0x00:
+			o.kind[s] = 0                               # $80B3
+			return
+		o.anim_second(s, 0x63)                          # $8D4C
+		o.carry = 1 if o.frame[s] >= 0x03 else 0        # $8D54
+		o.face[s] = 0xFF if o.carry != 0 else 0x00      # $8D5C
+		o.far_y(s)                                      # $AE5E
+		o.far_x(s)                                      # $AE30
+		if (o.z92 & 0xFF) < 0x40 and ((o.z92 >> 8) & 0xFF) == 0:
+			o.kind[s] = 0x02                            # $8DBD
+			o.face_hero(s)                              # $8118
+			return
+		if o.z95 < 0x80 and (o.z90 & 0xFF) < 0x40 \
+				and ((o.z90 >> 8) & 0xFF) == 0:
+			o.kind[s] = 0x03                            # $8DB9
+			o.face_hero(s)                              # $8118
+			return
+		o.turn_toward_hero(s)                           # $802B
+		o.step_of(s)                                    # $8066
+		o.z90 = 0                                       # $8121
+		o.z92 = 0x0100 if ((o.z52 >> 8) & 0xFF) >= 0x80 else 0xFF00
+		if _8dc5(o, o.probe_above(s, o.z92)) >= 0x80:   # $B151, $8D90
+			o.z52 = 0                                   # $8133
+		o.z90 = 0x0100                                  # $8121, $8D9B
+		o.z92 = 0
+		_b189(o, s, (o.z50 >> 8) & 0xFF)                # $8D9F
+		o.z9d = o.z92 & 0xFF
+		if _8dc5(o, o.probe(o.z90, o.z92)) >= 0x80:     # $C00C, $8DAB
+			o.z50 = 0                                   # $8DB0
+		o.move(s)                                       # $813F
+		return
+	if k == 0x02:
+		o.anim_second(s, 0x65)                          # $8D0D
+		if o.frame[s] == 0x02:                          # $80E6
+			var j: int = SolShots.free_slot(o)          # $ADBA
+			if j >= 0:
+				o.s_b[j] = 0x04                         # $8D1C
+				_8ebc(o, s, j, 0xA5)                    # $8D21
+				return
+		if o.left[s] == 0xFF:                           # $8D24
+			o.kind[s] = 0                               # $80B3
+		return
+	o.anim_second(s, 0x66)                              # $8CD6
+	if o.frame[s] == 0x02:                              # $80E6
+		var j2: int = SolShots.free_slot(o)             # $ADBA
+		if j2 >= 0:
+			o.s_b[j2] = 0x04                            # $8CE5
+			SolShots.put(o, j2, 0xA4)                   # $907B
+			# $8CED -- the noise ($F1 = $13) is not modelled.
+			o.z90 = 0x0080                              # $8121, $8CFA
+			o.z92 = 0xFE00                              # $8CF4, $8CF6
+			if (o.face[s] & 0x80) == 0:                 # $8CFF
+				o.z90 = (o.z90 - 0x0100) & 0xFFFF       # $8D01
+			o.s_a[j2] = 0xD0                            # $8D05
+			# $8CD9 left the carry up, and $A1D7 adds the place with it.
+			SolShots.place(o, s, j2, o.z90, o.z92, 1)   # $A1D7
+			return
+	if o.left[s] == 0xFF:                               # $8D24
+		o.kind[s] = 0                                   # $80B3
+
+## $AE7B -- [$0C] the one that swings about the height it was left at.  That
+## height is written into $0640:$0690 the first time it is looked at; $0610
+## counts up and is the step down, turned round by the top bit of $0620, and
+## every time it comes back to where it started the count goes back to $F0 and
+## the turn is flipped.  Its step along is a flat $14, either way by the side
+## it faces.
+static func _ae7b(o: SolObjects, s: int) -> void:
+	# $AED7 -- the trail it draws behind itself is not modelled.
+	var flip := false
+	if o.kind[s] == 0x00 and o.d[s] == 0x00:            # $AE7E, $AE83
+		o.d[s] = o.y[s] & 0xFF                          # $AE8A
+		o.kind[s] = (o.y[s] >> 8) & 0xFF                # $AE8F
+		flip = true                                     # $AE92 either way
+	else:
+		o.carry = 1
+		var l: int = o._sbc(o.y[s] & 0xFF, o.d[s])      # $AE96
+		var h: int = o._sbc((o.y[s] >> 8) & 0xFF, o.kind[s])
+		flip = l == 0x00 and h == 0x00
+	if flip:
+		o.a[s] = 0xF0                                   # $AEA4
+		o.b[s] = (o.b[s] ^ 0x80) & 0xFF                 # $AEAA
+	o.a[s] = (o.a[s] + 1) & 0xFF                        # $AEAF
+	o.z52 = (o.z52 & 0xFF00) | o.a[s]                   # $AEB5
+	if o.a[s] >= 0x80:
+		o.z52 = (o.z52 - 0x0100) & 0xFFFF               # $AEB9
+	if (o.b[s] & 0x80) != 0:                            # $AEBE
+		o.carry = 1                                     # $818F
+		o.z52 = o._neg16(o.z52)
+	if (o.face[s] & 0x80) != 0:                         # $AECC
+		o.z50 = ((o.z50 - 0x0100) & 0xFF00) | 0xEC      # $AEC3
+	else:
+		o.z50 = (o.z50 & 0xFF00) | 0x14                 # $AECE
+	o.move(s)                                           # $AED4

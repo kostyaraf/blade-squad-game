@@ -37,7 +37,7 @@ TAIL = 60                 # room left after the picture the behaviour starts on
 SCRIPTED = {'s19'}
 
 
-def spot(state, pads, play, rows, ticks):
+def spot(rows, ticks):
     """The first finished picture that has something in the pool to borrow."""
     done = S.finished(ticks, len(rows))
     for k in range(1, max(1, len(rows) - TAIL)):
@@ -57,23 +57,34 @@ def main():
         tables = [0x00]
     if '--dead' in sys.argv:
         tables = [0x80]
-    labels = places or ['s0']
+    # Without a stage asked for, the first one that has something in its pool
+    # to borrow is used and the rest are left alone: one stage is enough to ask
+    # every behaviour what it does, and sixty four of them twice over is
+    # already as long a run as the acceptance wants.
+    labels = places or ['s%d' % n for n in range(20) if n != 19]
     scratch = P.scratch('behaviours')
     try:
         bad = total = known = 0
-        pads = S.hold(LEN, 0)
+        WAYS = (('still', S.hold(LEN, 0)), ('walking', S.hold(LEN, 0x01)))
         for label in labels:
             stage = int(label[1:])
             first = V.BASE if stage == 0 else P.WARP_IN
             play = first + 1
             state = V.stand(scratch, label, stage, None)
             cfg0 = S.seed(P.ram(state, [(first, '-')], first))
-            rows, ticks = S.cartridge(state, pads, play, full=True)
-            pick = spot(state, pads, play, rows, ticks)
+            pick = None
+            for way, pads in WAYS:
+                rows, ticks = S.cartridge(state, pads, play, full=True)
+                pick = spot(rows, ticks)
+                if pick is not None:
+                    break
             if pick is None:
                 print('%-6s nothing in the pool to borrow' % label)
+                sys.stdout.flush()
                 continue
             at, slot = pick
+            print('%-6s %s, slot %d from frame %d' % (label, way, slot, at))
+            sys.stdout.flush()
             for top in tables:
                 for m in range(0x40):
                     if only and m not in only:
@@ -106,8 +117,10 @@ def main():
                     got, gmark = C.engine(cfg, scratch)
                     n = min(len(want), len(got), len(gmark))
                     # Once the slot is empty the behaviour is over, and what
-                    # the pool does after belongs to somebody else.
-                    for i in range(n):
+                    # the pool does after belongs to somebody else.  The look
+                    # starts on the picture the behaviour is written in, not
+                    # before it: the slot is very often still empty up to then.
+                    for i in range(at, n):
                         if want[i][slot][0] == 0:
                             n = i + 1
                             break
@@ -137,6 +150,10 @@ def main():
                     bad += 1
                     print('%-6s %-10s %s differs on frame %d'
                           % (label, name, kind, where))
+                    if os.environ.get('BEH_DUMP'):
+                        for i in range(max(at, where - 6), min(n, where + 2)):
+                            print('  f%d want %s' % (i, want[i][slot],))
+                            print('      got %s' % (got[i][slot],))
                     if kind == 'pool':
                         for s in range(SLOTS):
                             if want[where][s] == got[where][s]:
@@ -154,6 +171,8 @@ def main():
                                       ' engine $%02X'
                                       % (i, wmark[where][i], gmark[where][i]))
                     sys.stdout.flush()
+            if not places:
+                break
         print('%d of %d behaviours differ, %d more only where stage twenty'
               ' writes the pool itself' % (bad, total, known))
         return 1 if bad else 0
