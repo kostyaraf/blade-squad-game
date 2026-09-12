@@ -1072,10 +1072,10 @@ static func _turn_rise(o: SolObjects, f: int) -> void:
 
 
 ## $B953 -- the one that turns the world over.  While the map lets it through
-## it simply sinks by its own byte; where it stops, and only while the screen
-## is owed nothing or owed the last of a room, up becomes down: the hero's flag
-## turns, the fall he had is turned round with it, and the three numbers a jump
-## is made of are rewritten.  A $87 is left where it stopped either way.
+## it simply sinks by its own byte; where it stops, and only while no tune but
+## $00 or $06 is playing ($26), up becomes down: the hero's flag turns, the
+## fall he had is turned round with it, and the three numbers a jump is made of
+## are rewritten.  A $87 is left where it stopped either way.
 static func _turn_world(o: SolObjects, i: int) -> void:
 	o.z90 = 0                               # $8121
 	o.z92 = 0

@@ -121,7 +121,7 @@ var clock := 0                      # $0C -- one up every frame
 var noise := 0                      # $0E -- the hash of the RAM $CD57 stirs
 var six := 0                        # $06 -- the other stirred byte
 var z7f := 0                        # $7F -- how far the stage's own script is
-var z26 := 0                        # $26 -- what the screen is still owed
+var z26 := 0                        # $26 -- which tune is asked for ($F86D)
 ## $0399:$039B -- the three numbers of the tile set the screen is next owed.
 ## Only the first is ever read back ($B966 asks whether the world is already
 ## the other way up), so only the first has anything leaning on it.
