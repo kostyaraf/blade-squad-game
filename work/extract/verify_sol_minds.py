@@ -58,13 +58,17 @@ def main():
                 cfg['pads'] = pads
                 cfg['clock_at'] = [t[0] for t in ticks]
                 cfg['noise_at'] = [t[1] for t in ticks]
+                cfg['six_at'] = [t[2] for t in ticks]
+                cfg['step_at'] = [t[3] for t in ticks]
+                cfg['ride_at'] = [t[4] for t in ticks]
                 got, missing = engine(cfg, scratch)
                 for k, v in missing.items():
                     owed[k] = owed.get(k, 0) + v
                 n = min(len(want), len(got))
+                done = S.finished(ticks, n)
                 where = None
                 for i in range(n):
-                    if want[i] != got[i]:
+                    if done[i] and want[i] != got[i]:
                         where = i
                         break
                 if where is None and len(want) != len(got):

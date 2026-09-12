@@ -251,6 +251,9 @@ func _run_sol_objects(path: String) -> void:
 	pool.seen_x = int(cfg["seen_x"])
 	pool.seen_y = int(cfg["seen_y"])
 	pool.room = int(cfg["room"])
+	pool.z75 = int(cfg["z75"]) if cfg.has("z75") else 0
+	pool.z58 = int(cfg["z58"]) if cfg.has("z58") else 0
+	pool.z26 = int(cfg["z26"]) if cfg.has("z26") else 0
 	for i in range(SolObjects.MARKS):
 		pool.mark[i] = int(cfg["mark"][i])
 	for i in range(SolObjects.SLOTS):
@@ -277,21 +280,43 @@ func _run_sol_objects(path: String) -> void:
 	# had them.  `work/re/sol_minds.md` says what that still owes.
 	var clocks: Array = cfg["clock_at"]
 	var noises: Array = cfg["noise_at"]
+	var sixes: Array = cfg["six_at"] if cfg.has("six_at") else noises
+	var steps: Array = cfg["step_at"] if cfg.has("step_at") else noises
+	var rides: Array = cfg["ride_at"] if cfg.has("ride_at") else []
 	var out := PackedStringArray()
 	var n := 0
 	for f in cfg["pads"]:
+		# A picture the cartridge did not have time for: $0C does not move on,
+		# and neither does anything else.  The stand still asks for a row, so
+		# the one before is given again.
+		if n > 0 and int(clocks[n]) == int(clocks[n - 1]):
+			out.append(out[n - 1])
+			n += 1
+			continue
 		# The order of one picture: what the background owed is paid at the
 		# top, then the view moves, then the hero, then the scroll is looked
 		# at again, then the room, then the scan, then the pool itself.
 		pool.clock = int(clocks[n])
 		pool.noise = int(noises[n])
+		pool.six = int(sixes[n])
+		pool.z7f = int(steps[n])
+		if n < rides.size():
+			pool.z58 = int(rides[n])
 		pool.drew()
 		view.step(p.vx, p.vy, p.x, p.y)
-		p.step(int(f))
+		# $06 is the buttons the cartridge's own hero saw.  It is the pad as
+		# read at $C895, except that a stage's own script may wipe it ($9E73
+		# in bank 8 does, all through stage twenty's opening), and that script
+		# is not ported yet -- so the hero is handed the byte rather than the
+		# pad.  Where no script interferes the two are the same.
+		p.step(int(sixes[n]) if cfg.has("six_at") else int(f))
 		pool.hero_x = p.x
 		pool.hero_y = p.y
 		pool.hero_vx = p.vx
 		pool.hero_face = 0x80 if p.face_left else 0x00
+		pool.hero_suit = p.suit
+		pool.hero_flags = p.flags
+		pool.hero_state = p.state
 		pool.map_kind = view.map_kind
 		pool.stage = int(cfg["stage"]) if cfg.has("stage") else 0
 		pool.z34 = view.fall

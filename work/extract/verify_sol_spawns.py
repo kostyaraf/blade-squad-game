@@ -72,7 +72,7 @@ def ids(rows):
 
 # $0C counts pictures; $0E is the hash of RAM that $CD57 stirs, and until that
 # is ported the engine is handed the cartridge's own.
-TICKS = [0x0C, 0x0E]
+TICKS = [0x0C, 0x0E, 0x06, 0x7F, 0x58]
 FIELDS = [0x0650, 0x0690, 0x0660, 0x0670]
 
 
@@ -85,7 +85,7 @@ def cartridge(state, pads, base, full=False):
     out = []
     ticks = []
     for _fr, c in rows[:-1]:
-        ticks.append((c[0x0C], c[0x0E]))
+        ticks.append((c[0x0C], c[0x0E], c[0x06], c[0x7F], c[0x58]))
         if full:
             out.append(tuple(
                 (c[0x0600 + i], c[0xA0 + i] | c[0xB0 + i] << 8,
@@ -98,6 +98,20 @@ def cartridge(state, pads, base, full=False):
                  c[0xC0 + i] | c[0xD0 + i] << 8)
                 for i in range(SLOTS)))
     return out, ticks
+
+
+def finished(ticks, n):
+    """Which of the emulator's pictures hold a whole one of the game's own.
+
+    The game does not always fit a picture into the frame it began in: $0C
+    stays where it was and the rest of the walk over the pool is finished in
+    the next frame.  Only the last frame of such a run holds a state worth
+    comparing; the ones before it are caught halfway.
+    """
+    out = []
+    for i in range(n):
+        out.append(i + 1 >= len(ticks) or ticks[i][0] != ticks[i + 1][0])
+    return out
 
 
 def engine(cfg, scratch):
@@ -133,6 +147,9 @@ def seed(base):
     cfg['seen_y'] = base[0x05E2] | base[0x05E3] << 8
     cfg['room'] = base[0x05EB]
     cfg['stage'] = base[0x55]
+    cfg['z75'] = base[0x75]
+    cfg['z58'] = base[0x58]
+    cfg['z26'] = base[0x26]
     cfg['mark'] = [base[0x0560 + i] for i in range(MARKS)]
     cfg['id'] = [base[0x0600 + i] for i in range(SLOTS)]
     cfg['ox'] = [base[0xA0 + i] | base[0xB0 + i] << 8 for i in range(SLOTS)]
@@ -174,11 +191,15 @@ def main():
                 cfg['pads'] = pads
                 cfg['clock_at'] = [t[0] for t in ticks]
                 cfg['noise_at'] = [t[1] for t in ticks]
+                cfg['six_at'] = [t[2] for t in ticks]
+                cfg['step_at'] = [t[3] for t in ticks]
+                cfg['ride_at'] = [t[4] for t in ticks]
                 got = ids(engine(cfg, scratch))
                 n = min(len(want), len(got))
+                done = finished(ticks, n)
                 where = None
                 for i in range(n):
-                    if want[i] != got[i]:
+                    if done[i] and want[i] != got[i]:
                         where = i
                         break
                 if where is None and len(want) != len(got):

@@ -87,6 +87,9 @@ var hero_x := 0                     # $80:$81
 var hero_y := 0                     # $82:$83
 var clock := 0                      # $0C -- one up every frame
 var noise := 0                      # $0E -- the hash of the RAM $CD57 stirs
+var six := 0                        # $06 -- the other stirred byte
+var z7f := 0                        # $7F -- how far the stage's own script is
+var z26 := 0                        # $26 -- what the screen is still owed
 var push := 0                       # $05A8:$05A9 -- what a belt does to the hero
 var wants := 0                      # $05F7 -- what an object asks the hero for
 var score := 0                      # $05FD..$05FF
@@ -95,6 +98,11 @@ var cam_y := 0                      # $32:$33
 var hero_vx := 0                    # $05B6:$05B7
 var hero_face := 0                  # $05B2 -- bit 7 set means he looks left
 var z34 := 0                        # $34 -- how fast a carrying map drags down
+var z75 := 0                        # $75 -- the height a lift keeps for the rest
+var z58 := 0                        # $58 -- how many are still on the ride
+var hero_suit := 0                  # $05C5 -- which suit is on
+var hero_flags := 0                 # $05CB
+var hero_state := 0                 # $05A2 -- what the hero is busy with
 var stage := 0                      # $55 -- which stage is up
 var map_kind := 0                   # $70 -- $3C is the stage that is all water
 var z9d := 0                        # $9D -- what the last probe left over
@@ -428,25 +436,33 @@ func far_y(s: int) -> int:
 
 ## $8FF6 in bank 12 -- a heading and a speed become a step along and a step
 ## down.  The table is a quarter circle read twice, once each way round.
-func heading(dir: int, speed: int) -> void:
+func spin(dir: int, speed: int) -> void:
 	var i: int = (dir & 0x0F) + speed
-	var j: int = i
-	if (i & 0x0F) != 0:
-		j = ((i - 1) ^ 0x0F) & 0xFF
 	var p: int = _steps[i & 0xFF]
-	var q: int = _steps[j & 0xFF]
+	# $900D -- a quarter that lands on a corner has nothing in the other
+	# direction at all, and the table is not read a second time for it.
+	var q: int = 0
+	if (i & 0x0F) != 0:
+		q = _steps[(((i - 1) ^ 0x0F) & 0xFF)]
 	var along: int = p
 	var down: int = q
 	if (dir & 0x10) != 0:
 		along = q
 		down = p
-	z50 = along
-	z52 = down
+	z90 = along
+	z92 = down
 	var quad: int = dir & 0x30
 	if quad == 0x10 or quad == 0x20:
-		z50 = _neg(z50)
+		z90 = _neg(z90)
 	if quad == 0x30 or quad == 0x20:
-		z52 = _neg(z52)
+		z92 = _neg(z92)
+
+
+## $8070 -- and the two are taken over as this picture's step.
+func heading(dir: int, speed: int) -> void:
+	spin(dir, speed)
+	z50 = z90
+	z52 = z92
 
 
 ## $9054 / $9048 -- nothing less the step, kept as two bytes.
@@ -586,6 +602,16 @@ func hatch_here(s: int, tpl: int) -> int:
 	return hatch(x[s], y[s], tpl)
 
 
+## $AA9E -- one page along to the right and one down from the old one.
+func hatch_right(s: int, tpl: int) -> int:
+	return hatch(x[s] + 0x0100, y[s] + 0x0100, tpl)
+
+
+## $AAA9 -- and the same to the left.
+func hatch_left(s: int, tpl: int) -> int:
+	return hatch(x[s] - 0x0100, y[s] + 0x0100, tpl)
+
+
 ## $810D -- face the hero, but only when he is a whole picture away or more;
 ## nearer than that the slot keeps what it had.  Answers the facing either way.
 func face_hero_far(s: int) -> int:
@@ -642,11 +668,16 @@ func missed(m: int, done: bool) -> void:
 ## $8E44 in bank 12 -- which way the slot lies from the hero, as a heading.
 ## Answers $FF when the two are on top of each other or too far apart to say.
 func angle_to_hero(s: int) -> int:
+	return angle_to(s, hero_x, hero_y)
+
+
+## $804B -- the same, but the height is the caller's own, not the hero's.
+func angle_to(s: int, tx: int, ty: int) -> int:
 	var p := PackedInt32Array([x[s] & 0xFF, (x[s] >> 8) & 0xFF,
 			y[s] & 0xFF, (y[s] >> 8) & 0xFF])
 	carry = 1
-	var ax: int = _sbc(p[0], hero_x & 0xFF)
-	var bx: int = _sbc(p[1], (hero_x >> 8) & 0xFF)
+	var ax: int = _sbc(p[0], tx & 0xFF)
+	var bx: int = _sbc(p[1], (tx >> 8) & 0xFF)
 	var turn := 0
 	if carry == 0:
 		var t: int = _neg16(ax | bx << 8)
@@ -654,8 +685,8 @@ func angle_to_hero(s: int) -> int:
 		bx = (t >> 8) & 0xFF
 		turn = 2
 	carry = 1
-	var ay: int = _sbc(p[2], hero_y & 0xFF)
-	var by: int = _sbc(p[3], (hero_y >> 8) & 0xFF)
+	var ay: int = _sbc(p[2], ty & 0xFF)
+	var by: int = _sbc(p[3], (ty >> 8) & 0xFF)
 	if carry == 0:
 		var t: int = _neg16(ay | by << 8)
 		ay = t & 0xFF
@@ -689,7 +720,11 @@ func angle_to_hero(s: int) -> int:
 
 ## $802B -- the heading is turned one step toward the hero.
 func turn_toward_hero(s: int) -> void:
-	var want: int = angle_to_hero(s)
+	turn_step(s, angle_to_hero(s))
+
+
+## $802E -- one step of the heading toward an angle already worked out.
+func turn_step(s: int, want: int) -> void:
 	carry = 1
 	var d: int = _sbc(want, a[s]) & 0x3F
 	carry = 1 if d >= 0x20 else 0
@@ -724,7 +759,7 @@ func probe_ahead(s: int, ox: int, oy: int) -> int:
 	if ((s ^ clock) & 1) == 0:
 		return 0
 	if map_kind == 0x3C:
-		return 0                        # $D014 -- the stage that is all water
+		return map_kind                 # $D014 -- the carrying map says nothing
 	var px: int = (x[s] - ox) if (face[s] & 0x80) != 0 else (x[s] + ox)
 	px += hero_vx                       # $D018
 	z9d = px & 0xFF
@@ -737,6 +772,18 @@ func probe_ahead(s: int, ox: int, oy: int) -> int:
 func probe_at(s: int, ox: int, oy: int) -> int:
 	var px: int = (x[s] - ox) if (face[s] & 0x80) != 0 else (x[s] + ox)
 	var py: int = y[s] + oy
+	if map_kind == 0x3C:
+		# $D03B -- on the carrying map the lift itself is the ground, and it
+		# is solid from its own line down to a whole picture below it.
+		carry = 0
+		var sl: int = _adc((z75 << 4) & 0xFF, cam_y & 0xFF)
+		var sh: int = _adc((z75 >> 4) & 0x0F, (cam_y >> 8) & 0xFF)
+		carry = 1
+		_sbc(py & 0xFF, sl)
+		var d: int = _sbc((py >> 8) & 0xFF, sh)
+		if carry != 0 and d == 0:
+			z9d = 0
+			return 0x80
 	z9d = py & 0xFF                     # $D08F
 	return probe(px, py)
 
@@ -744,7 +791,7 @@ func probe_at(s: int, ox: int, oy: int) -> int:
 ## $B179 -- the same look ahead as $B170, but taken every picture.
 func probe_fwd(s: int, ox: int, oy: int) -> int:
 	if map_kind == 0x3C:
-		return 0
+		return map_kind
 	var px: int = (x[s] - ox) if (face[s] & 0x80) != 0 else (x[s] + ox)
 	px += hero_vx
 	z9d = px & 0xFF
