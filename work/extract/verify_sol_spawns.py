@@ -162,6 +162,15 @@ def seed(base):
     cfg['sa'] = [base[0x07D0 + i] for i in range(SHOTS)]
     cfg['sb'] = [base[0x07E0 + i] for i in range(SHOTS)]
     cfg['slife'] = [base[0x07F0 + i] for i in range(SHOTS)]
+    # And the third pool, the one the satellite throws into.  Nothing puts
+    # anything in it until the satellite is ported, so in every stand but its
+    # own it is sixteen empty slots.
+    cfg['wkind'] = [base[0x0700 + i] for i in range(SLOTS)]
+    cfg['wx'] = [base[0x0710 + i] | base[0x0720 + i] << 8 for i in range(SLOTS)]
+    cfg['wy'] = [base[0x0730 + i] | base[0x0740 + i] << 8 for i in range(SLOTS)]
+    cfg['wvx'] = [base[0x0750 + i] for i in range(SLOTS)]
+    cfg['wvy'] = [base[0x0760 + i] for i in range(SLOTS)]
+    cfg['wpen'] = [base[0x0770 + i] for i in range(SLOTS)]
     cfg['id'] = [base[0x0600 + i] for i in range(SLOTS)]
     cfg['ox'] = [base[0xA0 + i] | base[0xB0 + i] << 8 for i in range(SLOTS)]
     cfg['oy'] = [base[0xC0 + i] | base[0xD0 + i] << 8 for i in range(SLOTS)]

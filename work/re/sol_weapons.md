@@ -629,3 +629,188 @@ Output: `work/build/shots/sol_weapon_1.png` … `sol_weapon_8.png`.
    and 2, but a different stage may load different colours into `$3F14-$3F1B`.
 5. **Projectile type `$12`** (`$B225`, a vertical laser column) exists in the dispatch
    table but is not spawned by any of the eight satellites; it was not analysed.
+
+---
+
+## 10. The pool walk itself — `$B168` (bank 13), and every entry of both tables
+
+Added while the pool was ported to the engine (Э4.2).  Section 1.2 says what a
+slot holds; this says what is done with it, entry by entry, and it is the part
+the acceptance stand `work/extract/verify_sol_weapon.py` holds against the
+cartridge.
+
+### 10.1 Where in the picture it runs
+
+`$CDD2 JSR $8007` is one call into bank 12, and bank 12's `$8007` is
+`JMP $9150`, which is three lines:
+
+```
+9150  JSR $9159      ; the hero is drawn, and the bar with him
+9153  JSR $B168      ; this pool is walked
+9156  JMP $A489
+```
+
+So the pool runs **after the hero's own step and before either of the other two
+pools** (`$CDDA` the shots, `$CDDD` the objects).  It runs every picture whether
+a satellite exists or not — nothing about the walk is gated on one.
+
+### 10.2 The shared helpers
+
+| address | what it does |
+|---|---|
+| `$880F` (bank 12) | wipes the four scratch bytes `$90..$93` |
+| `$B313` | the slot's two speeds, each spread over two bytes, into `$90:$91` and `$92:$93` |
+| `$B2E2` | `$90:$91` is added to where it is, along |
+| `$B2D0` | `$92:$93` is added to where it is, down |
+| `$B2CD` | both |
+| `$B2CA` | `$B313` and then `$B2CD` — the plain move |
+| `$B2F4` | the other way about: where it is is added *to* the scratch, so the scratch becomes the place it is looking at |
+| `$B32C` | where it is is moved by the satellite's own step (`$062C:$063C` along, `$064C:$069C` down) |
+| `$B595` | sixteen cells out of the picture either way and the slot is given up; what is left in the scratch is where it stands on the screen |
+| `$B5BC` | the slot is given up |
+| `$C00C` → `$D032` | what the map has where the scratch points |
+
+### 10.3 The flying table `$B1A6`
+
+| type | handler | what it does |
+|---|---|---|
+| `00`, `15` | `$B6E1` | the ring round the satellite: it is put back on the satellite every picture and pushed out by twice the step the shared angle gives; the angle is `$069C`, wound on by the satellite's own rate `$064C`.  `$0750` counts its life down |
+| `01` | `$B5C2` | it spins outwards: `$0750` is the angle, and how far it reaches comes from how much of `$0760` is left |
+| `02`, `0A`, `0B` | `$B36B` | it bounces, and on the picture it bounces it becomes `$8C` |
+| `03`, `07`, `08` | `$B42C` | it rides the satellite while `$0760` runs down, and once the count would run out it also moves by the step packed into the two halves of `$0750` |
+| `04`, `09` | `$B3F1` | straight on until the map where it stands is solid, and then it becomes `$09`, the bang |
+| `05` | `$B4B4` | it widens: five pictures of a step that is half noise (`$0E`), and then it becomes `$86` |
+| `06` | `$B4ED` | it crawls along whatever it is on — falling while the map below is empty, sliding while it is solid, turning round when the way ahead is solid too.  Each turn costs eight of `$0750` |
+| `0C`..`$11` | `$B353`..`$B367` | the same bounce as `02`, but becoming `$8D`, `$8E`, `$8F`, `$90`, `$91` and `$00` |
+| `12` | `$B225` | the slash: one slot stands for a whole column of pictures drawn one above the other.  Only the first turn of its loop moves anything |
+| `13` | `$B6A7` | thrown out on the step packed into `$0750`; when `$0760` runs out it becomes `$14` |
+| `14` | `$B61B` | and comes back: four steps of the circle a picture towards the satellite, caught the moment the two stand in the same cell both ways |
+
+### 10.4 The burning-out table `$B1E1`
+
+Sixteen of the twenty two are `$B21F`, which simply writes nought over the slot.
+The rest:
+
+| type | handler | what it does |
+|---|---|---|
+| `03`, `07` | `$B20D` | the slot is given up where it stands, and the puff is drawn there for the one picture |
+| `04`, `09` | `$B294` | the bang: slot thirteen of the object pool is made into the blast at this place, and the slot is given up |
+| `12` | `$B225` | the same either way |
+| `15` | `$B216` | the slot is given up and the satellite's walk is put back to its first step (`$8DCA` with X = `$0C`) |
+
+### 10.5 Three slips worth keeping
+
+They are all reproduced in the engine, because the acceptance is by comparison.
+
+1. **`$B3BD` subtracts without setting the carry first.**  `$B37C` turns a step
+   round when it runs into something: along at `$B398`, which does `SEC` first,
+   and down at `$B3BD`, which does not.  The carry at that point is always clear
+   — the way back out of `$D032` goes through `$C998`, whose last sum is "this
+   bank plus one" and never carries — so the step down always comes back one
+   too far.
+2. **`$B73D` reads the wrong pair.**  `$B6E1` works out a step along in
+   `$4C:$4D` and a step down in `$4E:$4F`, and then puts `$4C:$4D` into *both*
+   `$90:$91` and `$92:$93`.  The ring therefore moves down by exactly as much as
+   it moves along, whatever the angle said.
+3. **`$8E99` doubles before it tests.**  The angle routine `$8E44` doubles both
+   lengths until the longer fills the top nibble, but the doubling comes first
+   and the test second — so a pair that was long enough already is doubled once
+   too often and the answer comes back `$FF`, "cannot say".  `$B61B` leans on
+   this: a boomerang whose satellite is far away is nudged by `$FF`, not by a
+   real heading.
+
+### 10.6 Above the top of the stage nothing is worth comparing
+
+Row nought of every stage's room map is padding: the numbers in it are not
+screen numbers at all, and the game never means to look there.  A slot that
+climbs out of the stage upwards — above `$1000` — makes the cartridge read a
+screen that does not exist and answer with whatever bytes happen to follow the
+screens table.  That is the cartridge reading off the end of its own data, and
+copying it would mean copying the layout of the ROM rather than a rule of the
+game, so the stand `work/extract/verify_sol_weapon.py` drops a slot from the
+comparison for good once it gets that high (`INSIDE`, with a page of margin
+because a slot probes a little ahead of itself).
+
+The only behaviours this ever touches are the two that bounce, `$B36B` and its
+`$8D`/`$8E`/`$8F` kin, and only when they are seeded near the ceiling.
+
+## 11. Getting into the pool — $AEBD and $AE8A (bank 13)
+
+Nothing else puts anything in `$0700`.  All nine of the hero's firing routines
+(`$A8F6`, `$A95E`, `$AA1B`, `$AA4D`, `$AA94`, `$AB30`, `$AB9A`, `$AC32`,
+`$ACF5`) end in `JSR $AEBD`, with the kind of weapon in `A` and the slot of
+whoever is throwing it in `X`.
+
+### 11.1 Finding a slot
+
+```
+AEBD  STA $90            the kind, bit 7 and all
+AEBF  AND #$7F
+AEC1  STA $98            and without it, which is the row of every table
+AEC3  TAY
+AEC4  LDA $B152,Y        the slot to try first
+AEC7  TAY
+AEC8  TYA / PHA          keep it
+AECA  LDA $0700,Y
+AECD  BNE $AF3F          taken -- try the one below
+...
+AF3F  PLA / TAY / DEY / BPL $AEC8
+AF44  RTS                nothing free, and nothing is thrown
+```
+
+So each kind of weapon has its *own* first slot, and the search only ever
+counts downwards from there.  `$B152` reads
+
+```
+00 0A 01 0A 00 03 0A 0A 0A 00 01 01 00 00 00 00 00 00 00 02 02 00
+```
+
+— eleven of the twenty two kinds may only ever have slot nought, and the ones
+that start at ten can have up to eleven of themselves at once.  (Only slots
+nought to seven are ever walked, so the top three of those eleven are thrown
+and then never move; see 10.1.)
+
+### 11.2 Which numbers are read
+
+`$05CB` bit 7 picks between two halves of every table, and `$05A2` -- how the
+thrower is standing -- picks between two sets of starting offsets within each
+half:
+
+| `$05CB` bit 7 | `$05A2` | step along | step down | offset along | offset down |
+|---|---|---|---|---|---|
+| clear | `3` | `$AF84` | `$AFB0` | `$AFF2`:`$B01E` | `$B04A`:`$B076` |
+| clear | else | `$AF84` | `$AFB0` | `$B0A2`:`$B0CE` | `$B0FA`:`$B126` |
+| set | `3` | `$AF9A` | `$AFC6` | `$B008`:`$B034` | `$B060`:`$B08C` |
+| set | else | `$AF9A` | `$AFC6` | `$B0B8`:`$B0E4` | `$B110`:`$B13C` |
+
+and `$AFDC` gives how many things it may go through, the same either way.
+
+The two halves differ only in the step down and in whether the offset down is
+above or below: with the bit set, kinds `$02`, `$03`, `$08` and `$0A` get a
+step down of `$BC`, `$C0`, `$D8`, `$CF` -- upwards -- and start a whole page
+higher (`$FF` in the high byte).  That is the same weapon thrown up instead of
+along.
+
+### 11.3 Putting it in
+
+```
+AF25  LDA $0680,X        the thrower's facing
+AF28  BPL $AF37
+AF2A  SEC / 0 - $94:$95  facing left, so the offset along is turned round
+AF37  PLA / TAY
+AF39  JSR $AE8A
+```
+
+and `$AE8A` is simply the two sums and the four stores:
+
+```
+x = $A0:$B0,X + $94:$95   ->  $0710:$0720,Y
+y = $C0:$D0,X + $96:$97   ->  $0730:$0740,Y
+$0700,Y = $90   kind      $0770,Y = $93   how many it goes through
+$0750,Y = $91   along     $0760,Y = $92   down
+```
+
+The offset down is *not* turned round; only the offset along is.
+
+All twenty two rows are exported by `work/extract/sol_weapon.py` into
+`game/data/sol/weapon.json`.

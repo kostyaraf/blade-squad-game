@@ -20,6 +20,10 @@ const SLOTS := 16               # $0600..$060F
 const LAST_SPAWNED := 0x0B      # $AEF9 -- the stage's own list only reaches here
 const MARKS := 64               # $0560..$059F, a byte per spawn id
 const SHOTS := 16               # $0780..$078F, the second pool
+const WEAPONS := 16             # $0700..$070F, the third
+const WALKED := 8               # $B168 -- but only these eight are ever walked
+const SAT := 0x0C               # the satellite keeps slot twelve of the pool
+const BLAST := 0x0D             # and its bang is put into slot thirteen
 
 ## $8059 / $CE44 -- the ring, three screens across and three down, in cells of
 ## 64 px.  Only rows 3..8 are ever looked at, so that is all the data holds.
@@ -73,6 +77,17 @@ var s_a := PackedByteArray()        # $07D0
 var s_b := PackedByteArray()        # $07E0
 var s_life := PackedByteArray()     # $07F0
 var shots_skipped := {}             # behaviours not read out of the ROM yet
+
+# And the third: what the hero's own satellite throws.  Sixteen slots at $0700
+# of which $B168 walks only the first eight, with a table of behaviours of its
+# own.  `work/re/sol_weapons.md` says what each one does.
+var w_kind := PackedByteArray()     # $0700: behaviour, bit7 "still flying"
+var w_x := PackedInt32Array()       # $0710 lo / $0720 hi
+var w_y := PackedInt32Array()       # $0730 lo / $0740 hi
+var w_vx := PackedByteArray()       # $0750
+var w_vy := PackedByteArray()       # $0760
+var w_pen := PackedByteArray()      # $0770: how much it can still go through
+var weapons_skipped := {}
 
 # Where it is on the screen, in whole pixels, filled by the frame walk.
 var at_x := PackedInt32Array()      # $5C:$5D
@@ -186,6 +201,10 @@ func _init(lvl: SolLevel) -> void:
 		arr.resize(SHOTS)
 	s_x.resize(SHOTS)
 	s_y.resize(SHOTS)
+	for arr in [w_kind, w_vx, w_vy, w_pen]:
+		arr.resize(WEAPONS)
+	w_x.resize(WEAPONS)
+	w_y.resize(WEAPONS)
 	x.resize(SLOTS)
 	y.resize(SLOTS)
 	at_x.resize(SLOTS)
@@ -721,6 +740,12 @@ func missed_shot(m: int, done: bool) -> void:
 	shots_skipped[key] = int(shots_skipped.get(key, 0)) + 1
 
 
+## And the same for the pool the satellite throws into.
+func missed_weapon(m: int, done: bool) -> void:
+	var key := "%02X%s" % [m, "-dead" if done else ""]
+	weapons_skipped[key] = int(weapons_skipped.get(key, 0)) + 1
+
+
 ## And an entry of bank six that has not been read either.
 func missed_stage(n: int) -> void:
 	var key := "stage%02X" % n
@@ -735,8 +760,13 @@ func angle_to_hero(s: int) -> int:
 
 ## $804B -- the same, but the height is the caller's own, not the hero's.
 func angle_to(s: int, tx: int, ty: int) -> int:
-	var p := PackedInt32Array([x[s] & 0xFF, (x[s] >> 8) & 0xFF,
-			y[s] & 0xFF, (y[s] >> 8) & 0xFF])
+	return angle_between(x[s], y[s], tx, ty)
+
+
+## $8E44 itself, over two places neither of which need be a slot.
+func angle_between(px: int, py: int, tx: int, ty: int) -> int:
+	var p := PackedInt32Array([px & 0xFF, (px >> 8) & 0xFF,
+			py & 0xFF, (py >> 8) & 0xFF])
 	carry = 1
 	var ax: int = _sbc(p[0], tx & 0xFF)
 	var bx: int = _sbc(p[1], (tx >> 8) & 0xFF)
@@ -766,13 +796,18 @@ func angle_to(s: int, tx: int, ty: int) -> int:
 		return 0xFF
 	# $8E99 -- both lengths are doubled until the longer of them fills the top
 	# nibble, so that the table below is read at the best resolution there is.
+	# The doubling comes before the test, so a pair that was long enough
+	# already is doubled once too often and the answer comes back "cannot
+	# say".  That is how a thing a long way off is refused an angle at all.
 	var dx: int = ax | bx << 8
 	var dy: int = ay | by << 8
 	var guard := 0
-	while (((dx >> 8) | (dy >> 8)) & 0xFF) < 0x10 and guard < 32:
+	while true:
 		dx = (dx << 1) & 0xFFFF
 		dy = (dy << 1) & 0xFFFF
 		guard += 1
+		if (((dx >> 8) | (dy >> 8)) & 0xFF) >= 0x10 or guard >= 32:
+			break
 	var hx: int = (dx >> 8) >> 1
 	var hy: int = (dy >> 8) >> 1
 	if hx >= 0x10 or hy >= 0x10:

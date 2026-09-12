@@ -285,6 +285,14 @@ func _run_sol_objects(path: String) -> void:
 			pool.s_a[i] = int(cfg["sa"][i])
 			pool.s_b[i] = int(cfg["sb"][i])
 			pool.s_life[i] = int(cfg["slife"][i])
+	if cfg.has("wkind"):
+		for i in range(SolObjects.WEAPONS):
+			pool.w_kind[i] = int(cfg["wkind"][i])
+			pool.w_x[i] = int(cfg["wx"][i])
+			pool.w_y[i] = int(cfg["wy"][i])
+			pool.w_vx[i] = int(cfg["wvx"][i])
+			pool.w_vy[i] = int(cfg["wvy"][i])
+			pool.w_pen[i] = int(cfg["wpen"][i])
 	# $0C is a plain count of pictures, but $0E is a hash of the whole of RAM
 	# ($CD57) and is not ported yet, so both are handed over as the cartridge
 	# had them.  `work/re/sol_minds.md` says what that still owes.
@@ -295,6 +303,7 @@ func _run_sol_objects(path: String) -> void:
 	var rides: Array = cfg["ride_at"] if cfg.has("ride_at") else []
 	var out := PackedStringArray()
 	var shots := PackedStringArray()
+	var arms := PackedStringArray()
 	var n := 0
 	for f in cfg["pads"]:
 		# A picture the cartridge did not have time for: $0C does not move on,
@@ -303,6 +312,7 @@ func _run_sol_objects(path: String) -> void:
 		if n > 0 and int(clocks[n]) == int(clocks[n - 1]):
 			out.append(out[n - 1])
 			shots.append(shots[n - 1])
+			arms.append(arms[n - 1])
 			n += 1
 			continue
 		# The order of one picture, as $CDB0 keeps it: what the background
@@ -344,6 +354,9 @@ func _run_sol_objects(path: String) -> void:
 		# pad.  Where no script interferes the two are the same.
 		p.step(int(sixes[n]) if cfg.has("six_at") else int(f))   # $CDD2
 		_hero_into(pool, p)
+		# $CDD2 is one call, $9150, and drawing him is only its first half:
+		# the second is $B168, the pool his satellite throws into.
+		SolWeapon.step(pool)
 		SolShots.step(pool)                              # $CDDA
 		pool.step(view.x, view.y)                        # $CDDD
 		var row := PackedStringArray()
@@ -357,13 +370,21 @@ func _run_sol_objects(path: String) -> void:
 			srow.append("%d,%d,%d,%d,%d,%d" % [pool.s_kind[i], pool.s_x[i],
 					pool.s_y[i], pool.s_a[i], pool.s_b[i], pool.s_life[i]])
 		shots.append("S " + " ".join(srow))
+		var wrow := PackedStringArray()
+		for i in range(SolObjects.WALKED):
+			wrow.append("%d,%d,%d,%d,%d,%d" % [pool.w_kind[i], pool.w_x[i],
+					pool.w_y[i], pool.w_vx[i], pool.w_vy[i], pool.w_pen[i]])
+		arms.append("W " + " ".join(wrow))
 		n += 1
 	print("\n".join(out))
 	print("\n".join(shots))
+	print("\n".join(arms))
 	if not pool.skipped.is_empty():
 		printerr("minds not read yet: ", pool.skipped)
 	if not pool.shots_skipped.is_empty():
 		printerr("shots not read yet: ", pool.shots_skipped)
+	if not pool.weapons_skipped.is_empty():
+		printerr("weapons not read yet: ", pool.weapons_skipped)
 
 
 ## The hero's own numbers, copied into the pool.  $CDBB and $CDBE read them
