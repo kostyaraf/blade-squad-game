@@ -152,6 +152,9 @@ var y_reg := 0
 var stage := 0                      # $55 -- which stage is up
 var zf8 := 0                        # $F8 -- what the game is to be put to next
 var map_kind := 0                   # $70 -- $3C is the stage that is all water
+var z9f := 0                        # $9F -- the step a behaviour wants its
+                                    # shot to take along, before $80FD turns
+                                    # it round for the side the thing faces
 var z9d := 0                        # $9D -- what the last probe left over
 var z5f0 := 0                       # $05F0 -- the map owes the screen a redraw
 ## $54 and $88..$8F -- the hero's own box.  It is built once a picture, at

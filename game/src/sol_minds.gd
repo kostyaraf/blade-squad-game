@@ -132,6 +132,14 @@ static func _live(o: SolObjects, s: int, m: int) -> void:
 			_a047(o, s)
 		0x20:
 			_a031(o, s)
+		0x3A:
+			_8deb(o, s)
+		0x3D:
+			_8ca8(o, s)
+		0x3E:
+			_8c40(o, s)
+		0x35:
+			_902d(o, s)
 		0x3F:
 			_pickup(o, s)
 		_:
@@ -3813,3 +3821,224 @@ static func _8bba(o: SolObjects, s: int) -> void:
 		if cin == 0:
 			o.d[s] = (o.d[s] + 1) & 0xFF                # $8BF4
 	_8c1b(o, s, cin)                                    # $8BF7
+
+# ------------------------------------------------- the flier that winds up
+
+## $8EB3 -- one part of a walk is over: the number moves on, but only once the
+## animation has reached the picture it is held on for ever.
+static func _8eb3(o: SolObjects, s: int) -> void:
+	if o.left[s] != 0xFF:                               # $80E0
+		return
+	o.kind[s] = (o.kind[s] + 1) & 0xFF                  # $8EB8
+
+
+## $8EBC -- the shot it lets go as it turns: the side it faces gives the step
+## along, and it always starts half a picture above the thing itself.
+static func _8ebc(o: SolObjects, s: int, j: int, kind: int) -> void:
+	SolShots.put(o, j, kind)                            # $907B
+	var c: int = SolShots.face_step(o, s, j)            # $8ECB
+	SolShots.place(o, s, j, o.z90, 0xFF80, c)           # $8EC2, $A1D7
+
+
+## $80FD -- the step along a behaviour has asked for in $9F, turned round for
+## a thing that looks the other way.  The carry it leaves is what $A1D7 then
+## adds the place with.
+static func _80fd(o: SolObjects, s: int, j: int) -> int:
+	if (o.face[s] & 0x80) != 0:                         # $8100
+		o.s_a[j] = o.z9f                                # $8101
+		return 1
+	o.carry = 0
+	o.s_a[j] = o._sbc(0x01, o.z9f)                      # $8107
+	return o.carry
+
+
+## $8FDE -- it turns to the hero, holds itself on the screen while he is near,
+## and then asks what is under the far side of its feet: where there is ground
+## it walks, and where there is none it stands still and only drifts.
+static func _8fde(o: SolObjects, s: int) -> void:
+	o.face_hero(s)                                      # $8118
+	o.a[s] = o.z94                                      # $9053
+	o.hold_on(s)                                        # $9050
+	o.face[s] = (o.face[s] ^ 0xFF) & 0xFF               # $AE24
+	var g: int = o.probe_behind(s, 0x0080, 0x0100)      # $B0AA
+	o.face[s] = (o.face[s] ^ 0xFF) & 0xFF               # $AE24
+	if g >= 0x80:
+		o.step_and_look(s, 0x40)                        # $9D0A
+	o.move(s)                                           # $813F
+
+
+## $8DD7 -- the part between two turns: while the hero is within five whole
+## pictures it winds up again, and once he is further off it starts over.
+static func _8dd7(o: SolObjects, s: int) -> void:
+	o.anim_second(s, 0x60)                              # $904B
+	o.face_hero(s)                                      # $8118
+	if ((o.z90 >> 8) & 0xFF) >= 0x05:                   # $8DE1
+		o.kind[s] = 0                                   # $80B3
+		return
+	_8eb3(o, s)                                         # $8DE8
+
+
+## $8DEB -- [$3A] the flier, in four parts kept in $0690.  It waits until the
+## hero is five pictures off, drops one shot straight down as it opens, walks
+## while the ground holds and lets a shot go every other picture, and then
+## winds itself back up again.
+static func _8deb(o: SolObjects, s: int) -> void:
+	var k: int = o.kind[s]
+	if k == 0x00:
+		o.anim_second(s, 0x60)                          # $8E31
+		o.face_hero(s)                                  # $8118
+		if ((o.z90 >> 8) & 0xFF) < 0x05:                # $8E3B
+			o.kind[s] = 0x02                            # $8E41
+			return
+		_8eb3(o, s)                                     # $8E45
+		return
+	if k == 0x01:
+		o.anim_second(s, 0x61)                          # $8E48
+		if o.frame[s] == 0x02:                          # $80E6
+			var j: int = SolShots.free_slot(o)          # $ADBA
+			if j >= 0:
+				SolShots.put(o, j, 0xA3)                # $8E57
+				o.s_b[j] = 0xB0                         # $8E5E
+				o.z90 = 0x0080                          # $8E67, $8E6D
+				o.z92 = 0xFE80                          # $8E63, $8E69
+				o.z9f = 0x12                            # $8E71
+				var c: int = _80fd(o, s, j)             # $80FD
+				if o.s_a[j] >= 0x80:                    # $8E76
+					o.z90 = (o.z90 - 0x0100) & 0xFFFF   # $8E78
+				SolShots.place(o, s, j, o.z90, o.z92, c)
+				return
+		if o.left[s] == 0xFF:                           # $8E7D
+			o.kind[s] = 0                               # $80B3
+		return
+	if k == 0x02:
+		_8dd7(o, s)                                     # $8DF4
+		return
+	o.anim_second(s, 0x62)                              # $8DF6
+	if o.left[s] == 0x01:                               # $8DFE
+		_8fde(o, s)                                     # $8E02
+		o.id[s] = o.id[s] & 0xBF                        # $906C
+		if (o.frame[s] & 0x01) != 0:                    # $8E0B
+			var j2: int = SolShots.free_slot(o)         # $ADBA
+			if j2 >= 0:
+				SolShots.put(o, j2, 0xA2)               # $8E13
+				var c2: int = SolShots.face_step(o, s, j2)  # $8ECB
+				o.z92 = 0xFF90                          # $8E1B
+				SolShots.place(o, s, j2, o.z90, o.z92, c2)
+	if o.left[s] == 0xFF:                               # $8E27
+		o.kind[s] = 0x02                                # $8E2D
+
+
+## $8C40 -- [$3E] the one that walks the width of the room and turns at the two
+## ends.  On the second and fourth pictures of its walk it lets a shot go
+## instead of stepping, behind and above it or behind and below it.
+static func _8c40(o: SolObjects, s: int) -> void:
+	o.anim_second(s, 0x6A)                              # $904B
+	if (o.d[s] & 0x01) == 0:                            # $8C48
+		o.z50 = (o.z50 & 0xFF00) | 0x04                 # $8C4D
+		if ((o.x[s] >> 8) & 0xFF) >= 0x4B:              # $8C51
+			o.d[s] = (o.d[s] + 1) & 0xFF                # $8C63
+	else:
+		o.z50 = (o.z50 & 0xFF00) | 0xFC                 # $8C59
+		o.z50 = (o.z50 - 0x0100) & 0xFFFF               # $8C5B
+		if ((o.x[s] >> 8) & 0xFF) < 0x47:               # $8C5F
+			o.d[s] = (o.d[s] + 1) & 0xFF
+	var fr: int = o.frame[s]                            # $80EC
+	if fr == 0x03 or fr == 0x01:                        # $8C69, $8C6D
+		var j: int = SolShots.free_slot(o)              # $ADBA
+		if j >= 0:
+			o.s_a[j] = s                                # $8C82 -- which slot
+			o.s_b[j] = 0x04                             # $8C87
+			SolShots.put(o, j, 0xA7)                    # $907B
+			# $8C8F -- the noise ($F1 = $12) is not modelled.
+			o.z90 = 0x0080                              # $8121, $8C98
+			o.z92 = 0x00C0
+			var c := 1                                  # $8C9E left it up
+			if fr < 0x03:                               # $8CA1
+				o.z90 = (o.z90 - 0x0100) & 0xFFFF       # $8CA3
+				c = 0
+			SolShots.place(o, s, j, o.z90, o.z92, c)    # $A1D7
+			return
+	o.a[s] = o.z50 & 0xFF                               # $8C6F
+	o.b[s] = (o.z50 >> 8) & 0xFF
+	o.move(s)                                           # $813F
+
+
+## $8CA8 -- [$3D] it walks away from the hero rather than towards him ($810D
+## answered and the answer turned round), and steps only while the ground
+## behind its feet is solid; where it is not, it drops instead.
+static func _8ca8(o: SolObjects, s: int) -> void:
+	o.anim_second(s, 0x68)                              # $904B
+	o.a[s] = (o.face_hero_far(s) ^ 0xFF) & 0xFF         # $810D, $8CB0
+	if o.probe_behind(s, 0x0080, 0x0100) >= 0x80:       # $B0AA
+		o.step_and_look(s, 0x04)                        # $9D0A
+		o.move(s)                                       # $813F
+		return
+	o.z52 = (o.z52 & 0xFF00) | 0x80                     # $8CC4
+	o.move(s)                                           # $813F
+
+## $90A7 -- the shot it lets go on its way past: half a picture along and two
+## above itself, and the step it takes along is four times how far the hero is
+## the other way, so the further off he is the flatter it goes.
+static func _90a7(o: SolObjects, s: int, j: int) -> void:
+	o.s_b[j] = 0xA8                                     # $90A9
+	o.z90 = 0x0080                                      # $90B2, $90B9
+	o.z92 = 0xFE80                                      # $90AE, $90B4
+	o.carry = 1                                         # $90B6
+	var v: int = o._sbc(0x00, o.z94)                    # $90BB
+	o.carry = (v >> 7) & 1                              # $90BD
+	v = (v << 1) & 0xFF
+	o.carry = (v >> 7) & 1                              # $90BE
+	v = (v << 1) & 0xFF
+	o.s_a[j] = v                                        # $90BF
+	if v >= 0x80:
+		o.z90 = (o.z90 - 0x0100) & 0xFFFF               # $90C4
+	SolShots.place(o, s, j, o.z90, o.z92, o.carry)      # $A1D7
+
+
+## $9084 -- the half of [$35] that stands still: on the third picture of the
+## second animation it lets one go, and when that animation is worn out it
+## starts over.
+static func _9084(o: SolObjects, s: int) -> void:
+	o.anim_second(s, 0x57)                              # $904B
+	if o.frame[s] == 0x02:                              # $80E6
+		o.face_hero(s)                                  # $8118
+		var j: int = SolShots.free_slot(o)              # $ADBA
+		if j >= 0:
+			SolShots.put(o, j, 0xA0)                    # $907B
+			_90a7(o, s, j)                              # $90A7
+	if o.left[s] == 0xFF:                               # $80E0
+		o.kind[s] = 0                                   # $80B3
+
+
+## $8FF8 -- the half of [$35] that walks: on the second picture of the first
+## animation it takes a step, but only where what lies ahead is solid.
+static func _8ff8(o: SolObjects, s: int) -> void:
+	o.anim_first(s, 0x58)                               # $9026
+	# $9000 -- the noise it makes ($F1 = $29) is not modelled.
+	if o.frame[s] == 0x01:                              # $9004
+		o.z90 = 0x0080                                  # $8121, $900D
+		o.z92 = 0x0100                                  # $900F
+		if o.probe_ahead(s, o.z90, o.z92) >= 0x80:      # $B170
+			o.step_and_look(s, 0x20)                    # $9D0A
+	if o.anim_a[s] == 0:                                # $901B
+		o.kind[s] = 0
+	o.move(s)                                           # $813F
+
+
+## $902D -- [$35] the walker that stops to shoot.  While the first animation
+## is still running $8FF8 has it; otherwise it stands, holds itself on the
+## screen while the hero is within seven pictures, and turns to face him.
+static func _902d(o: SolObjects, s: int) -> void:
+	if o.anim_a[s] != 0:
+		_8ff8(o, s)                                     # $8FF8
+		return
+	if o.cool[s] == 0x01 and (o.mind[s] & 0x40) == 0:   # $80DA, $9037
+		o.anim_first(s, 0x58)                           # $9026
+		return
+	if o.kind[s] != 0:                                  # $9041
+		_9084(o, s)
+		return
+	o.face_hero(s)                                      # $9050 -> $8118
+	o.a[s] = o.z94                                      # $9053
+	o.hold_on(s)                                        # $9056
+	o.anim_second(s, 0x56)                              # $9049
