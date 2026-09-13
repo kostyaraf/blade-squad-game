@@ -1699,6 +1699,16 @@ func _sol_flow_state() -> Dictionary:
 		# the same as the thirty two the picture unit shows: four of those are
 		# wired to four others and never take what is written to them.
 		"0100": Array(sol_flow.fade.out),
+		"0a": sol_flow.scroll_x, "0b": sol_flow.scroll_y,
+		# What the names typed at the end move, which in every other mode is
+		# something else: how many of the beat's lines are left, the walk the
+		# man is doing and how far into it he is, and where he stands.
+		"58": sol_flow.z58, "05ab": sol_flow.z05ab,
+		"80": sol_flow.man_x & 0xFF, "81": (sol_flow.man_x >> 8) & 0xFF,
+		"82": sol_flow.man_y & 0xFF, "83": (sol_flow.man_y >> 8) & 0xFF,
+		"05a4": sol_flow.man_t, "05b4": sol_flow.man_i,
+		"05b5": sol_flow.man_pose,
+		"05a6": sol_flow.man_pic_lo, "05a7": sol_flow.man_pic_hi,
 		"25": sol_flow.fade.count, "26": sol_flow.fade.kind,
 		"27": sol_flow.fade.mask, "28": sol_flow.fade.pace,
 		"0740": Array(sol_flow.z0740),
@@ -1746,6 +1756,14 @@ func _sol_screen_frame() -> void:
 ## a walk that only draws now and then would otherwise build it afresh at the
 ## first picture it is asked for and lose everything typed before that.
 func _sol_screen_now() -> void:
+	# $C5C9 with no screen after it -- both kilobytes wiped and whatever was
+	# laid on them gone, the scene itself left standing.
+	if sol_flow.screen_wipe:
+		sol_flow.screen_wipe = false
+		if sol_screen != null:
+			for i in range(sol_screen.board.size()):
+				sol_screen.board[i] = 0
+			sol_screen.build()
 	if sol_screen != null and sol_screen.name == sol_flow.screen:
 		return
 	var was: PackedByteArray = (sol_screen.board if sol_screen != null

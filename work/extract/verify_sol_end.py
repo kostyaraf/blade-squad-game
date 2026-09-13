@@ -45,11 +45,12 @@ import verify_sol_boot as B                                    # noqa: E402
 POKE_AT = P.IN_LEVEL + 5
 ## Long enough for the whole sunrise: a page held, eight rows of colour, and
 ## eight more with the view walking under them.
-RUN = POKE_AT + 3600
-TURNS = 3600
+RUN = POKE_AT + 12000
+TURNS = 12000
 
-## The mode the names are typed in, which is where this stand stops.
-LAST = 0x22
+## Where a high score is typed in, which is what the ending hands the game to
+## and where this stand stops.
+LAST = 0x55
 
 ## $28 and $25 -- the pace of the walk of the colours and how much of the next
 ## step of it is still to come.  A stage leaves its own and $4C sets both to
@@ -77,6 +78,11 @@ def pokes(lives, sat, seen, score):
            # a stage leaves its own and neither mode sets until the sun
            # begins to walk.
            '0073=00', '0074=00',
+           # And the hero's own: where he stood, the little walk he was doing
+           # and how far into it he was.  Nothing of the ending touches any of
+           # them until the names begin ($8180), and a stage leaves its own.
+           '0058=00', '0080=00', '0081=00', '0082=00', '0083=00',
+           '05A4=00', '05A6=00', '05A7=00', '05AB=00', '05B4=00', '05B5=00',
            '071C=%02X' % lives, '060C=%02X' % sat, '0059=%02X' % seen]
     n = score
     for addr in (0x05FD, 0x05FE, 0x05FF):
@@ -164,6 +170,11 @@ def cart_state(path):
         '76': ram[0x76], '77': ram[0x77], '7d': ram[0x7D],
         'score': (ram[0x05FD] << 16) | (ram[0x05FE] << 8) | ram[0x05FF],
         '0100': list(ram[0x0100:0x0120]),
+        '0a': ram[0x0A], '0b': ram[0x0B],
+        '58': ram[0x58], '05ab': ram[0x05AB],
+        '80': ram[0x80], '81': ram[0x81], '82': ram[0x82], '83': ram[0x83],
+        '05a4': ram[0x05A4], '05b4': ram[0x05B4], '05b5': ram[0x05B5],
+        '05a6': ram[0x05A6], '05a7': ram[0x05A7],
     }
 
 
@@ -243,9 +254,18 @@ def one(name, lives, sat, seen, score):
     ## And three pictures of every mode of the chain: just after it opens, in
     ## the middle of it, and the last one before it hands the game on.
     for c in cart:
-        for nm, at in (('opens', c[1] + 1), ('midway', c[1] + c[2] / 2),
-                       ('closes', c[1] + c[2] - 1)):
-            want.append(('%02X %s' % (c[0], nm), at))
+        # The mode the ending hands the game to is not the ending's, and what
+        # it holds is its own business; where the chain arrives is all this
+        # stand asks of it.
+        if c[0] == LAST:
+            continue
+        # Up to four and twenty pictures of every mode, spread evenly over it:
+        # the names take six and a half thousand pictures and twelve beats,
+        # and three points of that would say nothing about the other eleven.
+        n = min(24, c[2])
+        for k in range(n):
+            at = c[1] + (c[2] - 1) * k / max(n - 1, 1)
+            want.append(('%02X +%d' % (c[0], at - c[1]), at))
     seen_at = set()
     keep = []
     for nm, at in want:

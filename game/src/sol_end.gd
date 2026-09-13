@@ -68,6 +68,13 @@ static func beat_fixed() -> Array:
 	return _d["beat_fixed"]
 
 
+## $820E -- the stream itself, byte for byte, because $4E walks it a byte at a
+## time and is judged against the cartridge.
+static func stream() -> Array:
+	load_data()
+	return _d["stream"]
+
+
 ## $820E -- the beats of the ending, in the order the stream holds them.
 static func beats() -> Array:
 	load_data()
@@ -88,10 +95,10 @@ static func line(i: int) -> Dictionary:
 	return all[i] if i < all.size() else {}
 
 
-## $8963 and $8975 -- the six rows of twenty blanks that wipe a beat off.
-static func erase_at() -> Array:
+## $8963 -- the first of the six rows of twenty blanks that wipe a beat off.
+static func erase_at() -> int:
 	load_data()
-	return _d["erase_at"]
+	return int(_d["erase_at"][0])
 
 
 ## $E39D -- what the whole game paid, which is not the same as what was scored.

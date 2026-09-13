@@ -184,6 +184,10 @@ def main():
             break
 
     data = {
+        # $4E walks the stream a byte at a time and is compared against the
+        # cartridge, so the raw bytes are kept as well as the beats read out
+        # of them.
+        'stream': at(text, STREAM, y),
         'bonus_screen': BONUS_SCREEN,
         'staff_screen': STAFF_SCREEN,
         'chr': list(CHR),
@@ -228,6 +232,7 @@ def main():
         'beat_fixed': list(BEAT_FIXED),
         'erase_at': [ERASE_AT + ERASE_STEP * i
                      for i in range(2 * ERASE_ROWS)],
+        'erase_step': ERASE_STEP,
         'erase_n': ERASE_N,
         'erase_tag': ERASE_TAG,
         'man_x': MAN_X,

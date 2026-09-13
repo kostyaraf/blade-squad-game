@@ -237,7 +237,9 @@ var z77 := 0
 ## stands on a screen and nothing else has no pool, so the flow holds it.
 var z060c := 0
 
-var z58 := 0                # $58 -- how far into the maker's own code he is
+## $58 -- how far into the maker's own code he is on the title, and how many of
+## the beat's lines are still to be read at the end of the game.
+var z58 := 0
 var z05a0 := 0              # $05A0 -- how many times round the opening has gone
 var z7d := 0                # $7D -- which of the beam's own tricks is asked for
 ## $C160 -- while the title stands, the beam is stopped part way down and the
@@ -263,6 +265,31 @@ var chr := PackedInt32Array()
 ## is never touched at all -- which is how the ending's names stand over what
 ## the bonus screen left behind.
 var screen_keep := 0
+## Whether the mode wiped both boards without laying a screen over them, which
+## is what $C5C9 on its own comes to ($E4E9 does it and then types the names
+## straight onto the black).
+var screen_wipe := false
+## $0780 -- the places the beam's own stop reads while the names are typed.
+## Nothing here cuts the beam; the pool is kept because the step that fills it
+## is what says when that step is over.
+var z0780 := PackedByteArray()
+## $80:$81 and $82:$83 -- where the man stands while the names are typed, in
+## sixteenths of a pixel, and $05A4, $05B4, $05B5, $05A6, $05A7 -- the little
+## walk he is doing.  The ending is the one place in the game where the hero's
+## own machinery runs with no hero behind it.
+var man_x := 0
+var man_y := 0
+var man_pose := 0           # $05B5
+var man_t := 0              # $05A4
+var man_i := 0              # $05B4
+var man_pic_lo := 0         # $05A6
+var man_pic_hi := 0         # $05A7
+## $90:$91 while the names are typed -- which row of the board the three
+## blanking records of $8975 are written at next.
+var credit_at := 0
+## $70 -- which trick the beam is running this picture, which $FBDB settles at
+## the top of it out of the $7D the picture before left.
+var z70 := 0
 
 
 ## $0720/$0730 and $0740/$0750 -- the four pieces, and $0717..$0747 -- where
@@ -374,6 +401,10 @@ func step(host) -> void:
 			_end_down(host)
 		END_LAST:
 			_end_last(host)
+		CREDIT_PAL:
+			_credit_pal(host)
+		CREDIT:
+			_credits(host)
 		TEST_LAY:
 			_test_lay(host)
 		TEST_MENU:
@@ -1392,14 +1423,10 @@ func _end_pay(host) -> void:
 ## twenty one steps of $89A4 in bank twelve it stands on; the tiles it is drawn
 ## out of are turned over every sixteenth picture ($E4DD).
 func _end_sun(_host) -> void:
-	if z7d == SolEnd.one("sun_trick"):
-		# $C1DA -- what the beam's own stop leaves standing.  It writes the
-		# address it was handed last picture and takes this one's for the
-		# next, the two halves the other way about; the picture it does that
-		# in is the one after the trick was asked for, so it is done here
-		# before the step rather than after it.
-		z77 = z73
-		z76 = z74
+	# $FBDB -- which trick the beam is running this picture was settled at the
+	# top of it, out of the $7D the picture before left; so a trick asked for
+	# now is not run until the next one.
+	var split: bool = z70 == SolEnd.one("sun_trick")
 	fade.tick()                                   # $F806
 	match z4f:
 		0:                                        # $89D3
@@ -1462,6 +1489,13 @@ func _end_sun(_host) -> void:
 		20:                                       # $89FA
 			if fade.kind == 0:
 				mode = STAFF                      # INC $02
+	if split:
+		# $C1DA -- what the beam's own stop leaves standing: it writes the
+		# address it was handed and takes the one this picture worked out for
+		# the next, the two halves the other way about.
+		z77 = z73
+		z76 = z74
+	z70 = z7d
 	_end_chr()
 
 
@@ -1666,6 +1700,239 @@ func _end_man(host) -> void:
 	t.fwd = 0                                     # $E4BA -- $6C
 	SolSprites.plain((SolEnd.one("walk_page") << 8) | z4f, 0x00,
 			z4c, SolEnd.one("walk_y"), t)         # $E4D6 -- $F3F9
+
+
+## $E4E9, mode $22 -- both boards wiped and twenty of $D481 taken, which is the
+## black the names are typed onto.
+func _credit_pal(host) -> void:
+	scroll_x = 0                                  # $C5C9 -- $C578
+	scroll_y = 0
+	fade.blank()                                  # $C5B0
+	_no_sprites(host)                             # $C618 with $0C
+	screen_wipe = true                            # $C5DC -- both boards nought
+	_chr(0x00, 0x02)                              # $E4EC -- $D81F
+	# $E4F1 -- $C6E9 with X = $13, which is twenty of the thirty two; the
+	# other twelve are left as the screen before them wrote them.
+	fade.take(SolEnd.one("credit_table"), SolEnd.one("credit_n"))
+	z4c = 0                                       # $E4F6 -- $DAD8
+	z4d = 0
+	z4e = 0
+	z4f = 0
+	z7d = 0                                       # $E4F9
+	z75 = 0x4E                                    # $E508
+	z73 = 0x08
+	z74 = 0xF7
+	z0780.resize(0x80)                            # $E4FE -- $C618 with $80
+	for i in range(0x80):
+		z0780[i] = 0
+	mode = CREDIT                                 # $E503 -- INC $02
+
+
+## $E515, mode $23, which is the twenty one steps of $8836 in bank twelve --
+## the names typed out one beat at a time.  A beat is five bytes of the stream
+## in bank six and then one byte for every line it shows; the man walks in from
+## the right while it stands, and when the stream runs out the game goes on to
+## where a high score is typed in.
+func _credits(host) -> void:
+	_ca9a(host)                                   # $E515 -- $CA9A
+	match z4f:
+		0:                                        # $88DD
+			scroll_y = 0x08
+			z4c = 0
+			z7d = 0
+			z4f += 1
+		1:                                        # $88EA
+			man_t = 0                             # $B7AC
+			man_i = 0
+			_credit_beat()                        # $8180
+		2:                                        # $88F1
+			z58 = (z58 - 1) & 0xFF
+			if z58 == 0:
+				# The last beat names no picture at all, and that is the end
+				# of the stream.
+				if (man_pic_lo | (man_pic_hi & 0x1F)) != 0:
+					z4f += 1
+				else:
+					z4f = 0x0D
+			_credit_line(host)                    # $8269
+		3:                                        # $88AD -- he walks home
+			man_x = (man_x - SolEnd.one("man_step")) & 0xFFFF
+			if (man_x >> 8) < SolEnd.one("man_home"):
+				z4f += 1
+			_credit_man(host)
+		4:                                        # $889E -- and stands there
+			if z05ab == 0:
+				z4f += 1
+			else:
+				_man_pose(z05ab)                  # $8806 -- $B7BA
+				if man_t == 0xFF:
+					z4f += 1
+			_credit_man(host)
+		5:                                        # $891D
+			z7d = SolEnd.one("staff_trick")
+			_credit_man(host)
+			_credit_bar()
+		6:                                        # $8913
+			_credit_man(host)
+			z4c = (z4c - 1) & 0xFF
+			if z4c == 0:
+				z4f += 1
+		7:                                        # $8943
+			_credit_man(host)
+			if (clock & 0x01) == 0:
+				scroll_y = (scroll_y - 1) & 0xFF
+				if scroll_y == 0:
+					z4f += 1
+		8:                                        # $8952
+			for i in range(0x80):
+				z0780[i] = 0
+			z4c = 0xA0
+			z4f += 1
+		9:                                        # $8963 -- and straight on
+			credit_at = SolEnd.erase_at()
+			_credit_erase(host)
+		10:                                       # $8975
+			_credit_erase(host)
+		11:                                       # $8916
+			z4c = (z4c - 1) & 0xFF
+			if z4c == 0:
+				z4f += 1
+		12:                                       # $890E -- and the next beat
+			z4f = 0
+		13:                                       # $8865
+			chr[2] = 0x06                         # $41
+			chr[3] = 0x07
+			z4f += 1
+			fade.ask(SolFade.DOWN, 0xFF)          # $882B
+		14, 16:                                   # $887E
+			if fade.kind == 0:
+				z4f += 1
+		15:                                       # $886D
+			scroll_x = 0xFF
+			scroll_y = 0
+			z4f += 1
+			fade.ask(0x05, 0xFF)
+		17, 19:                                   # $8885
+			z05ab = (z05ab - 1) & 0xFF
+			if z05ab == 0:
+				z4f += 1
+		18:                                       # $888D
+			z05ab = (z05ab - 1) & 0xFF
+			if z05ab == 0:
+				# $F8 -- the tune brought to a stop, which is the driver's own
+				# and is not made here.
+				z4f += 1
+		20:                                       # $8899
+			mode = TOP_ASK_END
+
+
+## $8180 in bank six -- five bytes of the stream: the picture the man wears,
+## the walk he does, which colours the beat is in and how many lines it shows.
+func _credit_beat() -> void:
+	var s: Array = SolEnd.stream()
+	var y: int = z4e
+	z4e = (z4e + 5) & 0xFF
+	man_pic_lo = int(s[y])                        # $05A6
+	man_pic_hi = int(s[y + 1])                    # $05A7
+	z05ab = int(s[y + 2])                         # $05AB -- the walk
+	z58 = int(s[y + 4])
+	man_x = SolEnd.one("man_x")                   # $819F -- $81 and $80
+	man_y = SolEnd.one("man_y")                   # $81A3 -- $83 and $82
+	z4f += 1
+	# $81AF -- the three the beat names, and then the three that are the same
+	# whatever it names.  The first lands on $011D for every beat but the last,
+	# because every one of them is three past a multiple of four.
+	var pal: int = int(s[y + 3])
+	_credit_hues((pal & 0x03) << 2, pal >> 2)
+	var fixed: Array = SolEnd.beat_fixed()
+	for k in range(3):
+		_credit_hues(k * 4, int(fixed[k]))
+
+
+## $81D1 -- three of the thirty two written out of $81E4.
+func _credit_hues(x: int, y: int) -> void:
+	var three: Array = SolEnd.beat_pal(y)
+	for i in range(3):
+		fade.out[0x11 + x + i] = int(three[i])
+
+
+## $8269 -- one byte of the stream, which is one of the twenty six lines.
+func _credit_line(host) -> void:
+	var s: Array = SolEnd.stream()
+	var i: int = int(s[z4e])
+	z4e = (z4e + 1) & 0xFF
+	_end_say(host, i)
+
+
+## $88C0 and $944D -- the man where he stands, out of whichever picture the
+## walk arrived at.  Facing the other way is the picture next door, not a mark.
+func _credit_man(host) -> void:
+	var id: int = man_pic_lo | ((man_pic_hi & 0x1F) << 8)
+	if id == 0:
+		return
+	if (man_pic_hi & 0x80) != 0:                  # $05B2 -- $9458
+		id = (id + 1) & 0xFFFF
+	SolSprites.picture(id, 0x00, man_x, man_y, host.flow_table())
+
+
+## $891D -- the pool the beam's own stop reads, filled a place at a time: $10
+## more every picture, and when a place comes round to the top the next pair is
+## begun.  Twelve pairs of them and the step is over.
+func _credit_bar() -> void:
+	var at: int = z4c
+	var v: int = int(z0780[at]) + 0x10
+	if v > 0xFF:
+		v = 0xFF
+		z4c = (z4c + 2) & 0xFF
+		if z4c >= 0x18:
+			z4f += 1
+	z0780[at] = v
+	z0780[at + 1] = v
+
+
+## $8963 and $8975 -- three rows of twenty blanks a picture, six of them over
+## the two pictures the step takes, which is a beat wiped off the board.
+func _credit_erase(host) -> void:
+	for _k in range(3):
+		for x in range(SolEnd.one("erase_n")):
+			host.flow_poke(credit_at + x, 0)
+		credit_at = (credit_at + SolEnd.one("erase_step")) & 0xFFFF
+	z4f += 1
+
+
+## $B7BA -- the little walk the state itself wears.  Asking for the one already
+## running changes nothing; asking for another starts it at its first step.
+func _man_pose(id: int) -> void:
+	if id != man_pose:
+		man_pose = id                             # $B7BF
+		man_t = 0                                 # $B7B1
+		man_i = 0
+	_man_reel(man_pose)
+
+
+## $B7CE -- one picture of it.  A step whose length is $FF never ends, and the
+## walk is a ring: running off the end comes back to the first step.
+func _man_reel(id: int) -> void:
+	SolSprites.load_data()
+	if man_t != 0:                                # $B7D7
+		if man_t == 0xFF:
+			return
+		man_t -= 1
+		if man_t != 0:
+			return
+	var book: Array = SolSprites.scripts
+	if id >= book.size():
+		return
+	var steps: Array = book[id]
+	if steps.is_empty():
+		return
+	if man_i >= steps.size():
+		man_i = 0                                 # $B837
+	var one: Array = steps[man_i]
+	man_t = int(one[0])
+	man_pic_lo = int(one[1])
+	man_pic_hi = int(one[2])
+	man_i += 1
 
 
 ## $E28C -- the three counts written into the screen, which every step but the
