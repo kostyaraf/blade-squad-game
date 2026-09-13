@@ -78,6 +78,7 @@ def frame(m):
     return dict(
         state=m[0x05A2], timer=m[0x05A3], step_t=m[0x05A4], step_i=m[0x05B4],
         pic_lo=m[0x05A6], pic_hi=m[0x05A7], hurt=m[0x05C2], suit=m[0x05C5],
+        fuel=m[0x05AF],
         flags=m[0x05CB], jump_flags=m[0x05C9], clock=m[0x0C],
         face_left=bool(m[0x05B2] & 0x80),
         x=s16(m, 0x90), y=s16(m, 0x92),
@@ -110,6 +111,12 @@ def engine(cfg, scratch):
     return rows
 
 
+# Э4.14 -- and the same again with the suit taken off him on picture BARE_AT,
+# which is the only way the suitless branch of $937A is ever reached: nothing
+# a stand can play at him takes the last step of the suit away.
+BARE_AT = 20
+
+
 def main():
     only = [a for a in sys.argv[1:] if not a.startswith('--')]
     places = [a.split('=')[1] for a in sys.argv[1:] if a.startswith('--place=')]
@@ -124,42 +131,54 @@ def main():
             for name, pads in sorted(V.SCRIPTS.items()):
                 if only and name not in only:
                     continue
-                total += 1
-                rows = play(state, pads, first + 1, scratch)
-                cfg = dict(frames=[frame(a) for _, a, _ in rows])
-                got = engine(cfg, scratch)
-                want = [wanted(b) for _, _, b in rows]
-                n = min(len(want), len(got))
-                where = None
-                for i in range(n):
-                    if want[i] != got[i]:
-                        where = i
-                        break
-                if where is None and len(got) == len(want):
-                    print('%-6s %-11s ok, %d pictures' % (label, name, n))
-                    continue
-                bad += 1
-                if where is None:
-                    print('%-6s %-11s the engine gave %d pictures, not %d'
-                          % (label, name, len(got), len(want)))
-                    continue
-                print('%-6s %-11s differs on picture %d' % (label, name, where))
-                w, g = want[where], got[where]
-                for k in range(256):
-                    if w[0][k] != g[0][k]:
-                        print('    sprite %d.%d  cartridge %d  engine %d'
-                              % (k // 4, k % 4, w[0][k], g[0][k]))
-                        break
-                for k, nm in enumerate(('count', 'turn', 'fwd', 'back'), 1):
-                    if w[k] != g[k]:
-                        print('    %-6s cartridge %3d  engine %3d'
-                              % (nm, w[k], g[k]))
-                if w[5] != g[5]:
-                    print('    tiles  cartridge %s  engine %s' % (w[5], g[5]))
+                for bare in (False, True):
+                    total += 1
+                    pokes = (((0x05C5, 0x00, first + 1 + BARE_AT),)
+                             if bare else ())
+                    rows = play(state, pads, first + 1, scratch, pokes)
+                    if _one(label, name + (' bare' if bare else ''),
+                            rows, scratch):
+                        bad += 1
         print('%d of %d pictures differ' % (bad, total))
         return 1 if bad else 0
     finally:
         P.sweep(scratch)
+
+
+def _one(label, name, rows, scratch):
+    """One run of one place: the whole sprite table, picture by picture.
+
+    True when the two sides part.
+    """
+    cfg = dict(frames=[frame(a) for _, a, _ in rows])
+    got = engine(cfg, scratch)
+    want = [wanted(b) for _, _, b in rows]
+    n = min(len(want), len(got))
+    where = None
+    for i in range(n):
+        if want[i] != got[i]:
+            where = i
+            break
+    if where is None and len(got) == len(want):
+        print('%-6s %-16s ok, %d pictures' % (label, name, n))
+        return False
+    if where is None:
+        print('%-6s %-16s the engine gave %d pictures, not %d'
+              % (label, name, len(got), len(want)))
+        return True
+    print('%-6s %-16s differs on picture %d' % (label, name, where))
+    w, g = want[where], got[where]
+    for k in range(256):
+        if w[0][k] != g[0][k]:
+            print('    sprite %d.%d  cartridge %d  engine %d'
+                  % (k // 4, k % 4, w[0][k], g[0][k]))
+            break
+    for k, nm in enumerate(('count', 'turn', 'fwd', 'back'), 1):
+        if w[k] != g[k]:
+            print('    %-6s cartridge %3d  engine %3d' % (nm, w[k], g[k]))
+    if w[5] != g[5]:
+        print('    tiles  cartridge %s  engine %s' % (w[5], g[5]))
+    return True
 
 
 if __name__ == '__main__':

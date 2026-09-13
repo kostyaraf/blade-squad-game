@@ -500,6 +500,8 @@ func _run_sol_objects(path: String) -> void:
 	pool.z5ab = int(cfg["z5ab"]) if cfg.has("z5ab") else 0
 	p.burst = pool.z5ab
 	pool.z5fa = int(cfg["z5fa"]) if cfg.has("z5fa") else 0
+	pool.zf8 = int(cfg["zf8"]) if cfg.has("zf8") else 0
+	pool.z0112 = int(cfg["z0112"]) if cfg.has("z0112") else 0
 	for i in range(SolObjects.MARKS):
 		pool.mark[i] = int(cfg["mark"][i])
 	for i in range(SolObjects.SLOTS):
@@ -556,6 +558,7 @@ func _run_sol_objects(path: String) -> void:
 	var arms := PackedStringArray()
 	var heroes := PackedStringArray()
 	var hands := PackedStringArray()
+	var odds := PackedStringArray()
 	# The death stand kills a pool by hand: on one named picture bit 7 goes on
 	# the behaviour of every slot that holds something, which is what sends
 	# $81B7 to its second table.  The cartridge is poked at the top of the same
@@ -587,6 +590,7 @@ func _run_sol_objects(path: String) -> void:
 			arms.append(arms[n - 1])
 			heroes.append(heroes[n - 1])
 			hands.append(hands[n - 1])
+			odds.append(odds[n - 1])
 			if want_crates:
 				crates.append(crates[n - 1])
 			n += 1
@@ -706,6 +710,10 @@ func _run_sol_objects(path: String) -> void:
 					pool.frame[i], pool.cool[i], pool.life[i],
 					pool.pic_lo[i], pool.pic_hi[i]])
 		hands.append("H " + " ".join(hrow))
+		# Э4.14 -- the two bytes the hero writes that live nowhere else: what
+		# the game is to be put to next ($F8) and the colour the shimmer of
+		# the shield walks ($0112).
+		odds.append("Y %d %d" % [pool.zf8, pool.z0112])
 		if want_crates:
 			var crow := PackedStringArray()
 			for i in range(level_sol.present.size()):
@@ -719,6 +727,7 @@ func _run_sol_objects(path: String) -> void:
 	print("\n".join(arms))
 	print("\n".join(heroes))
 	print("\n".join(hands))
+	print("\n".join(odds))
 	if not pool.skipped.is_empty():
 		printerr("minds not read yet: ", pool.skipped)
 	if not pool.shots_skipped.is_empty():
@@ -1232,6 +1241,7 @@ func _run_sol_oam(path: String) -> void:
 		p.pic_hi = int(f["pic_hi"])
 		p.hurt = int(f["hurt"])
 		p.suit = int(f["suit"])
+		p.fuel = int(f["fuel"])
 		p.flags = int(f["flags"])
 		p.jump_flags = int(f["jump_flags"])
 		p.clock = int(f["clock"])

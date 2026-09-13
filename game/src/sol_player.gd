@@ -302,7 +302,8 @@ func _picture() -> void:
 	draw_id = -1
 	draw_mark = flags                       # $937A -- $9E starts as $05CB
 	if suit == 0:
-		return                              # $9384, not ported yet
+		_bare_picture()                     # $9384
+		return
 	if timer >= 0x70:                       # $93CE -- an old enough hero
 		_worn()
 		return
@@ -339,6 +340,46 @@ func _picture() -> void:
 		draw_id = 0xC2 if timer < 0x08 else 0x72
 		return
 	draw_id = 0xBC if timer < 0x08 else 0xBA
+
+
+## $9384 -- a hero with no suit on is not drawn out of his animation at all: he
+## has three fixed pictures, and which of the three is all the drawing does.
+## The last of the three is also where he is finished off for good, because
+## nothing else notices a hero who has run out of everything.
+func _bare_picture() -> void:
+	SolSprites.load_data()
+	var base: int = SolSprites.bare[0]
+	if timer >= 0x06:                       # $9387
+		if state == 0x01 and fuel == 0:     # $938D -- hit, and free to move
+			base = SolSprites.bare[2]
+		else:
+			base = SolSprites.bare[1]
+			if state == 0x00 and timer == 0xFF:
+				# $93A9 -- state nought and a count that has stopped: the
+				# picture he is finished off in.
+				burst = 0xFF
+				state = 0x0C
+				if pool != null:
+					pool.zf8 = 0x0C         # $93B1
+					if pool.id[SAT] != 0:   # $93B3 -- and the satellite with
+						pool.id[SAT] = 0xFF # him
+						pool.b[SAT] = 0x20
+	# $93C4 -- the picture next door is the same one mirrored.
+	draw_id = base + (1 if face_left else 0)
+
+
+## $9689 -- the shimmer of the shield: with one up, and in a state that does
+## not put it out, the third colour of the sprites' first set walks through
+## four values every other picture.
+func _shine() -> void:
+	if shield == 0:                         # $9689
+		return
+	SolSprites.load_data()
+	if SolSprites.shine_off[state & 0x3F] != 0:
+		return                              # $9694
+	if pool == null or pool.z5fa != 0:      # $9699 -- not while the stage ends
+		return
+	pool.shine_to(SolSprites.shine[(clock >> 1) & 0x03])
 
 
 ## $944D -- the picture the animation arrived at, and the one next door when he
@@ -468,10 +509,11 @@ func _shove(v: int) -> void:
 				speed += 1 if speed < 0 else -1
 
 
-## $9689 -- up and down, which is really the state's own handler.  $96C0 holds
-## twenty one pointers and $05A2 picks one; all twenty one are here, in the
-## order of the table and not of the code.
+## $9689 -- up and down: the shimmer of the shield first, and then the state's
+## own handler.  $96C0 holds twenty one pointers and $05A2 picks one; all
+## twenty one are here, in the order of the table and not of the code.
 func _vertical(held: int, pressed: int) -> void:
+	_shine()                                # $9689
 	match state:
 		ST_GROUND:
 			_ground(held, pressed)          # $9ED3

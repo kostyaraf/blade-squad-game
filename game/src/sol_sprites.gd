@@ -20,6 +20,12 @@ class_name SolSprites
 static var scripts: Array = []
 static var hurt: Array = []
 static var loop: PackedByteArray = PackedByteArray()
+## $96BC -- the four colours a shield walks $0112 through, and $96EA -- one
+## byte a state, "no shimmer while this one runs".
+static var shine: PackedByteArray = PackedByteArray()
+static var shine_off: PackedByteArray = PackedByteArray()
+## $9384 -- the three pictures a hero with no suit on is drawn out of.
+static var bare: PackedByteArray = PackedByteArray()
 static var pictures: Array = []
 
 ## $F4D0 -- past this many sprites the second end is not written at all.
@@ -62,6 +68,9 @@ static func load_data() -> void:
 	scripts = j["scripts"]
 	hurt = j["hurt"]
 	loop = PackedByteArray(j["loop"])
+	shine = PackedByteArray(j["shine"])
+	shine_off = PackedByteArray(j["shine_off"])
+	bare = PackedByteArray(j["bare"])
 	pictures = j["pictures"]
 
 

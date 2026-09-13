@@ -48,6 +48,14 @@ SCRIPTS, SCRIPTS_N = 0xBB65, 44
 HURT, HURT_N = 0xBBBD, 32
 # $B83E -- when to let something go, one byte an animation.
 LOOP, LOOP_N = 0xB83E, 36
+# $96BC -- the four colours the shield walks through, and $96EA -- one byte a
+# state, "the shimmer is out while this state runs".
+SHINE, SHINE_N = 0x96BC, 4
+SHINE_OFF, SHINE_OFF_N = 0x96EA, 21
+# $9384 -- the three pictures a hero with no suit on is drawn out of: the
+# ordinary one, the one he wears when he is finished off, and the one of being
+# hit.  The picture next door is the same one mirrored ($93C4).
+BARE = (0xBA, 0xBE, 0xC0)
 # $8004 of bank ten -- where the pictures' own table stands.
 TABLE_AT = 0x8004
 
@@ -127,6 +135,9 @@ def main():
         scripts=scripts(ani, SCRIPTS, SCRIPTS_N),
         hurt=scripts(ani, HURT, HURT_N),
         loop=[ani.b(LOOP + i) for i in range(LOOP_N)],
+        shine=[ani.b(SHINE + i) for i in range(SHINE_N)],
+        shine_off=[ani.b(SHINE_OFF + i) for i in range(SHINE_OFF_N)],
+        bare=list(BARE),
         pictures=pics,
     )
     d = outdir('sol')

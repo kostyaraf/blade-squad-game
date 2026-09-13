@@ -160,6 +160,10 @@ def seed(base):
     cfg['letters'] = base[0x05C4]
     cfg['z5ab'] = base[0x05AB]
     cfg['z5fa'] = base[0x05FA]
+    # Э4.14 -- what the game is to be put to next, and the colour the shimmer
+    # of the shield walks.
+    cfg['zf8'] = base[0x00F8]
+    cfg['z0112'] = base[0x0112]
     cfg['bonus'] = base[0x05C6] | base[0x05C7] << 8
     cfg['mark'] = [base[0x0560 + i] for i in range(MARKS)]
     # The sixteen shots.  Э4.2 does not read them either, but a shot can reach

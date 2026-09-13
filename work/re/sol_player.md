@@ -355,7 +355,9 @@ at **x = 631.75**, and the first solid column there begins at 640.
 
 * `$05C5` and what each suit changes.
 
-  The suitless branch of `$937A` is read.  `$937F` looks at `$05C5`; anything
+  **The suitless branch is ported and accepted (Э4.14)**; what each of the
+  eight steps of the suit changes is still open.  `$937F` looks at `$05C5`;
+  anything
   other than nought goes to `$93CE`, the suited drawing.  With nought:
 
   ```
@@ -370,7 +372,8 @@ at **x = 631.75**, and the first solid column there begins at 640.
   93C4  A = Y + (bit 7 of $05B2)      ; which way he faces
   93CB  JMP $9472                     ; and that is the group drawn
   ```
-* `$9689`'s first half (`$05C8`, `$0112`) — the shimmer of the shield.  Read:
+* `$9689`'s first half (`$05C8`, `$0112`) — the shimmer of the shield.
+  **Ported and accepted (Э4.14).**  Read:
 
   ```
   9689  $05C8 == 0                 -> nothing
@@ -391,6 +394,26 @@ at **x = 631.75**, and the first solid column there begins at 640.
   `$43`).
 
 All twenty one state handlers, `$9159` and `$9A7C` are read and ported.
+
+## 6b. Э4.14 -- no suit on, and the shimmer
+
+Two pieces of `$937A` and `$9689` that were read here long ago and left
+unported are now in the engine, with `work/extract/verify_sol_bare.py` behind
+them: 88 pokings (two stages x twenty one states x two cases, plus the two
+corners the states alone do not reach), 0 differ.  The drawing itself is
+`verify_sol_oam.py`, which now plays every one of its scripts twice -- the
+second time with the suit taken off on picture twenty -- 0 of 276.
+
+What the suitless branch does beside choosing a picture: on the picture his
+count stops (`$05A3` = `$FF`) in state nought he is finished off for good --
+`$05AB` = `$FF`, `$05A2` = `$0C`, `$F8` = `$0C`, and the satellite, if he has
+one, is sent away (`$060C` = `$FF`, `$062C` = `$20`).  The three pictures
+(`$BA`, `$BE`, `$C0`) and the two little tables of the shimmer (`$96BC`,
+`$96EA`) are exported into `hero.json` by `work/extract/sol_sprites.py`.
+
+`$0112` is the flow's own table of colours, and a stand that runs one stage
+alone has no flow; so the pool keeps a copy of the byte (`z0112`) and writes
+through to the flow when there is one.
 
 ## 6a. Acceptance
 

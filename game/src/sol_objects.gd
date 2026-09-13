@@ -205,7 +205,19 @@ var table: SolSprites.Table = null
 ## $02 -- the flow, when a whole game is being run and not one stage.  $97A7
 ## hands it the death.
 var flow: SolFlow = null
+## $0112 -- the third colour of the sprites' first set, which the shimmer of
+## the shield walks ($969E).  The pool keeps its own copy, because a stand
+## that runs a stage alone has no table of colours to walk; with a flow to
+## hand, the flow's table is the one the console shows.
+var z0112 := 0
 var skipped := {}                   # which behaviours have not been read yet
+
+
+## $96A7 -- what the shimmer writes, kept both places at once.
+func shine_to(v: int) -> void:
+	z0112 = v
+	if flow != null:
+		flow.fade.out[0x12] = v
 
 var _types: Array
 var _anims: Array
