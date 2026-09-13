@@ -164,6 +164,8 @@ def seed(base):
     # of the shield walks.
     cfg['zf8'] = base[0x00F8]
     cfg['z0112'] = base[0x0112]
+    # Э4.15 -- what a panel took and has not been paid off yet.
+    cfg['z56'] = base[0x56]
     cfg['bonus'] = base[0x05C6] | base[0x05C7] << 8
     cfg['mark'] = [base[0x0560 + i] for i in range(MARKS)]
     # The sixteen shots.  Э4.2 does not read them either, but a shot can reach

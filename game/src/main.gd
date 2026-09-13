@@ -463,6 +463,17 @@ func _poke_hero(p: SolPlayer, a: int, v: int) -> void:
 		0x05EA: p.hold_max = v
 
 
+## Э4.15 -- the bytes a panel pays out of, which are the pool's, not his.
+func _poke_odd(pool: SolObjects, a: int, v: int) -> void:
+	match a:
+		0x0056: pool.z56 = v
+		0x00F8: pool.zf8 = v
+		0x0112: pool.shine_to(v)
+		0x05C6: pool.hero_bonus = (pool.hero_bonus & 0xFF00) | v
+		0x05C7: pool.hero_bonus = (pool.hero_bonus & 0x00FF) | (v << 8)
+		0x071C: pool.w_x[0x0C] = (pool.w_x[0x0C] & 0xFF00) | v
+
+
 ## A sixteen bit number the cartridge keeps as two bytes, read back signed.
 func _s16(v: int) -> int:
 	v &= 0xFFFF
@@ -502,6 +513,7 @@ func _run_sol_objects(path: String) -> void:
 	pool.z5fa = int(cfg["z5fa"]) if cfg.has("z5fa") else 0
 	pool.zf8 = int(cfg["zf8"]) if cfg.has("zf8") else 0
 	pool.z0112 = int(cfg["z0112"]) if cfg.has("z0112") else 0
+	pool.z56 = int(cfg["z56"]) if cfg.has("z56") else 0
 	for i in range(SolObjects.MARKS):
 		pool.mark[i] = int(cfg["mark"][i])
 	for i in range(SolObjects.SLOTS):
@@ -570,6 +582,9 @@ func _run_sol_objects(path: String) -> void:
 	var put: Array = cfg["put"] if cfg.has("put") else []
 	# Э4.5 -- and the same for the hero, whose bytes are not in the pool.
 	var hero_put: Array = cfg["hero_put"] if cfg.has("hero_put") else []
+	# Э4.15 -- what a panel is paid with lives outside him: the bonus he has
+	# not been counted yet, what a panel has taken of it, and his tries.
+	var odd_put: Array = cfg["odd_put"] if cfg.has("odd_put") else []
 	var want_crates: bool = cfg.has("crates")
 	var crates := PackedStringArray()
 	var n := 0
@@ -581,102 +596,98 @@ func _run_sol_objects(path: String) -> void:
 				_poke_pool(pool, int(e[0]), int(e[1]))
 			for e in hero_put:
 				_poke_hero(p, int(e[0]), int(e[1]))
+			for e in odd_put:
+				_poke_odd(pool, int(e[0]), int(e[1]))
 		# A picture the cartridge did not have time for: $0C does not move on,
 		# and neither does anything else.  The stand still asks for a row, so
 		# the one before is given again.
-		if n > 0 and int(clocks[n]) == int(clocks[n - 1]):
-			out.append(out[n - 1])
-			shots.append(shots[n - 1])
-			arms.append(arms[n - 1])
-			heroes.append(heroes[n - 1])
-			hands.append(hands[n - 1])
-			odds.append(odds[n - 1])
-			if want_crates:
-				crates.append(crates[n - 1])
-			n += 1
-			continue
-		# The order of one picture, as $CDB0 keeps it: what the background
-		# owed is paid at the top, then the view moves, then his breath
-		# ($CDB3), then the scan ($CDBB), then his own box ($CDBE) and what
-		# has been thrown at him ($CDCC) -- and only after all of that does he
-		# take his step ($CDD2), the shots theirs ($CDDA) and the pool its
-		# own ($CDDD).  A hit therefore lands one picture before his own clock
-		# counts it, which is what his being thrown back leans on.
-		pool.clock = int(clocks[n])
-		pool.noise = int(noises[n])
-		pool.six = int(sixes[n])
-		pool.z7f = int(steps[n])
-		if n < oweds.size():
-			pool.z26 = int(oweds[n])
-		if n < rides.size():
-			pool.z58 = int(rides[n])
-		pool.drew()
-		view.step(p.vx, p.vy, p.x, p.y)
-		pool.hero = p
-		# Seventeen of his twenty one states read and write slot $0C, so he is
-		# handed the pool the same way the pool is handed him.
-		p.pool = pool
-		pool.born_wait = view.hold
-		pool.map_kind = view.map_kind
-		pool.stage = int(cfg["stage"]) if cfg.has("stage") else 0
-		pool.z34 = view.fall
-		pool.cam_x = view.x
-		pool.cam_y = view.y
-		# $CDB3 -- his breath, and the bubbles it leaves behind in the pool.
-		SolShots.breathe(pool, p)
-		pool.scrolled(view.x, view.y)
-		pool.room = pool.room_of(view.x, view.y)
-		_hero_into(pool, p)
-		pool.scan(view.x, view.y, p.x, p.state)          # $CDBB
-		# $CDBE -- his box is built once, and every slot is laid over the same
-		# one; $CDCC then asks what has already been thrown at him.
-		pool.hero_box()
-		pool.shots_hit_hero()
-		# $06 is the buttons the cartridge's own hero saw.  It is the pad as
-		# read at $C895, except that a stage's own script may wipe it ($9E73
-		# in bank 8 does, all through stage twenty's opening), and that script
-		# is not ported yet -- so the hero is handed the byte rather than the
-		# pad.  Where no script interferes the two are the same.
-		# $91AC -- while the wait for a satellite is between one and $2F he
-		# does not move at all: $9477 is simply not called.
-		var pad: int = int(sixes[n]) if cfg.has("six_at") else int(f)
-		if view.hold == 0 or view.hold >= 0x30:
-			p.step(pad)                                      # $91B5
-		else:
-			p.skip(pad)
-		_hero_into(pool, p)
-		# $B862 -- one step of a handful of his animations strikes, and what it
-		# strikes with goes into slot fifteen while he is still the one running.
-		if p.punch >= 0:
-			SolSat.strike(pool, p.punch, p.punch_x, p.punch_y)
-			p.punch = -1
-		# $923B -- the tail of $9159: the three letter boxes, and what a
-		# finished combination gives him.
-		SolSat.letters(pool)
-		view.hold = pool.born_wait
-		p.state = pool.hero_state
-		# $847E -- the one that rides him off the stage takes the wire with it
-		p.fuel = pool.hero_fuel
-		p.burst = pool.z5ab
-		# $CDD2 is one call, $9150, and drawing him is only its first half:
-		# the second is $B168, the pool his satellite throws into.
-		SolWeapon.step(pool)
-		# $9156 -- and the third half: the hero's own four slots, $0C to $0F.
-		pool.pad_new = int(news[n])
-		SolSat.step(pool)
-		# $AD45 writes back into $05B2, which he reads again next picture --
-		# the whole byte of it, not only the bit that says which way he looks.
-		p.face = pool.hero_face
-		SolShots.step(pool)                              # $CDDA
-		# $B984 -- the shot that turns the world over writes his own numbers,
-		# so they are taken back out of the pool once the shots have run.
-		p.flags = pool.hero_flags
-		p.rise = pool.hero_rise - 0x10000 \
-				if pool.hero_rise >= 0x8000 else pool.hero_rise
-		p.jump = pool.hero_jump
-		p.gravity = pool.hero_grav
-		p.hold_max = pool.hero_hold_max
-		pool.step(view.x, view.y)                        # $CDDD
+		# Э4.15 -- and the first picture is no different: what it is held
+		# against is the clock the seed was taken on, which a stand passes in
+		# when the frame it seeds from may itself be a half picture.
+		var before: int = int(clocks[n - 1]) if n > 0 \
+				else (int(cfg["clock0"]) if cfg.has("clock0") else -1)
+		# A picture the cartridge finished is played; on one it did not the
+		# state is left where it stood and the same row is given again.
+		if int(clocks[n]) != before:
+			pool.clock = int(clocks[n])
+			pool.noise = int(noises[n])
+			pool.six = int(sixes[n])
+			pool.z7f = int(steps[n])
+			if n < oweds.size():
+				pool.z26 = int(oweds[n])
+			if n < rides.size():
+				pool.z58 = int(rides[n])
+			pool.drew()
+			view.step(p.vx, p.vy, p.x, p.y)
+			pool.hero = p
+			# Seventeen of his twenty one states read and write slot $0C, so he is
+			# handed the pool the same way the pool is handed him.
+			p.pool = pool
+			pool.born_wait = view.hold
+			pool.map_kind = view.map_kind
+			# $70 is the hero's too: on the stage that is all water it is what
+			# takes the ceiling away from him ($A26E).
+			p.map_kind = view.map_kind
+			pool.stage = int(cfg["stage"]) if cfg.has("stage") else 0
+			pool.z34 = view.fall
+			pool.cam_x = view.x
+			pool.cam_y = view.y
+			# $CDB3 -- his breath, and the bubbles it leaves behind in the pool.
+			SolShots.breathe(pool, p)
+			pool.scrolled(view.x, view.y)
+			pool.room = pool.room_of(view.x, view.y)
+			_hero_into(pool, p)
+			pool.scan(view.x, view.y, p.x, p.state)          # $CDBB
+			# $CDBE -- his box is built once, and every slot is laid over the same
+			# one; $CDCC then asks what has already been thrown at him.
+			pool.hero_box()
+			pool.shots_hit_hero()
+			# $06 is the buttons the cartridge's own hero saw.  It is the pad as
+			# read at $C895, except that a stage's own script may wipe it ($9E73
+			# in bank 8 does, all through stage twenty's opening), and that script
+			# is not ported yet -- so the hero is handed the byte rather than the
+			# pad.  Where no script interferes the two are the same.
+			# $91AC -- while the wait for a satellite is between one and $2F he
+			# does not move at all: $9477 is simply not called.
+			var pad: int = int(sixes[n]) if cfg.has("six_at") else int(f)
+			if view.hold == 0 or view.hold >= 0x30:
+				p.step(pad)                                      # $91B5
+			else:
+				p.skip(pad)
+			_hero_into(pool, p)
+			# $B862 -- one step of a handful of his animations strikes, and what it
+			# strikes with goes into slot fifteen while he is still the one running.
+			if p.punch >= 0:
+				SolSat.strike(pool, p.punch, p.punch_x, p.punch_y)
+				p.punch = -1
+			# $923B -- the tail of $9159: the three letter boxes, and what a
+			# finished combination gives him.
+			SolSat.letters(pool)
+			view.hold = pool.born_wait
+			p.state = pool.hero_state
+			# $847E -- the one that rides him off the stage takes the wire with it
+			p.fuel = pool.hero_fuel
+			p.burst = pool.z5ab
+			# $CDD2 is one call, $9150, and drawing him is only its first half:
+			# the second is $B168, the pool his satellite throws into.
+			SolWeapon.step(pool)
+			# $9156 -- and the third half: the hero's own four slots, $0C to $0F.
+			pool.pad_new = int(news[n])
+			SolSat.step(pool)
+			# $AD45 writes back into $05B2, which he reads again next picture --
+			# the whole byte of it, not only the bit that says which way he looks.
+			p.face = pool.hero_face
+			SolShots.step(pool)                              # $CDDA
+			# $B984 -- the shot that turns the world over writes his own numbers,
+			# so they are taken back out of the pool once the shots have run.
+			p.flags = pool.hero_flags
+			p.rise = pool.hero_rise - 0x10000 \
+					if pool.hero_rise >= 0x8000 else pool.hero_rise
+			p.jump = pool.hero_jump
+			p.gravity = pool.hero_grav
+			p.hold_max = pool.hero_hold_max
+			pool.step(view.x, view.y)                        # $CDDD
+			_sol_tab(pool)                                   # $CDE3
 		var row := PackedStringArray()
 		for i in range(SolObjects.SLOTS):
 			row.append("%d,%d,%d,%d,%d,%d,%d" % [pool.id[i], pool.x[i],
@@ -710,10 +721,12 @@ func _run_sol_objects(path: String) -> void:
 					pool.frame[i], pool.cool[i], pool.life[i],
 					pool.pic_lo[i], pool.pic_hi[i]])
 		hands.append("H " + " ".join(hrow))
-		# Э4.14 -- the two bytes the hero writes that live nowhere else: what
-		# the game is to be put to next ($F8) and the colour the shimmer of
-		# the shield walks ($0112).
-		odds.append("Y %d %d" % [pool.zf8, pool.z0112])
+		# Э4.14 and Э4.15 -- what the hero writes that lives nowhere else:
+		# what the game is to be put to next ($F8), the colour the shimmer of
+		# the shield walks ($0112), what a panel took and has not been paid
+		# off yet ($56), and the four a panel buys with and into.
+		odds.append("Y %d %d %d %d %d %d %d" % [pool.zf8, pool.z0112, pool.z56,
+				pool.hero_bonus, p.suit, p.shield, pool.w_x[0x0C] & 0xFF])
 		if want_crates:
 			var crow := PackedStringArray()
 			for i in range(level_sol.present.size()):
@@ -736,6 +749,17 @@ func _run_sol_objects(path: String) -> void:
 		printerr("weapons not read yet: ", pool.weapons_skipped)
 	if not pool.sat_skipped.is_empty():
 		printerr("satellite not read yet: ", pool.sat_skipped)
+
+
+## $CDE3 -- what a panel took is paid off a point a picture, out of the bonus
+## he has not been counted yet.  Anything else that picture's tail does --
+## the wait a suitless hero puts the game through ($CE09) -- is the frame's
+## own pacing and not the game's state.
+func _sol_tab(pool: SolObjects) -> void:
+	if pool.z56 == 0:
+		return
+	pool.z56 -= 1
+	pool.hero_bonus = (pool.hero_bonus - 1) & 0xFFFF
 
 
 ## The hero's own numbers, copied into the pool.  $CDBB and $CDBE read them
@@ -1862,6 +1886,7 @@ func _step_sol() -> void:
 	sol_view.step(p.vx, p.vy, p.x, p.y)
 	pool.born_wait = sol_view.hold
 	pool.map_kind = sol_view.map_kind
+	p.map_kind = sol_view.map_kind
 	pool.z34 = sol_view.fall
 	pool.cam_x = sol_view.x
 	pool.cam_y = sol_view.y
@@ -1915,6 +1940,7 @@ func _step_sol() -> void:
 	p.gravity = pool.hero_grav
 	p.hold_max = pool.hero_hold_max
 	pool.step(sol_view.x, sol_view.y, sol_table)         # $CDDD
+	_sol_tab(pool)                                       # $CDE3
 	# $05AF is one byte of memory and not two: a mind that writes it -- $847E,
 	# which is what ends his arriving -- writes what he reads next picture, so
 	# it is taken back out of the pool after the pool has run and not before.

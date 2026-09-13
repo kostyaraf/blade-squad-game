@@ -415,6 +415,71 @@ one, is sent away (`$060C` = `$FF`, `$062C` = `$20`).  The three pictures
 alone has no flow; so the pool keeps a copy of the byte (`z0112`) and writes
 through to the flow when there is one.
 
+## 6c. Э4.15 -- the recovery panels
+
+Ducking on the right tile buys something back.  `$9CA0` is the whole of it, and
+it runs out of the crouch, once a picture, while nothing is due to be drawn
+(`$36`/`$37`).  The tile it reads is `$2A`, the metatile the floor probe left
+behind (`$D0FD STY $2A`), taken `AND #$FE` and dropped if nought.
+
+Each stage names four tiles of its own, four bytes at `$9D6E`:
+
+| index | what it buys | routine | price |
+|-------|--------------|---------|-------|
+| 0 | the shield, `$05C8` = 3 | `$9DBE` | `$0A` |
+| 1 | the suit filled, `$05C5` to 8 | `$9CC3` -> `$9E00` | `$1E` |
+| 2 | one more try, `$071C` | `$9E30` | `$C8` |
+| 3 | whichever of the three `$9DEC[$55]` names | `$9DDF` | that one's |
+
+What a panel is paid with is not the score but the bonus he has not been
+counted yet, `$05C6:$05C7`.  `$9E55` asks whether `($05C6:$05C7 - $56)` still
+reaches the price; `$9E4F` adds the price to `$56`; and `$CDE3`, every picture
+with `$56` not nought, takes one off both.  So a panel is paid for slowly,
+a point a picture, and the count on the screen walks down as it is paid.
+
+The suit is the only one that takes its time: a step of it goes on every odd
+picture (`$9E17`, `$0C` rolled right), the price is charged only when the
+eighth step lands, and `$8825` holds `$05A3` at `$20` all the while so the
+crouch does not run out.  A suit filled halfway and walked away from costs
+nothing at all.  While any of them is working `$9E48` holds DOWN down for him
+(`$06 |= $04`), so letting go of the button mid-way changes nothing.
+
+A panel that has given what it had is used up, `$9E6D`: `$BA15` is asked to
+break the two places under his feet (`$81 & $FE` and `$81 | $01`, both one row
+down), and then `$8C95` hatches thing `$2D` between them -- the upward-counting
+hatch, slots nought to eleven, out of the second table (`$8D14`).
+
+`$BA15` is the panels' own "may this give way": it refuses while a row or a
+column is due, takes anything whose properties reach `$0C` in the low nibble or
+have either of the bottom two bits, and -- unlike `$B9CD` -- breaks a place
+that is already broken.
+
+Of the four, only two have anywhere to stand in the twenty stages: the shield
+on stage five (tile `$44`, seven places) and stage six (tile `$38`, four), and
+the suit on stage thirteen (tile `$1E`, fifty eight).  The try panel of stage
+thirteen (tile `$42`) is walled in on every one of its 480 places, but that
+stage is the one that is all water and `$A26E` takes the ceiling away there, so
+he can be set down inside the wall and stand on it after all.  The fourth panel
+names a tile no stage lays.
+
+Two debts of the hero came out of standing him in those places, both now paid:
+
+* `$A26E` -- `$70` = `$3C`, the stage that is all water, has no ceiling at all.
+  The probe gives its own `$3C` back, which is neither a block nor anything to
+  react to.  `$70` is the hero's byte as much as the pool's, and the stand now
+  hands it to him every picture.
+* `$A336`/`$A3C0` against `$A355`/`$A3E5` -- the wall the *drag* puts to what is
+  left of the move takes the speed away whichever way he looks; only the wall
+  the move itself meets asks which way he faces first.
+
+The tables are exported by `work/extract/sol_panels.py` into
+`game/data/sol/panels.json`, and the acceptance is
+`work/extract/verify_sol_panels.py`: every standable place of every panel, each
+entered three ways -- with the money, a point short of it, and with the thing
+already full -- held against the cartridge picture by picture on the sixteen
+slots, the thirty two bytes of the broken mark, the hero's sixteen numbers and
+the seven a panel pays with and into.  0 of 24.
+
 ## 6a. Acceptance
 
 `work/extract/verify_sol_states.py` — on a settled picture (frame 40) `$05A2`

@@ -210,6 +210,9 @@ var flow: SolFlow = null
 ## that runs a stage alone has no table of colours to walk; with a flow to
 ## hand, the flow's table is the one the console shows.
 var z0112 := 0
+## $56 -- what a panel took, and has not been taken off the bonus yet.  $CDE3
+## takes one off both every picture, so a price is paid a point at a time.
+var z56 := 0
 var skipped := {}                   # which behaviours have not been read yet
 
 
@@ -913,6 +916,29 @@ func break_wall(px: int, py: int) -> int:
 	level.smash(m)                      # $BA0F
 	z5f0 = 0xFF                         # $BAEB
 	return z60
+
+
+## $BA15 -- the panels' own "may this give way", which is not the punch's
+## $B9CD: here a place gives way where what it stops is twelve or more, or
+## where its bottom two bits are not both nought, and a place already broken
+## is broken again without complaint.  Nothing gives way at all on a picture
+## the background still owes a row or a column.
+##
+## What the cartridge does beside breaking it is the screen's: the colours of
+## the two cells and the pair of $E28C records that carry the new tiles.  That
+## is the same machinery $B9CD leaves out here (Э4.4), and for the same
+## reason: the engine draws the map from the mark itself.
+func break_panel(px: int, py: int) -> void:
+	if row_due != 0 or col_due != 0:
+		return                          # $BA1B
+	var m: int = level.raw_at(((px >> 8) & 0xFF) << 4, ((py >> 8) & 0xFF) << 4)
+	if m < 0:
+		return
+	var v: int = level.props[m] & 0x0F  # $BA32
+	if v < 0x0C and (v & 0x03) == 0:
+		return                          # $BA1E -- no place here at all
+	level.smash(m)                      # $BA4C
+	z5f0 = 0xFF                         # $BAEB
 
 
 func missed(m: int, done: bool) -> void:

@@ -36,7 +36,7 @@ STATES = T.STATES
 NAMES = T.NAMES
 SLOT_NAMES = T.SLOT_NAMES
 FIRST, LAST = T.FIRST, T.LAST
-ODD = ('F8', '0112')
+ODD = ('F8', '0112', '56', '05C6', '05C5', '05C8', '071C')
 
 # What is written by hand on picture AT, beside the state itself.  The shield
 # is put up in every case: with no suit on it is what keeps him alive, and
@@ -58,7 +58,9 @@ CORNERS = (
 def cartridge(state, pads, base, pokes):
     """The hero, his four slots and the two odd bytes, picture by picture."""
     script = V.cartridge_script(pads, base)
-    addrs = set(S.TICKS) | set(T.ONE) | {0x26, 0x02, 0x00F8, 0x0112}
+    addrs = set(S.TICKS) | set(T.ONE) | {0x26, 0x02, 0x00F8, 0x0112, 0x56,
+                                            0x05C6, 0x05C7, 0x05C5, 0x05C8,
+                                            0x071C}
     for lo, hi in T.HERE_AT.values():
         addrs |= {lo, hi}
     for p in (0xA0, 0xB0, 0xC0, 0xD0):
@@ -83,7 +85,9 @@ def cartridge(state, pads, base, pokes):
              c[0x06B0 + i], c[0x06C0 + i], c[0x06D0 + i], c[0x06E0 + i],
              c[0x06F0 + i], c[0x0660 + i], c[0x0670 + i])
             for i in range(FIRST, LAST + 1)))
-        odds.append((c[0x00F8], c[0x0112]))
+        odds.append((c[0x00F8], c[0x0112], c[0x56],
+                     c[0x05C6] | c[0x05C7] << 8, c[0x05C5], c[0x05C8],
+                     c[0x071C]))
     return hero, hands, odds, ticks
 
 
@@ -109,7 +113,7 @@ def engine(cfg, scratch):
             continue
         if line.startswith('Y '):
             f = line[2:].split()
-            if len(f) == 2:
+            if len(f) == len(ODD):
                 odds.append(tuple(int(v) for v in f))
     if not hero:
         sys.stderr.write(r.stdout[-2000:] + r.stderr[-2000:])

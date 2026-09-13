@@ -1058,6 +1058,7 @@ func _crouch(held: int, pressed: int) -> void:
 	if _under() < 0x80:
 		_fall()
 		return
+	held = _panels(held)                    # $9CA0
 	# $9CE1 -- letting go of down stands him up, and $9D19 still has its say
 	# about what he looks like on the way.
 	if (held & DOWN) == 0:
@@ -1070,6 +1071,128 @@ func _crouch(held: int, pressed: int) -> void:
 		_script(0x15)
 		return
 	_shoot(0x16, 0x09)
+
+
+## $9CA0 -- ducking on one of the stage's four panels.  What he is standing on
+## is compared against four tile numbers, and each of the four buys something
+## different; nothing at all happens on a picture the background still owes a
+## row or a column, because a panel used up rewrites the map.
+##
+## `held` is handed back: a panel holds the button down for him ($9E48) so
+## that letting go of it does not stand him up in the middle of a purchase.
+func _panels(held: int) -> int:
+	if pool == null:
+		return held
+	if pool.row_due != 0 or pool.col_due != 0:
+		return held                         # $9CA4
+	var tile: int = _floor_tile() & 0xFE    # $9CAB
+	if tile == 0:
+		return held                         # $9CAE
+	var row: Array = SolPanels.tiles(stage)
+	if tile == int(row[0]):
+		held = _buy_shield(held)            # $9DBE
+	if tile == int(row[1]):
+		held = _buy_suit(held)              # $9CC3
+	if tile == int(row[2]):
+		held = _buy_try(held)               # $9E30
+	if tile == int(row[3]):
+		# $9DDF -- and the fourth is whichever of the three this stage names.
+		match SolPanels.gift(stage):
+			0x00: held = _buy_shield(held)
+			0x01: held = _buy_suit(held)
+			_: held = _buy_try(held)
+	# $9E48 writes the button into $06 itself, and $06 is both the pad this
+	# picture and what the next one works out "newly pressed" against, so the
+	# one the panel holds down is remembered as held.  Left and right are read
+	# out of the same byte afterwards, and neither cares about this bit.
+	pad_held |= held & SolPanels.one("hold_pad")
+	return held
+
+
+## $2A -- the metatile his feet are inside, which is what the floor probe
+## leaves behind ($D0FD).  It is the one the stage names and not the one shown
+## in its place: a panel is never a metatile that can be broken into another.
+func _floor_tile() -> int:
+	var py: int = y + (-FOOT_DY if (flags & UPSIDE_DOWN) != 0 else FOOT_DY)
+	var m: int = lvl.raw_at((x & 0xFFFF) >> 4, (py & 0xFFFF) >> 4)
+	return 0 if m < 0 else m
+
+
+## $9E55 -- whether what he has not been paid yet, less what a panel has
+## already taken, comes to the price.
+func _afford(price: int) -> bool:
+	return ((pool.hero_bonus - pool.z56) & 0xFFFF) >= price
+
+
+## $9E4F -- and the price put on the tab.  $CDE3 takes it off a point a
+## picture, which is why the count of the strip runs down instead of jumping.
+func _spend(price: int) -> void:
+	pool.z56 = (pool.z56 + price) & 0xFF
+
+
+## $9DBE -- the first panel: a shield, for ten.
+func _buy_shield(held: int) -> int:
+	if shield == SolPanels.one("shield_full"):
+		return held                         # $9DC3
+	var price: int = SolPanels.cost(SolPanels.SHIELD)
+	if not _afford(price):
+		return held                         # $9DCA
+	_spend(price)                           # $9DCC
+	shield = SolPanels.one("shield_full")
+	held |= SolPanels.one("hold_pad")       # $9DD4 -- $9E48
+	# $9DD7 -- a noise, and noises are not modelled.
+	_panel_used()                           # $9DDB
+	return held
+
+
+## $9CC3 and $9E00 -- the second: the suit, thirty for the whole of it.  A
+## step goes on every odd picture while he stands there, and the thirty is
+## only taken when the eighth step lands -- so a suit filled halfway and
+## walked away from costs nothing at all.
+func _buy_suit(held: int) -> int:
+	var full: int = SolPanels.one("suit_full")
+	if suit >= full:
+		return held                         # $9CC8, and $9E05 again
+	var price: int = SolPanels.cost(SolPanels.SUIT)
+	if not _afford(price):
+		return held                         # $9E0C
+	held |= SolPanels.one("hold_pad")       # $9E0E -- $9E48
+	timer = SolPanels.one("hold_timer")     # $9E11 -- $8825
+	if (clock & 0x01) == 0:
+		return held                         # $9E17
+	suit += 1                               # $9E19
+	if suit != full:
+		return held                         # $9E21
+	# $9E23 -- a noise, and then the panel is used up and the price taken.
+	_panel_used()                           # $9E27
+	_spend(price)                           # $9E2A
+	return held
+
+
+## $9E30 -- the third: a try, for two hundred.
+func _buy_try(held: int) -> int:
+	var price: int = SolPanels.cost(SolPanels.TRY)
+	if not _afford(price):
+		return held                         # $9E35
+	_spend(price)                           # $9E37
+	held |= SolPanels.one("hold_pad")       # $9E3A -- $9E48
+	# $9E3D -- $071C, which lives in the low byte of the satellite's own slot.
+	pool.w_x[0x0C] = (pool.w_x[0x0C] & 0xFF00) \
+			| ((pool.w_x[0x0C] + 1) & 0xFF)
+	# $9E40 -- a noise, and noises are not modelled.
+	_panel_used()                           # $9E44
+	return held
+
+
+## $9E6D -- a panel used up: the two places under his feet are broken open and
+## the puff of it is hatched between them.
+func _panel_used() -> void:
+	var below: int = (y & 0xFFFF) + 0x0100
+	pool.break_panel((x & 0xFE00), below)               # $9E71 -- $81 & $FE
+	pool.break_panel((x & 0xFF00) | 0x0100, below)      # $9E7E -- $81 | $01
+	# $9E92 -- and the thing itself stands between the two, on his own row.
+	pool.hatch_up((x & 0xFE00) | 0x0100, y & 0xFF00,
+			SolPanels.one("spawn"))
 
 
 ## $A005 -- in the air.
@@ -1364,7 +1487,9 @@ func _wall_right(settled: bool) -> void:
 		stop = x > x_end - 0x100
 	if not stop:
 		return
-	if not face_left:
+	# $A3DA against $A3FF: the drag's own wall takes the speed away whichever
+	# way he looks, and only the move's wall asks first.
+	if settled or not face_left:
 		speed = 0
 	vx = 0
 
@@ -1378,7 +1503,8 @@ func _wall_left(settled: bool) -> void:
 		stop = x_min >= x if settled else x_min >= x - 0x100
 	if not stop:
 		return
-	if face_left:
+	# $A34A against $A374 -- the same again on this side.
+	if settled or face_left:
 		speed = 0
 	vx = 0
 
@@ -1439,6 +1565,11 @@ func _meet() -> int:
 ## $A232 and $A253 -- and the same going up, except that this one also reacts
 ## to what it finds.
 func _ceiling() -> int:
+	# $A26E -- the stage that is all water has no ceiling at all: the probe
+	# gives its own $3C back, which is neither a block nor anything to react
+	# to, and the move is left whole.
+	if map_kind == 0x3C:
+		return 0x3C
 	var up: bool = (flags & UPSIDE_DOWN) != 0
 	var py: int = y + vy
 	var v := _probe(x + vx, py + (FOOT_DY if up else -FOOT_DY))
