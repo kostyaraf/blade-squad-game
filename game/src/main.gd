@@ -3256,6 +3256,7 @@ func _run_through(spec: String, from_stage: int = 0, from_area: int = 0) -> void
 	var forced := 0
 	var deaths := 0
 	var stepped := 0
+	var cleared_out := 0
 	while areas < limit:
 		var st: int = level_pb2.stage
 		var ar: int = level_pb2.area
@@ -3399,6 +3400,16 @@ func _run_through(spec: String, from_stage: int = 0, from_area: int = 0) -> void
 			# A boss room has no door.  The pilot cannot fight, so the boss is
 			# put into the first of its six dying states -- where a spent
 			# meter puts it ($BDE9) -- and the room ends as it would have.
+			#
+			# And the level's own things have eight places ($0E..$15), which
+			# fill up where the pilot cannot kill.  The door's own record is
+			# then dropped for want of one ($E4BA), and it is offered only for
+			# the one or two steps in which it crosses the edge of the view --
+			# so a table that is full just then loses the door for the whole
+			# pass.  A player would have cleared the road; the pilot keeps one
+			# of the eight free instead.
+			if not opening and _make_room():
+				cleared_out += 1
 			if not opening and (_force_door() or _force_boss()):
 				opening = true
 				open_at = n
@@ -3456,7 +3467,8 @@ func _run_through(spec: String, from_stage: int = 0, from_area: int = 0) -> void
 				% [key, n, turns, died, opened])
 	print("\n".join(out))
 	print("%d areas played, %d doors forced, %d stepped over, %d deaths, "
-			% [areas, forced, stepped, deaths] + "%d stuck" % stuck)
+			% [areas, forced, stepped, deaths]
+			+ "%d stuck, %d places made" % [stuck, cleared_out])
 	get_tree().quit()
 
 
@@ -3554,6 +3566,25 @@ func _force_door() -> bool:
 			s[Pb2Objects.F_STATE] = 0x02
 			return true
 	return false
+
+
+## $E4BA -- the scan drops a record it can find no place for, and the level's
+## own things have only eight.  The pilot cannot kill, so where they pile up the
+## door's record is dropped over and over and the area never puts out a door.
+## Taking the first of the eight away is the pilot's way of clearing the road,
+## and it is done only while all eight are busy and the door is not among them.
+func _make_room() -> bool:
+	var full := true
+	for n in range(Pb2Objects.FIRST_PLACED, Pb2Objects.LAST_PLACED + 1):
+		var t: int = world.slots[n][Pb2Objects.F_TYPE]
+		if t == 0:
+			full = false
+		elif t == 0x04:
+			return false
+	if not full:
+		return false
+	world.clear(Pb2Objects.FIRST_PLACED)
+	return true
 
 
 ## $BDE9 -- a boss whose meter is empty is put into the first of the six states
