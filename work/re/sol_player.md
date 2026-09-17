@@ -353,12 +353,32 @@ at **x = 631.75**, and the first solid column there begins at 640.
 
 ## 6. What is still open
 
-* `$05C5` and what each suit changes.
+* `$05C5` and what each suit changes.  **Closed (Э4.16).**  All twenty places
+  that touch the byte are accounted for; the eight steps are a count and
+  nothing else, and only "nought" and "not nought" are ever asked about.  The
+  readers, in order: `$F8CD` sets it to eight; `$91E5` draws the strip and
+  blinks it under three; `$94AA` takes the pad away from a suitless hero
+  outright; `$8377`/`$83AD`/`$83B6`/`$88E7` take a step off him; `$9AC5`,
+  `$9AF7`, `$9B1E`, `$9FDD` and `$9FEB` are the throw, the knock, the letting
+  go and the hurt; `$9BDA` is the drag's wall side; `$CFD8` keeps the things
+  off him; `$E1C3`/`$E1DB` and `$E2AB`/`$E2B0` cash the suits in on the board
+  between stages.  The one thing not modelled is `$CDF7`: a suitless hero
+  inside his mercy window (`$05A3 < $40`, and `$0F` not `$80`) makes the main
+  loop wait for one more picture at `$CE0D`, so the whole game runs at half
+  pace.  That is timing, not state, and no stand can see it.
 
-  **The suitless branch is ported and accepted (Э4.14)**; what each of the
-  eight steps of the suit changes is still open.  `$937F` looks at `$05C5`;
-  anything
-  other than nought goes to `$93CE`, the suited drawing.  With nought:
+  `$9BDA` is worth a line of its own.  `$50:$51` is not the frame's move --
+  that is `$05B6:$05B7` -- but a scratch pair zeroed at `$9485`.  The drag
+  puts what is left of the speed into it, adds the push `$05A8:$05A9`, and
+  reads the sign to pick the wall.  With no suit the pair is shifted a whole
+  byte down first, so all that is left of the speed is nought or minus one.
+  Under a push that would send the question to the other wall -- but the push
+  is dead: `$05A8:$05A9` is written in exactly one place (`$91B8`) and written
+  nought.  The sign comes out the same either way.  Ported all the same.
+
+  **The suitless branch is ported and accepted (Э4.14).**  `$937F` looks at
+  `$05C5`; anything other than nought goes to `$93CE`, the suited drawing.
+  With nought:
 
   ```
   9384  $05A3 < 6                     -> Y = $BA   ; the ordinary states

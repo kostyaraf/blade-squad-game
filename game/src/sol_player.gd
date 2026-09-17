@@ -1436,7 +1436,7 @@ func _steer(held: int, c_in: int) -> void:
 ## $9B8A -- nothing held: take the drag off, and stop dead rather than cross
 ## zero.  Which drag is the state's business and the ground's together.  What
 ## is left of the move then has the wall put to it a second time, by a slightly
-## stricter rule than $A122's.
+## stricter rule than $A122's -- and without the suit, only its sign is left.
 func _drag() -> void:
 	var move := speed
 	if speed != 0:
@@ -1448,6 +1448,15 @@ func _drag() -> void:
 		move = speed
 	if move == 0 and push_x == 0:
 		return
+	# $9BDA -- and without the suit what is left of the move is thrown away
+	# before the side is picked: the pair is shifted a whole byte down, so all
+	# that survives of it is its sign, nought or one step back.  Under a push
+	# that could send the question to the other wall, but the push is dead --
+	# $05A8:$05A9 is written in one place only ($91B8) and written nought --
+	# so the sign is the same sign either way and nothing comes of it.  It is
+	# here because it is there.
+	if move != 0 and suit == 0:
+		move = 0 if move > 0 else -1
 	if move + push_x >= 0:
 		_wall_right(true)
 	else:
