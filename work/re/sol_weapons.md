@@ -230,7 +230,8 @@ There are two different paths, and they behave differently.
 Tested by `$84CD` (bank 8). The object is treated as a **point**; the enemy's box
 (`$61/$62` X, `$63/$64` Y, `$65/$66` width, `$67/$68` height, all 12.4) is first
 **expanded by 8 px on every side** (`$84B0`: subtract `$0080` from the origin,
-add `$0100` to the size).
+add `$0100` to the size) -- and for slots `$0D` and `$0E` twice over.  Written
+out in full under "The hero's own four slots against a thing" below.
 
 Damage is a property of the object's **current metasprite**:
 
@@ -999,5 +1000,106 @@ not hurt, and the weapon is spent on it all the same.  Otherwise `$87BC` is
 `$87E2`, which `$87BC` and `$83BC` both call, begins `JSR $884F`.  `$884F` is
 the last byte of the sound table at `$880A` and it is an `$60`: the call does
 nothing at all.
+
+Приёмка: `work/extract/verify_sol_blows.py`.
+
+---
+
+## The hero's own four slots against a thing (`$83E2`)
+
+`$CFEB` is the last third of `$CFBA`, reached through the jump at `$800D`.  It
+lays the four slots the hero owns — `$0C` the satellite, `$0D` and `$0E` what he
+swings, `$0F` his fist — over the same thing, and the first one that answers
+ends the walk.
+
+### The box is grown, and grown twice (`$84B0`)
+
+```
+$84B0  LDA $61 / SBC #$80 / STA $9C      ; and $62 / SBC #$00 -> $9D
+       LDA $63 / SBC #$80 / STA $9E      ; and $64 / SBC #$00 -> $9F
+       INC $66
+       INC $68
+```
+
+Eight pixels back on both origins and sixteen added to both sizes — but by a
+plain `INC` on the *high* halves, so `$65` and `$67` keep their low bytes and
+carry nothing.  The growth is written onto the thing's own numbers and stands
+until the next picture rebuilds them.
+
+`$83EC` calls it before the fist and the satellite; `$8424` calls it **again**
+before `$0D` and `$0E`, which therefore see a box sixteen wider and taller
+still.  The origin subtract takes whatever carry walked in, and `$83F7`,
+`$8419`, `$842F` and `$8442` (`CMP #$0C`) reset it along the way.
+
+### Which slots are asked
+
+| slot | skipped when |
+|---|---|
+| `$0F` fist | `$060F == 0`, `$06EF < $0C` (its own count since it was last hit), or `$60 & $20` |
+| `$0C` satellite | `$05C2 != 0`, bit 7 of `$60`, `$060C == 0`, `$06EC < $0C` |
+| `$0D`, `$0E` | the same but for bit 7 |
+
+### The box test (`$84CD`)
+
+The slot is a point.  Three of the four compares are `CMP`s and force their own
+carry; only the far edge along the ground adds in what the sum above it left.
+Getting past three edges sets `$9B = $FF`, and `$849E` later folds that into the
+slot's own `$0600` as bit 6 — bit 7 always, bit 6 only when `$8501` ran.
+
+Return is `$00` for a miss and `$FF` for a touch, and the carry a miss leaves is
+read again by the second `$84B0`.
+
+### What a slot takes off the thing (`$8567`)
+
+The first byte of its own picture's pair at `$8A19` — the same table the boxes
+come from.  A picture that means nothing takes nothing.  The fist counts double
+while `$05C8` is up and `$05C2` is clear (`ASL $90`).  Then `$06E0,X = 0`,
+`$0650,X &= $BF` (note that `$83BC` *sets* that bit), and the subtract from
+`$06F0,X`; nought or a borrow calls `$8850`.
+
+A fist landing on ice (`$05CD == $30`) shoves the hero himself: `$35` takes
+`$F8`/`$F0` to the right and `$08`/`$10` to the left, and the `ASL A` over
+`$05B2` that asks which way he faces is also the carry the sum adds in, so the
+shove to the left is one bigger.
+
+### What the touch costs the slot (`$844E`)
+
+The low four bits of `$60`, except that anything from eight up costs exactly
+one.  Out of life means `$0610 = 0` and the slot goes out: `$0600 = 0` for all
+but the satellite, which gets `$0620 = $20` and `$0600 = $FF`.
+
+### Something to pick up (`$851E`)
+
+Only the fist can reach a pick-up, and only with a behaviour of its own at ten
+or more; below that the answer is that behaviour itself rather than nought, so
+one to nine still counts as a touch.
+
+What happens then is the low four bits of `$60` as an index into the little
+address table at `$852C`, reached through `$8025` — a dispatcher in the cellar of
+bank eight that pulls its own return address off the stack and jumps to the row
+lying right behind the `JSR`.  A return from any of the six therefore goes where
+`$84CD`'s own return would have gone, not to `$8529`.
+
+| row | what it does |
+|---|---|
+| 0 | `$853A` — the `RTS` below the table |
+| 1, 2 | `$85F5` — nought, nothing |
+| 3 | `$82AE` — `$0690,X = 2`, answer 2 |
+| 4 | `$85EF` — `$8604`, a puff of smoke |
+| 5 | `$85F8` — `$0650,X = 9`, then the blow |
+| 6 | `$85FC` — `$0650,X = 8`, then the blow |
+
+The `ASL A` the dispatcher doubles the index with also clears the carry, since
+the index is never above seven.
+
+`$8604` — the puff: the topmost free slot of the twelve takes **the thing's**
+place (`$00A0,X`, not the hero slot's), behaviour `$0A`, life `$0A`, kind `$20`,
+`$06E0 = $80`, `$0600 = $80`, `$0630 = $B0`, `$0640 = $FF`, `$0620 = $FF`,
+`$0610 = 1`; the thing itself is turned round (`$0680,X ^= $FF`).  Where the
+hero slot's own picture is worth two or more the puff is thrown the other way:
+`$0610 = 2`, `$0630 = $C0`.
+
+Two sounds are not modelled — `$F1 = $33` for a blow on the satellite (`$845D`)
+and `$F1 = $0D` for the puff (`$8663`).
 
 Приёмка: `work/extract/verify_sol_blows.py`.

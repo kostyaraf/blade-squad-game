@@ -186,6 +186,13 @@ var z61 := 0                        # $61:$62
 var z63 := 0                        # $63:$64
 var z65 := 0                        # $65:$66
 var z67 := 0                        # $67:$68
+## $9C:$9D and $9E:$9F, and $9B beside them.  $84B0 builds a grown copy of the
+## thing's box there and $84CD reads it; the cartridge writes it over the same
+## bytes $81B7 used a moment earlier, which is safe because $8244 has already
+## read them by the time $83E2 runs.
+var zg_x := 0
+var zg_y := 0
+var zg9b := 0
 ## The carry standing at the end of all that.  $CFE8 walks straight on from
 ## $CF96 and $81B7 without a SEC anywhere, so the first compare the hero's own
 ## pool makes reads one sixteenth further back when this is clear.  Every exit
@@ -1254,7 +1261,7 @@ func touch(s: int) -> void:
 	if lay and hero.suit != 0:
 		_overlap(s)                     # $CFDD
 	weapons_hit(s)                      # $CFE8
-	# $CFEB -- what his sub-weapons do ($83E2) is not ported yet.
+	hurt_slots(s)                       # $CFEB
 
 
 ## $81B7 -- the two boxes laid over one another.  $9C and $9D say which way he
@@ -1610,6 +1617,276 @@ func _weapon_on_thing(s: int, i: int, c: int) -> Array:
 	# $87D9 -- the sound of it, $880A read with the behaviour, is not modelled;
 	# the carry it leaves is thrown away at $8731 either way.
 	return [true, 1]
+
+
+## $83E2 -- the hero's own four slots $0C..$0F laid over the thing.  $CFEB asks
+## this last of all, after his body ($81B7) and his eight shots ($869C).
+##
+## The box the four are asked about is not the thing's own.  $84B0 pulls its
+## origin back eight pixels each way and adds sixteen to both sides -- and it is
+## asked *twice*: once before the punch and the satellite, and again before
+## slots thirteen and fourteen, which therefore see a box sixteen pixels wider
+## and taller still.  The growth is written back onto $65 and $67 themselves and
+## stands until the next picture builds them afresh.
+##
+## Each of the four has to be there ($0600), and to have been left alone for at
+## least twelve pictures ($06E0, its own count since it was last hit, which
+## $A502 walks up), before it is asked at all.  The punch
+## is asked first and is the only one a thing to pick up can reach; the other
+## three are skipped outright while the hero is still smarting ($05C2).
+func hurt_slots(s: int) -> void:
+	# $83E4 -- something to pick up goes on whatever its low bits say; anything
+	# else has to hurt for something or there is nothing to do.
+	if (z60 & 0x80) == 0 and (z60 & 0x0F) == 0:
+		return                          # $83EA
+	var c: int = _grow_box(z_c)         # $83EC
+	var r: Array
+	if id[0x0F] != 0:
+		var ge: bool = cool[0x0F] >= 0x0C
+		c = 1 if ge else 0              # $83F7 -- a CMP, so it settles it
+		if ge and (z60 & 0x20) == 0:
+			# $8401 -- a thing that hurts for one whatever it says is never
+			# laid over the punch.
+			r = _slot_on_thing(s, 0x0F, c)
+			c = int(r[1])
+			if int(r[0]) != 0:
+				_slot_took(s, 0x0F)     # $8406
+				return
+	# $8408 -- and the other three are his only while he is on his feet.
+	if hero_hurt != 0 or (z60 & 0x80) != 0:
+		return
+	if id[SAT] != 0:
+		var ge2: bool = cool[SAT] >= 0x0C
+		c = 1 if ge2 else 0             # $8419
+		if ge2:
+			r = _slot_on_thing(s, SAT, c)
+			c = int(r[1])
+			if int(r[0]) != 0:
+				_slot_took(s, SAT)      # $8422
+				return
+	c = _grow_box(c)                    # $8424 -- and grown a second time
+	for i in [0x0D, 0x0E]:
+		if id[i] == 0:
+			continue                    # $8427, $843A
+		var ge3: bool = cool[i] >= 0x0C
+		c = 1 if ge3 else 0             # $842F, $8442
+		if not ge3:
+			continue
+		r = _slot_on_thing(s, i, c)
+		c = int(r[1])
+		if int(r[0]) != 0:
+			_slot_took(s, i)            # $8438, $844B
+			return
+
+
+## $84B0 -- the thing's box grown in place.  The origin is taken away with
+## whatever carry walked in, which is why it is worth threading; the two sizes
+## are grown by a plain INC on their high halves, so by $0100 a time and with
+## no carry of their own.
+func _grow_box(c: int) -> int:
+	var r: Array = _sub2(z61, 0x0080, c)
+	zg_x = int(r[0])
+	r = _sub2(z63, 0x0080, int(r[1]))
+	zg_y = int(r[0])
+	z65 = (z65 & 0xFF) | ((((z65 >> 8) + 1) & 0xFF) << 8)
+	z67 = (z67 & 0xFF) | ((((z67 >> 8) + 1) & 0xFF) << 8)
+	return int(r[1])
+
+
+## $84CD -- one of the four laid over the grown box.  Unlike the shots, all four
+## compares are CMPs, so only the last one -- the far edge along the ground --
+## carries anything in from the add above it.
+##
+## It answers nought for a miss, and the carry it leaves is read again by the
+## second $84B0, which is why the misses give theirs back.
+func _slot_on_thing(s: int, i: int, c: int) -> Array:
+	zg9b = 0                            # $84CD
+	var r: Array = _sub2(x[i], zg_x, 1)
+	if r[1] == 0:
+		return [0, r[1]]                # $84DB
+	var p: Array = _add2(zg_x, z65, r[1])
+	r = _sub2(x[i], p[0], 1)            # $84E9
+	if r[1] == 1:
+		return [0, r[1]]                # $84F3
+	r = _sub2(y[i], zg_y, 1)            # $84F5
+	if r[1] == 0:
+		return [0, r[1]]                # $84FF
+	# $8501 -- three edges passed, and the slot is marked as having got that
+	# far whether or not the fourth lets it through.
+	zg9b = 0xFF
+	p = _add2(zg_y, z67, r[1])
+	r = _sub2(p[0], y[i], p[1])         # $850F
+	if r[1] == 0:
+		return [0, r[1]]                # $851B
+	return _slot_touched(s, i, int(r[1]))
+
+
+## $853B -- the four boxes met, and what that means.
+func _slot_touched(s: int, i: int, c: int) -> Array:
+	if (z60 & 0x80) != 0:
+		return _slot_pick_up(s, i)      # $851E
+	if (z60 & 0x40) != 0:
+		# $8541 -- a thing that only hurts a hero out of his suit.
+		if (z60 & 0x0F) == 0:
+			return [0xFF, c]            # $8547
+		_slot_mark(i)                   # $854A
+		var ge: bool = mind[i] >= 0x0A
+		c = 1 if ge else 0              # $8550
+		if not ge:
+			return [0, c]               # $8556
+	if (z60 & 0x20) != 0:
+		return [0xFF, c]                # $855B
+	_slot_mark(i)                       # $855D
+	if cool[s] < 0x08:
+		# $8563 -- hit in the last eight pictures, so touched but not hurt.
+		return [0xFF, 0]
+	return _slot_blow(s, i, 1)          # $8567
+
+
+## $849E -- the slot is marked as having touched something: bit seven always,
+## and bit six as well when the box was passed far enough for $8501 to run.
+func _slot_mark(i: int) -> void:
+	id[i] = (id[i] | (zg9b & 0x40) | 0x80) & 0xFF
+
+
+## $851E -- a thing to pick up met one of the four.  What it does is the low
+## four bits of its own meaning read as an index into the little table of
+## addresses at $852C, which $8025 -- the jump the cartridge keeps at the foot
+## of bank eight -- reaches by pulling its own return address off the stack.
+##
+## A slot whose behaviour is below ten cannot pick anything up, and the answer
+## it gives back is that behaviour itself, not nought, so anything from one to
+## nine still counts as a touch.
+func _slot_pick_up(s: int, i: int) -> Array:
+	var ge: bool = mind[i] >= 0x0A
+	if not ge:
+		return [mind[i], 0]             # $8523 -> $853A, the RTS below the table
+	# $8027 -- and the ASL that indexes the table is what clears the carry.
+	match z60 & 0x0F:
+		0x00:
+			return [0, 0]               # $853A again
+		0x03:
+			kind[s] = 0x02              # $82AE
+			return [0x02, 0]
+		0x04:
+			_puff(s, i)                 # $85EF
+			return [0xFF, 0]
+		0x05:
+			mind[s] = 0x09              # $85F8
+			return _slot_blow(s, i, 0)
+		0x06:
+			mind[s] = 0x08              # $85FC
+			return _slot_blow(s, i, 0)
+	# $85F5 -- one and two, and everything above six, which the table does not
+	# reach at all.
+	return [0, 0]
+
+
+## $8567 -- the slot hurts the thing.  How much for is the first byte of its
+## own picture's pair in $8A19, the same table the boxes themselves come from,
+## so a picture that means nothing takes nothing off.
+func _slot_blow(s: int, i: int, c: int) -> Array:
+	var pic: int = pic_lo[i] | pic_hi[i] << 8
+	var n: int = _hit_of(pic)[0]
+	if n == 0:
+		# $8586 -- and the carry is the one the address sum left, which for
+		# every picture the game really has is clear.
+		return [0, _pic_sum_carry(pic)]
+	if i == 0x0F and hero_shield != 0 and hero_hurt == 0:
+		n = (n << 1) & 0xFF             # $8598 -- the punch counts double
+	cool[s] = 0                         # $859A
+	mind[s] = mind[s] & 0xBF            # $859F -- and this one puts bit six out
+	var leftv: int = life[s] - n        # $85A7
+	if leftv <= 0:
+		_done(s)                        # $85B4
+		leftv = 0
+	life[s] = leftv                     # $85B9
+	if i == 0x0F and hero != null and hero.ground == SolPlayer.GROUND_ICE:
+		# $85C0 -- on ice a punch shoves him, and by twice as much when it is
+		# worth two.  The ASL that asks which way he faces is also the carry
+		# the sum below adds in, so the shove towards the left is one bigger.
+		var step: int = 0xF0 if n >= 0x02 else 0xF8
+		var k := 0
+		if (hero_face & 0x80) != 0:
+			step = 0x10 if n >= 0x02 else 0x08
+			k = 1
+		var v: int = (hero.speed + step + k) & 0xFF
+		hero.speed = v - 0x100 if v >= 0x80 else v
+	# $85E9 -- the sound of it, $87F2, is not modelled.
+	return [0xFF, c]
+
+
+## $8578 -- the carry the sum "$8A19 plus twice the picture" leaves.  Nothing
+## reads the sum itself here; only $85F5 gives the carry back.
+func _pic_sum_carry(pic: int) -> int:
+	var sh: int = (pic << 1) & 0xFFFF
+	var lo: int = (sh & 0xFF) + 0x19 + ((pic >> 15) & 1)
+	var hi: int = ((sh >> 8) & 0xFF) + 0x8A + ((lo >> 8) & 1)
+	return (hi >> 8) & 1
+
+
+## $844E -- the slot that touched the thing, and what the touch costs it.  How
+## much it loses is the low four bits of the thing's meaning, but anything from
+## eight up costs one and no more.
+func _slot_took(s: int, i: int) -> void:
+	if z60 == 0:
+		return                          # $8450
+	if (z60 & 0x80) != 0:
+		# $8495 -- a thing to pick up is only ever marked on the punch.
+		if i == 0x0F:
+			cool[i] = 0
+			_slot_mark(i)
+		return
+	cool[i] = 0                         # $8456
+	# $845D -- $F1 = $33, the sound the satellite makes, is not modelled.
+	var n: int = z60 & 0x0F
+	if n >= 0x08:
+		n = 0x01                        # $846D
+	var leftv: int = life[i] - n        # $8471
+	if leftv > 0:
+		life[i] = leftv                 # $8491
+		return
+	a[i] = 0                            # $847B
+	if i == SAT:
+		b[i] = 0x20                     # $8484
+		id[i] = 0xFF
+	else:
+		id[i] = 0                       # $848B
+
+
+## $8604 -- a thing picked up by the fourth kind leaves a puff behind: the
+## topmost free slot of the twelve takes the *thing's* own place, a behaviour of
+## ten and a life of ten, and the thing itself is turned round.
+func _puff(s: int, i: int) -> void:
+	var j := 11
+	while j >= 0 and id[j] != 0:
+		j -= 1                          # $860D
+	if j < 0:
+		return                          # $8610
+	anim_a[j] = 0
+	anim_b[j] = 0
+	left[j] = 0
+	frame[j] = 0
+	pic_lo[j] = 0
+	pic_hi[j] = 0
+	mind[j] = 0x0A                      # $8625
+	life[j] = 0x0A
+	kind[j] = 0x20                      # $862D
+	x[j] = x[s]                         # $8632, read with the thing's own index
+	y[j] = y[s]
+	cool[j] = 0x80                      # $8646
+	id[j] = 0x80
+	face[s] = face[s] ^ 0xFF            # $864E -- and the thing looks the other way
+	c[j] = 0xB0                         # $8656
+	d[j] = 0xFF
+	b[j] = 0xFF                         # $8660
+	# $8663 -- $F1 = $0D, the sound, is not modelled.
+	a[j] = 0x01                         # $8667
+	# $866C -- and where the slot's own picture is worth two or more, the puff
+	# is thrown the other way instead.
+	if _hit_of(pic_lo[i] | pic_hi[i] << 8)[0] >= 0x02:
+		a[j] = 0x02                     # $868F
+		c[j] = 0xC0
 
 
 ## $83BC -- the thing loses what the hero's own body took off it.
