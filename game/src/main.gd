@@ -44,6 +44,7 @@ func _ready() -> void:
 	var solcam := ""
 	var solshot := ""
 	var solobj := ""
+	var soldraw := ""
 	var sollive := ""
 	var solflow := ""
 	var solscript := ""
@@ -80,6 +81,7 @@ func _ready() -> void:
 		elif a.begins_with("--solcam="): solcam = a.substr(9)
 		elif a.begins_with("--solshot="): solshot = a.substr(10)
 		elif a.begins_with("--solobj="): solobj = a.substr(9)
+		elif a.begins_with("--soldraw="): soldraw = a.substr(10)
 		elif a.begins_with("--sollive="): sollive = a.substr(10)
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
 		elif a.begins_with("--solscript="): solscript = a.substr(12)
@@ -128,6 +130,10 @@ func _ready() -> void:
 		return
 	if solobj != "":
 		_run_sol_objects(solobj)
+		get_tree().quit()
+		return
+	if soldraw != "":
+		_run_sol_draw(soldraw)
 		get_tree().quit()
 		return
 	if solshot != "":
@@ -494,63 +500,8 @@ func _run_sol_objects(path: String) -> void:
 	view.fall = int(cfg["ride_fall"]) if cfg.has("ride_fall") else 0
 	p.vx = int(cfg["vx"])
 	p.vy = int(cfg["vy"])
-	var pool := SolObjects.new(level_sol)
-	pool.due = int(cfg["due"])
-	pool.col_due = int(cfg["col_due"])
-	pool.row_due = int(cfg["row_due"])
-	pool.seen_x = int(cfg["seen_x"])
-	pool.seen_y = int(cfg["seen_y"])
-	pool.room = int(cfg["room"])
-	pool.z75 = int(cfg["z75"]) if cfg.has("z75") else 0
-	pool.z7c = int(cfg["z7c"]) if cfg.has("z7c") else 0
-	pool.z58 = int(cfg["z58"]) if cfg.has("z58") else 0
-	pool.z26 = int(cfg["z26"]) if cfg.has("z26") else 0
-	pool.z399 = int(cfg["z399"]) if cfg.has("z399") else 0
-	pool.letters = int(cfg["letters"]) if cfg.has("letters") else 0
-	pool.hero_bonus = int(cfg["bonus"]) if cfg.has("bonus") else 0
-	pool.z5ab = int(cfg["z5ab"]) if cfg.has("z5ab") else 0
+	var pool := _sol_pool_from(cfg)
 	p.burst = pool.z5ab
-	pool.z5fa = int(cfg["z5fa"]) if cfg.has("z5fa") else 0
-	pool.zf8 = int(cfg["zf8"]) if cfg.has("zf8") else 0
-	pool.z0112 = int(cfg["z0112"]) if cfg.has("z0112") else 0
-	pool.z56 = int(cfg["z56"]) if cfg.has("z56") else 0
-	for i in range(SolObjects.MARKS):
-		pool.mark[i] = int(cfg["mark"][i])
-	for i in range(SolObjects.SLOTS):
-		pool.id[i] = int(cfg["id"][i])
-		pool.x[i] = int(cfg["ox"][i])
-		pool.y[i] = int(cfg["oy"][i])
-		pool.mind[i] = int(cfg["omind"][i])
-		pool.kind[i] = int(cfg["okind"][i])
-		pool.a[i] = int(cfg["oa"][i])
-		pool.b[i] = int(cfg["ob"][i])
-		pool.c[i] = int(cfg["oc"][i])
-		pool.d[i] = int(cfg["od"][i])
-		pool.face[i] = int(cfg["oface"][i])
-		pool.anim_a[i] = int(cfg["oanim_a"][i])
-		pool.anim_b[i] = int(cfg["oanim_b"][i])
-		pool.left[i] = int(cfg["oleft"][i])
-		pool.frame[i] = int(cfg["oframe"][i])
-		pool.cool[i] = int(cfg["ocool"][i])
-		pool.life[i] = int(cfg["olife"][i])
-		pool.pic_lo[i] = int(cfg["opic_lo"][i])
-		pool.pic_hi[i] = int(cfg["opic_hi"][i])
-	if cfg.has("skind"):
-		for i in range(SolObjects.SHOTS):
-			pool.s_kind[i] = int(cfg["skind"][i])
-			pool.s_x[i] = int(cfg["sx"][i])
-			pool.s_y[i] = int(cfg["sy"][i])
-			pool.s_a[i] = int(cfg["sa"][i])
-			pool.s_b[i] = int(cfg["sb"][i])
-			pool.s_life[i] = int(cfg["slife"][i])
-	if cfg.has("wkind"):
-		for i in range(SolObjects.WEAPONS):
-			pool.w_kind[i] = int(cfg["wkind"][i])
-			pool.w_x[i] = int(cfg["wx"][i])
-			pool.w_y[i] = int(cfg["wy"][i])
-			pool.w_vx[i] = int(cfg["wvx"][i])
-			pool.w_vy[i] = int(cfg["wvy"][i])
-			pool.w_pen[i] = int(cfg["wpen"][i])
 	# $0C is a plain count of pictures, but $0E is a hash of the whole of RAM
 	# ($CD57) and is not ported yet, so both are handed over as the cartridge
 	# had them.  `work/re/sol_minds.md` says what that still owes.
@@ -803,6 +754,69 @@ func _hero_into(pool: SolObjects, p: SolPlayer) -> void:
 
 ## Everything the cartridge had in the hero when the buttons started, put back
 ## into him.  Two stands lean on this, so it is written once.
+## The pool as a record of work memory has it.  Both the stand that walks a
+## whole picture (--solobj) and the one that only draws the hero's own four
+## slots (--soldraw) are handed the same numbers, so they read them the same
+## way.
+func _sol_pool_from(cfg: Dictionary) -> SolObjects:
+	var pool := SolObjects.new(level_sol)
+	pool.due = int(cfg["due"])
+	pool.col_due = int(cfg["col_due"])
+	pool.row_due = int(cfg["row_due"])
+	pool.seen_x = int(cfg["seen_x"])
+	pool.seen_y = int(cfg["seen_y"])
+	pool.room = int(cfg["room"])
+	pool.z75 = int(cfg["z75"]) if cfg.has("z75") else 0
+	pool.z7c = int(cfg["z7c"]) if cfg.has("z7c") else 0
+	pool.z58 = int(cfg["z58"]) if cfg.has("z58") else 0
+	pool.z26 = int(cfg["z26"]) if cfg.has("z26") else 0
+	pool.z399 = int(cfg["z399"]) if cfg.has("z399") else 0
+	pool.letters = int(cfg["letters"]) if cfg.has("letters") else 0
+	pool.hero_bonus = int(cfg["bonus"]) if cfg.has("bonus") else 0
+	pool.z5ab = int(cfg["z5ab"]) if cfg.has("z5ab") else 0
+	pool.z5fa = int(cfg["z5fa"]) if cfg.has("z5fa") else 0
+	pool.zf8 = int(cfg["zf8"]) if cfg.has("zf8") else 0
+	pool.z0112 = int(cfg["z0112"]) if cfg.has("z0112") else 0
+	pool.z56 = int(cfg["z56"]) if cfg.has("z56") else 0
+	for i in range(SolObjects.MARKS):
+		pool.mark[i] = int(cfg["mark"][i])
+	for i in range(SolObjects.SLOTS):
+		pool.id[i] = int(cfg["id"][i])
+		pool.x[i] = int(cfg["ox"][i])
+		pool.y[i] = int(cfg["oy"][i])
+		pool.mind[i] = int(cfg["omind"][i])
+		pool.kind[i] = int(cfg["okind"][i])
+		pool.a[i] = int(cfg["oa"][i])
+		pool.b[i] = int(cfg["ob"][i])
+		pool.c[i] = int(cfg["oc"][i])
+		pool.d[i] = int(cfg["od"][i])
+		pool.face[i] = int(cfg["oface"][i])
+		pool.anim_a[i] = int(cfg["oanim_a"][i])
+		pool.anim_b[i] = int(cfg["oanim_b"][i])
+		pool.left[i] = int(cfg["oleft"][i])
+		pool.frame[i] = int(cfg["oframe"][i])
+		pool.cool[i] = int(cfg["ocool"][i])
+		pool.life[i] = int(cfg["olife"][i])
+		pool.pic_lo[i] = int(cfg["opic_lo"][i])
+		pool.pic_hi[i] = int(cfg["opic_hi"][i])
+	if cfg.has("skind"):
+		for i in range(SolObjects.SHOTS):
+			pool.s_kind[i] = int(cfg["skind"][i])
+			pool.s_x[i] = int(cfg["sx"][i])
+			pool.s_y[i] = int(cfg["sy"][i])
+			pool.s_a[i] = int(cfg["sa"][i])
+			pool.s_b[i] = int(cfg["sb"][i])
+			pool.s_life[i] = int(cfg["slife"][i])
+	if cfg.has("wkind"):
+		for i in range(SolObjects.WEAPONS):
+			pool.w_kind[i] = int(cfg["wkind"][i])
+			pool.w_x[i] = int(cfg["wx"][i])
+			pool.w_y[i] = int(cfg["wy"][i])
+			pool.w_vx[i] = int(cfg["wvx"][i])
+			pool.w_vy[i] = int(cfg["wvy"][i])
+			pool.w_pen[i] = int(cfg["wpen"][i])
+	return pool
+
 func _seed_sol(cfg: Dictionary) -> SolPlayer:
 	_load("sol", int(cfg["stage"]), 0)
 	var p := SolPlayer.new(level_sol)
@@ -1300,6 +1314,55 @@ func _run_sol_oam(path: String) -> void:
 		out.append("%s %d %d %d %d %d %d %d %d" % [t.oam.hex_encode(),
 				t.count, t.turn, t.fwd, t.back,
 				t.banks[0], t.banks[1], t.banks[2], t.banks[3]])
+	print("\n".join(out))
+
+
+## Э4.20 acceptance: --soldraw=FILE, the hero's own four slots put into the
+## sprite table.  One record per picture, each one the whole of work memory as
+## it stood at $A489 -- just before the four are walked -- and the engine must
+## answer with the same table, the same four cursors and the same four tile
+## banks the cartridge had at $A52E.
+func _run_sol_draw(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var out := PackedStringArray()
+	for f in cfg["frames"]:
+		var p := _seed_sol(f)
+		var pool := _sol_pool_from(f)
+		pool.clock = int(f["clock"])
+		pool.cam_x = int(f["cam_x"])
+		pool.cam_y = int(f["cam_y"])
+		pool.born_wait = int(f["born_wait"])
+		pool.six = int(f["six"])
+		pool.pad_new = int(f["pad_new"])
+		# $05AB is the hero's own, and _seed_sol does not carry it: without it
+		# _hero_into would wipe the burst the letters had just paid out.
+		p.burst = pool.z5ab
+		_hero_into(pool, p)
+		var t := SolSprites.Table.new()
+		t.count = int(f["count"])
+		t.turn = int(f["turn"])
+		t.fwd = int(f["fwd"])
+		t.back = int(f["back"])
+		var bk: Array = f["banks"]
+		for i in range(4):
+			t.banks[i] = int(bk[i])
+		var was: Array = f["oam"]
+		for i in range(256):
+			t.oam[i] = int(was[i])
+		pool.table = t
+		SolSat.step(pool)
+		var row := PackedStringArray()
+		for i in range(SolSat.FIRST, SolSat.LAST + 1):
+			row.append("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d"
+					% [pool.id[i], pool.x[i], pool.y[i], pool.mind[i],
+					pool.kind[i], pool.a[i], pool.b[i], pool.c[i], pool.d[i],
+					pool.face[i], pool.anim_a[i], pool.anim_b[i], pool.left[i],
+					pool.frame[i], pool.cool[i], pool.life[i],
+					pool.pic_lo[i], pool.pic_hi[i]])
+		out.append("%s %d %d %d %d %d %d %d %d %s" % [t.oam.hex_encode(),
+				t.count, t.turn, t.fwd, t.back,
+				t.banks[0], t.banks[1], t.banks[2], t.banks[3],
+				" ".join(row)])
 	print("\n".join(out))
 
 

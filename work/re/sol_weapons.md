@@ -1103,3 +1103,51 @@ Two sounds are not modelled — `$F1 = $33` for a blow on the satellite (`$845D`
 and `$F1 = $0D` for the puff (`$8663`).
 
 Приёмка: `work/extract/verify_sol_blows.py`.
+
+---
+
+## Drawing the hero's own four slots (`$A6CD`)
+
+The walk over `$0C`..`$0F` ends every one of its five ways out by drawing the
+slot, and the draw is a routine of its own.
+
+```
+$A6CD  SEC / $90:$91 = $A0:$B0,X - $30:$31      ; where it stands, less the view
+       SEC / $92:$93 = $C0:$D0,X - $32:$33
+       $9E = $05CB & $80                        ; the mark: which way up he is
+       LDA $06E0,X / CMP #$0C / BCS $A6FB       ; still smarting?
+         CPX #$0E / BCS $A70E                   ; but only slots $0C and $0D
+         BCC $A708
+$A6FB  LDA $06F0,X / CMP #$04 / BCS $A70E       ; down to its last three?
+       LDA $0C / AND #$08 / BNE $A70E           ; and on the right pictures
+$A708  $9E |= $03                               ; flicker
+$A70E  Y = $0670,X & $1F / A = $0660,X
+       (A | Y) == 0 -> RTS                      ; no picture at all
+       $0680,X < 0 -> A += 1 with the carry into Y
+       JMP $C003                                ; $F3DC, the ordinary drawer
+```
+
+The mark's bit 7 is the hero's own `$05CB`, so a slot hangs upside down with
+him.  Only five bits of the picture's high byte count, and the turn-round adds
+into the masked half, not the raw one.
+
+Where it is called from:
+
+| from | when |
+|---|---|
+| `$A4B9` | a slot on its way out that the hero is not smarting for |
+| `$A4E9` | the satellite falling off the picture, three pictures in four (`$0C & 2`) |
+| `$A4F8` | the same, once its own count has run out |
+| `$A5BE` | the satellite while the hero is in a state the table at `$A5C1` marks four or more |
+| `$A521` | the ordinary way, after `$C033` has laid the shots over the slot |
+
+`$A5BE` is a `JMP`, so `$A6CD`'s `RTS` comes back to `$A516` and `$A521` lays
+**the very same picture out a second time**.  That is the cartridge's own
+doing and the port keeps it.
+
+One more draw belongs to the walk and does not go through `$A6CD`: `$A564`,
+the ring drawn round the hero while the satellite is being made.  It goes
+through `$C009` (`$F3F0`), which hands whole pixels and lays out walking
+forwards, with picture `$0C`, mark nought, at `$60`,`$10`.
+
+Приёмка: `work/extract/verify_sol_draw.py`.

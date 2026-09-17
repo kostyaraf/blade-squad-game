@@ -38,6 +38,7 @@ static func _one(o: SolObjects, x: int) -> void:
 			if o.hero_hurt != 0:
 				return                                  # $A4B2
 			o.anim_second(x, 0x22, 1)                   # $A4B4
+			_draw(o, x)                                 # $A4B9
 			return
 	# $A502 -- one more picture since it was last hit, stopping at $FF.
 	if o.cool[x] != 0xFF:
@@ -49,6 +50,43 @@ static func _one(o: SolObjects, x: int) -> void:
 	# $A51E -- and what has been thrown at the hero is laid over the slot as
 	# well, so his own satellite can be shot down.
 	o.shots_hit_thing(x)
+	_draw(o, x)                                         # $A521
+
+
+## $A6CD -- one of the four slots into the sprite table.  Where it stands is
+## counted from the corner of the view, and $9E carries the mark: bit seven is
+## the hero's own ($05CB, which says which way up he is) and the bottom two bits
+## are put on to make the slot flicker.
+##
+## It flickers on two counts.  While it is still smarting -- $06E0 below twelve
+## -- but then only slots twelve and thirteen; and once that has passed, while
+## it is down to its last three points of life, on the pictures $0C says.
+static func _draw(o: SolObjects, x: int) -> void:
+	if o.table == null:
+		return
+	var mark: int = o.hero_flags & 0x80                 # $A6E7
+	var blink := false
+	if o.cool[x] < 0x0C:
+		blink = x < 0x0E                                # $A6F5
+	elif o.life[x] < 0x04 and (o.clock & 0x08) == 0:
+		blink = true                                    # $A702
+	if blink:
+		mark = mark | 0x03                              # $A70A
+	# $A70E -- only five bits of the high byte count, and a picture of nought
+	# in both halves is not drawn at all.
+	var hi: int = o.pic_hi[x] & 0x1F
+	var lo: int = o.pic_lo[x]
+	if (hi | lo) == 0:
+		return                                          # $A717
+	if (o.face[x] & 0x80) != 0:
+		# $A724 -- the picture next door, and the add carries into the half
+		# that was masked, not into the one that was not.
+		lo += 1
+		if lo > 0xFF:
+			lo &= 0xFF
+			hi = (hi + 1) & 0xFF
+	SolSprites.picture(lo | hi << 8, mark,
+			(o.x[x] - o.cam_x) & 0xFFFF, (o.y[x] - o.cam_y) & 0xFFFF, o.table)
 
 
 ## $A4BC -- the slot has been knocked out and falls off the picture.  Which
@@ -65,12 +103,16 @@ static func _dying(o: SolObjects, x: int) -> void:
 			for i in range(SolObjects.WEAPONS):         # $881A
 				o.w_kind[i] = 0
 		o.y[x] = (o.y[x] + (hi << 8 | lo)) & 0xFFFF     # $AE7C
+		# $A4E3 -- and while it falls it is only drawn three pictures in four.
+		if (o.clock & 0x02) == 0:
+			_draw(o, x)                                 # $A4E9
 		return
 	lo = (lo << 1) & 0xFF                               # $A4EB, and only the low
 	o.y[x] = (o.y[x] + (hi << 8 | lo)) & 0xFFFF
 	o.anim_second(x, 0x20, 1)                           # $A4F0
 	if (o.left[x] & 0x80) == 0:
-		return                                          # $A4F8
+		_draw(o, x)                                     # $A4F8
+		return
 	_clear_sat(o)                                       # $9359
 	o.id[x] = 0                                         # $A4FD
 
@@ -111,7 +153,12 @@ static func _behave(o: SolObjects, x: int) -> void:
 			_burst(o, x)                                # $A5D9
 		elif m < 4:
 			_burst_slow(o, x)                           # $A5F6
-		return                                          # $A5BE is only drawing
+		else:
+			# $A5BE -- and four and up only draws.  It goes through $A6CD and
+			# comes back to $A516, so $A521 lays the very same picture out a
+			# second time.
+			_draw(o, x)
+		return
 	_dispatch(o, x)                                     # $A57B
 
 
@@ -129,6 +176,10 @@ static func _being_born(o: SolObjects, x: int) -> void:
 		_swing(o, x)                                    # $ADF5
 		pic = 0x1E
 	o.anim_second(x, pic, 1)                            # $A553
+	# $A564 -- and the ring being drawn round him while it is made, which is
+	# handed whole pixels at a fixed place and does not go through $A6CD.
+	if o.table != null:
+		SolSprites.forward(0x0C, 0, 0x60, 0x10, o.table)
 
 
 ## $A5D9 -- the picture the doubled weapon makes: the satellite is swung four
