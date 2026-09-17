@@ -911,3 +911,93 @@ C12E  STY $90 / LDA #$0C / JSR $C92C / LDY $90 / JSR $8004 / PHA / JSR $C998 / P
 
 Приёмка: `verify_sol_sat.py --letters` -- три места x восемь комбинаций x две
 постановки (с уже готовым спутником и без) x три сценария.
+
+
+---
+
+## The pool against a thing (`$869C`)
+
+`$CFBA` is where a thing in the `$0600` pool is touched.  It builds the thing's
+box (`$CF96` -> `$814C`/`$817B`), lays the hero himself over it (`$8013` ->
+`$81B7`), and then asks two more questions:
+
+```
+$CFE0  A = $60                        ; what the box means
+$CFE2  bit 7 set  -> $CFEB            ; a pick-up is not shot at
+$CFE4  A &= $3F, nought -> $CFEB
+$CFE8  JSR $8004                      ; bank 8: $869C -- the $0700 pool
+$CFEB  JSR $800D                      ; bank 8: $83E2 -- not read yet
+```
+
+`$869C` turns round on four things: bit 7 of `$60` again, `$60 & $20` (the
+boxes that only hurt a suitless hero), bit 7 of the thing's own behaviour (it
+is already finished), and `$060C == 0` (the hero has no satellite at all).
+
+### Which slots, and in what order
+
+`$065C` — the satellite's behaviour number — reads the twenty byte table at
+`$8759`:
+
+```
+$8759: 00 00 02 00 02 01 01 00 00 01 00 00 00 00 00 00 00 00 00 00
+```
+
+| answer | order |
+|---|---|
+| `0` | 7 5 3 1 6 4 2 0 — all eight |
+| `1` | `$0C` bit 0 set: 6 4 2 0; clear: 7 5 3 1 |
+| `2`+ | `$0C` bit 0 set: 7 6 3 2; clear: **5 4 1 7 6 3 2** |
+
+**The two lower rows also settle the carry.**  `$86BA CMP #$02` picks between
+them and `$86BE`/`$86E9 LDA $0C / ROR A` picks the half, and that roll is the
+last thing to touch the carry before `$876D` subtracts with it.  So for those
+two rows the carry walking into the box test is the bottom bit of the picture
+count and not the one `$CFBA` walked in with; only row nought, which branches
+on `BEQ` and rolls nothing, keeps it.  Measured: at picture 230 (even) a weapon
+sitting exactly on the near edge is caught under row nought and missed under
+rows one and two.
+
+That last row is the cartridge's own slip and is kept as it stands.  `$86D2`
+loads nought into the index and `$86D4` branches on "not nought", which can
+never be taken, so it falls into `$86D6` instead of testing slot nought: seven
+slots are asked and slot nought never is.
+
+Every chosen slot is asked whatever the ones before it answered — `$8726` is
+`JSR`'d and its answer thrown away — so one weapon stopping does not save the
+thing from the next.
+
+### One slot (`$8726`)
+
+Nothing happens unless bit 7 of `$0700,Y` is set.  `$876D` then lays the
+weapon, which is a point, over the thing's box; on a hit `$8731` takes
+`$60 & $0F` — how much the box hurts for — off `$0770,Y`, which is how far the
+weapon can still go through things.  Reaching nought or below stops it flying:
+`$0700,Y &= $7F`, `$0750,Y = 0`, `$0770,Y = 0`.
+
+### The box (`$876D`)
+
+Six compares threading one carry, the same shape as `$81B7`'s.  **There is no
+`SEC` anywhere between `$CF96` and here**, so under row nought of `$8759` the
+first of them takes whatever carry `$81B7` last left — and `$81B7` leaves it standing on exactly one of its
+five ways out (`$81E1`, the hero past the far side of the box) and clear on the
+other four.  Where the hero actually touched the thing, the carry comes out of
+`$8244` and the blow itself: `$8348`, `$835E` and `$8381` leave it clear,
+`$8363` and `$83B0` leave whatever they subtracted, and `$837A` — a hero with
+no suit left — leaves the one `$821E`/`$823C` walked in with, which is
+standing.  Without the suit `$81B7` is not called at all (`$CFD8`) and the
+carry is the one `$CF96` walked out with -- and that one is always clear,
+because the way out of `$CF96` goes through the bank change at `$C998`, whose
+last sum is "this bank plus one" and never carries.  The parity test at
+`$CFD2` is the other way it can come out standing: `ROR A` leaves the bottom
+bit of `X ^ $0C`, and reaching `$CFE0` that way means the bit was one.
+
+On a hit: a thing hit in the last nine pictures (`$06E0,X < 9`) is touched but
+not hurt, and the weapon is spent on it all the same.  Otherwise `$87BC` is
+`$83BC` written out — `$06E0,X = 0`, `$0650,X |= $40`, one point off
+`$06F0,X`, and `$8850` on nought — and `$87F2` makes the sound.
+
+`$87E2`, which `$87BC` and `$83BC` both call, begins `JSR $884F`.  `$884F` is
+the last byte of the sound table at `$880A` and it is an `$60`: the call does
+nothing at all.
+
+Приёмка: `work/extract/verify_sol_blows.py`.

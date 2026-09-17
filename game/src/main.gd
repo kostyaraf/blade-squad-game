@@ -571,6 +571,10 @@ func _run_sol_objects(path: String) -> void:
 	var heroes := PackedStringArray()
 	var hands := PackedStringArray()
 	var odds := PackedStringArray()
+	# All eighteen numbers of all sixteen slots.  The unprefixed rows above
+	# carry seven of them, which is enough for who is where but not for what a
+	# thing has left of its life; Э4.18 needs that.
+	var fulls := PackedStringArray()
 	# The death stand kills a pool by hand: on one named picture bit 7 goes on
 	# the behaviour of every slot that holds something, which is what sends
 	# $81B7 to its second table.  The cartridge is poked at the top of the same
@@ -721,6 +725,15 @@ func _run_sol_objects(path: String) -> void:
 					pool.frame[i], pool.cool[i], pool.life[i],
 					pool.pic_lo[i], pool.pic_hi[i]])
 		hands.append("H " + " ".join(hrow))
+		var frow := PackedStringArray()
+		for i in range(SolObjects.SLOTS):
+			frow.append("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d"
+					% [pool.id[i], pool.x[i], pool.y[i], pool.mind[i],
+					pool.kind[i], pool.a[i], pool.b[i], pool.c[i], pool.d[i],
+					pool.face[i], pool.anim_a[i], pool.anim_b[i], pool.left[i],
+					pool.frame[i], pool.cool[i], pool.life[i],
+					pool.pic_lo[i], pool.pic_hi[i]])
+		fulls.append("O " + " ".join(frow))
 		# Э4.14 and Э4.15 -- what the hero writes that lives nowhere else:
 		# what the game is to be put to next ($F8), the colour the shimmer of
 		# the shield walks ($0112), what a panel took and has not been paid
@@ -741,6 +754,7 @@ func _run_sol_objects(path: String) -> void:
 	print("\n".join(heroes))
 	print("\n".join(hands))
 	print("\n".join(odds))
+	print("\n".join(fulls))
 	if not pool.skipped.is_empty():
 		printerr("minds not read yet: ", pool.skipped)
 	if not pool.shots_skipped.is_empty():

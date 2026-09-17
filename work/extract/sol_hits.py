@@ -31,6 +31,13 @@ $8918 reads it with the *shot's* behaviour number when it lays the shots over
 one of the hero's own four slots.  That one is three bytes long before the
 code begins, so all but the first three behaviours are tested every other
 picture.  Taken whole for the same reason.
+
+The fifth is bank eight's at $8759 and is not a pacing table at all: $86AF
+reads it with the *satellite's* behaviour number to pick which of the hero's
+eight weapon slots are laid over the thing, and in which order.  Nought asks
+all eight, one asks four of them, and anything from two up asks a seventh set
+that leaves slot nought out.  Twenty bytes before the code begins, and taken
+whole like the rest.
 """
 import os
 import sys
@@ -44,6 +51,7 @@ PIC_AT = 0x8A19
 BOX_AT = 0x91B5
 SLOW_AT, SLOW_N = 0xCFF1, 128
 HAND_AT, HAND_N = 0x895C, 128      # bank eight, and the same trick again
+ORDER_AT, ORDER_N = 0x8759, 128    # which weapon slots are laid over a thing
 
 
 def window(bank, base):
@@ -63,7 +71,8 @@ def main():
            for k in range(boxes)]
     out = dict(pic=pic, box=box,
                slow=[b14(SLOW_AT + i) for i in range(SLOW_N)],
-               hand=[b8(HAND_AT + i) for i in range(HAND_N)])
+               hand=[b8(HAND_AT + i) for i in range(HAND_N)],
+               order=[b8(ORDER_AT + i) for i in range(ORDER_N)])
     d = outdir('sol')
     size = write_json(os.path.join(d, 'hits.json'), out)
     print('%d pictures, %d of them with a box, %d boxes, %d bytes'

@@ -186,6 +186,11 @@ var z61 := 0                        # $61:$62
 var z63 := 0                        # $63:$64
 var z65 := 0                        # $65:$66
 var z67 := 0                        # $67:$68
+## The carry standing at the end of all that.  $CFE8 walks straight on from
+## $CF96 and $81B7 without a SEC anywhere, so the first compare the hero's own
+## pool makes reads one sixteenth further back when this is clear.  Every exit
+## that can reach $869C sets it.
+var z_c := 0
 var z9c := 0                        # $9C, which side the overlap came from
 ## $05C3 -- how long until the satellite is born.  A finished combination
 ## sets it to $80; it counts down, the satellite is made at $30, and until
@@ -242,6 +247,9 @@ var _hit_slow: PackedByteArray
 ## $895C -- and the same again for the other pool, read with the shot's own
 ## behaviour when the shots are laid over one of the hero's four slots.
 var _hand_slow: PackedByteArray
+## $8759 -- read with the satellite's own behaviour: which of the hero's eight
+## weapon slots are laid over a thing, and in what order.
+var _slot_order: PackedByteArray
 ## $9060 -- fifteen rings of sixteen, the quarter circle $8FF6 turns an angle
 ## into a step with.
 var _aim: PackedByteArray
@@ -269,6 +277,7 @@ func _init(lvl: SolLevel) -> void:
 	_hit_box = h["box"]
 	_hit_slow = PackedByteArray(h["slow"])
 	_hand_slow = PackedByteArray(h["hand"])
+	_slot_order = PackedByteArray(h["order"])
 	_aim = PackedByteArray(Nes._load_json("%s/sol/aim.json" % Nes.DATA)["ring"])
 	weapon_table = Nes._load_json("%s/sol/weapon.json" % Nes.DATA)
 	sat_table = Nes._load_json("%s/sol/sat.json" % Nes.DATA)
@@ -1216,9 +1225,14 @@ func touch_box(s: int) -> bool:
 	var box: Array = got[1]
 	var r: Array = _add2(int(box[0]), x[s], 0)
 	z61 = r[0]
-	z63 = _add2(int(box[1]), y[s], r[1])[0]
+	r = _add2(int(box[1]), y[s], r[1])
+	z63 = r[0]
 	z65 = int(box[2])
 	z67 = int(box[3])
+	# $CFB5 -- the way back out of $CF96 goes through the bank change at $C998,
+	# whose last sum is "this bank plus one" and never carries, so whatever the
+	# adds above left is thrown away and $CFBA is entered with it clear.
+	z_c = 0
 	return true
 
 
@@ -1226,16 +1240,21 @@ func touch_box(s: int) -> bool:
 ## is only tested on every other picture, and which picture depends on the slot
 ## as well, so the sixteen of them are spread over the two.
 func touch(s: int) -> void:
-	if hero == null or hero_box_flags == 0:
-		return
-	if (hero_box_flags & 0x80) == 0 and _hit_slow[mind[s] & 0x7F] != 0 \
+	# Three things keep the hero himself from being laid over the thing: a box
+	# of his own that is nought ($CFC5), a behaviour the table marks on the
+	# wrong picture ($CFD6), and no suit left ($CFDB).  None of the three
+	# reaches past $CFE0: what he has already thrown is laid over it anyway.
+	var lay: bool = hero != null and hero_box_flags != 0
+	if lay and (hero_box_flags & 0x80) == 0 \
+			and _hit_slow[mind[s] & 0x7F] != 0 \
 			and ((s ^ clock) & 0x01) != 0:
-		return
-	if hero.suit == 0:
-		return
-	_overlap(s)
-	# $CFE8 and $CFEB -- the hero's own shots against the thing ($869C) and
-	# what his sub-weapons do ($83E2).  Neither pool is ported yet.
+		# $CFD2 -- and the roll that asked is what leaves the carry standing.
+		z_c = 1
+		lay = false
+	if lay and hero.suit != 0:
+		_overlap(s)                     # $CFDD
+	weapons_hit(s)                      # $CFE8
+	# $CFEB -- what his sub-weapons do ($83E2) is not ported yet.
 
 
 ## $81B7 -- the two boxes laid over one another.  $9C and $9D say which way he
@@ -1249,23 +1268,28 @@ func _overlap(s: int) -> void:
 		# because the compare before this left its carry standing.
 		p = _add2(z61, z65, 1)
 		if _ge2(hero_bx, p[0]):
+			# $81E1 -- the one way out of here that leaves the carry standing.
+			z_c = 1
 			return
 	else:
 		# $81E4 -- and one short of its near side, by the hero's own width.
 		p = _sub2(z61, hero_bw, 0)
 		if not _ge2(hero_bx, p[0]):
+			z_c = 0                     # $81F8
 			return
 	if _ge2(hero_by, z63):
 		p = _add2(z63, z67, 1)
 		# $8210 -- the carry that add left is the borrow this takes with.
 		p = _sub2(p[0], hero_by, p[1])
 		if p[1] == 0:
+			z_c = 0                     # $821A
 			return
 		z9c = 1
 	else:
 		p = _sub2(z63, hero_bh, 0)
 		p = _sub2(hero_by, p[0], p[1])
 		if p[1] == 0:
+			z_c = 0                     # $8238
 			return
 		z9d = 1
 	_react(s)
@@ -1273,6 +1297,9 @@ func _overlap(s: int) -> void:
 
 ## $8244 -- what the touch comes to.  The top bit makes it something to pick
 ## up; without it the thing hurts, and how much depends on the suit.
+##
+## $821E and $823C are counts, which leave the carry alone, so everything from
+## here on is entered with it standing.
 func _react(s: int) -> void:
 	if (z60 & 0x80) != 0:
 		_pick_up(s)
@@ -1282,6 +1309,7 @@ func _react(s: int) -> void:
 		# $824A -- these hurt for one, and only where they name no other
 		# amount at all.
 		if (z60 & 0x0F) != 0:
+			z_c = 1                     # $824E, and nothing has touched it
 			return
 		dmg = 1
 	elif hero.hurt != 0 and (z60 & 0x20) != 0:
@@ -1297,6 +1325,7 @@ func _hurt_hero(s: int, dmg: int) -> void:
 	if hero.hurt != 0:
 		# $8343 -- a thing hit in the last eight pictures is not hit again.
 		if cool[s] < 0x08:
+			z_c = 0                     # $8348
 			return
 		_wear(s, 1)                     # $83BC
 	blow(dmg)                           # $8354
@@ -1307,14 +1336,22 @@ func _hurt_hero(s: int, dmg: int) -> void:
 func blow(dmg: int) -> void:
 	if hero.hurt != 0:
 		if hero.timer < 0x20:
-			return                      # $8359
-		# $8360 -- a step of the suit, and the low three bits back on.
+			z_c = 0                     # $835E
+			return
+		# $8360 -- a step of the suit, and the low three bits back on.  The
+		# compare above left the carry standing, so this is a plain take-away.
 		var left: int = hero.hurt - 0x10
 		hero.hurt = (left | 0x07) if left >= 0 else 0x02
 		hero.timer = 0
+		z_c = 1 if left >= 0 else 0     # $8363
 		return
 	# $8377 -- no suit, and then it costs him his own life.
-	if hero.suit == 0 or hero.timer < 0x70:
+	if hero.suit == 0:
+		# $837A -- and nothing between $8244 and here has touched the carry.
+		z_c = 1
+		return
+	if hero.timer < 0x70:
+		z_c = 0                         # $8381
 		return
 	if hero.shield != 0:
 		hero.shield -= 1                # $8388
@@ -1325,6 +1362,7 @@ func blow(dmg: int) -> void:
 	if d >= 0x08:
 		d = 1
 		hero.swim = 1
+	z_c = 1 if hero.suit >= d else 0    # $83B0
 	hero.suit = hero.suit - d if hero.suit >= d else 0
 
 
@@ -1472,6 +1510,108 @@ func _shot_on_thing(s: int, i: int, bx: int, by: int, c: int) -> Array:
 	return [true, r[1]]
 
 
+## $869C -- the hero's own eight weapon slots, the pool at $0700, laid over
+## the thing whose turn it is.  $CFE8 asks this once the thing's box is built
+## and the hero himself has been laid over it, and only where the box says the
+## thing can be hurt at all.
+##
+## Which slots are asked, and in what order, is the satellite's business: its
+## behaviour number reads $8759.  Nought asks all eight from the top down,
+## seven five three one and then six four two nought; one asks half of them,
+## and $0C -- the plain count of pictures -- picks which half; two and up asks
+## a third set that begins five four one and then runs into the other half.
+##
+## That last one is the cartridge's own slip and is kept as it stands.  $86D2
+## loads nought into the index and then branches on "not nought", which can
+## never be taken, so it falls into $86D6 instead of testing slot nought: the
+## seven that follow are asked and slot nought never is.
+##
+## Every chosen slot is asked whatever the ones before it answered -- $8726 is
+## called and its answer thrown away -- so one shot stopping does not save the
+## thing from the next.
+func weapons_hit(s: int) -> void:
+	# $CFE4 -- the caller's own gate, and then $869C's two.
+	if (z60 & 0x80) != 0 or (z60 & 0x3F) == 0:
+		return
+	if (z60 & 0x20) != 0:
+		return                          # $86A0
+	if (mind[s] & 0x80) != 0:
+		return                          # $86A4 -- it is already finished
+	if id[SAT] == 0:
+		return                          # $86A9 -- and he has no satellite
+	var order: Array
+	var c: int = z_c
+	var which: int = _slot_order[mind[SAT] & 0x7F]
+	if which == 0:
+		order = [7, 5, 3, 1, 6, 4, 2, 0]                # $8701
+	else:
+		# $86BE and $86E9 -- the roll that asks which picture it is is also
+		# what the compares below subtract with, so for these two rows the
+		# carry walking into $876D is the bottom bit of the picture count and
+		# not the one $CFBA walked in with.
+		c = clock & 0x01
+		if which == 1:
+			# $86E9 -- one picture the odd four, the next the even four.
+			order = [6, 4, 2, 0] if c != 0 else [7, 5, 3, 1]
+		else:
+			# $86BE, and the slip at $86D4 below it.
+			order = [7, 6, 3, 2] if c != 0 else [5, 4, 1, 7, 6, 3, 2]
+	for i in order:
+		c = _weapon_slot(s, int(i), c)
+
+
+## $8726 -- one weapon slot laid over the thing, and what the touch costs the
+## shot.  A shot goes through as much as $0770 says it can and no further; what
+## the thing takes off it is the low four bits of the box's own meaning, so a
+## thing that hurts for four also stops four of a shot's worth.
+func _weapon_slot(s: int, i: int, c: int) -> int:
+	if (w_kind[i] & 0x80) == 0:
+		return c                        # $8729 -- nothing flying in that slot
+	var r: Array = _weapon_on_thing(s, i, c)
+	if not bool(r[0]):
+		return int(r[1])
+	# $8731 -- and here the carry is thrown away and made afresh.
+	var n: int = z60 & 0x0F
+	var left: int = w_pen[i] - n
+	if left <= 0:
+		# $8741 -- it has gone through as much as it could and stops flying.
+		w_kind[i] = w_kind[i] & 0x7F
+		w_vx[i] = 0
+		w_pen[i] = 0
+	else:
+		w_pen[i] = left                 # $8750
+	return 1 if left >= 0 else 0
+
+
+## $876D -- the shot is a point and the thing is the box; the six compares
+## thread their carry the way $81B7's do.
+##
+## A thing hit in the last nine pictures is touched but not hurt -- $06E0
+## counts up from the last blow -- and the shot is spent on it all the same.
+func _weapon_on_thing(s: int, i: int, c: int) -> Array:
+	var r: Array = _sub2(w_x[i], z61, c)
+	if r[1] == 0:
+		return [false, r[1]]            # $8777
+	var p: Array = _add2(z61, z65, r[1])
+	r = _sub2(w_x[i], p[0], p[1])
+	if r[1] == 1:
+		return [false, r[1]]            # $878F
+	r = _sub2(w_y[i], z63, r[1])
+	if r[1] == 0:
+		return [false, r[1]]            # $879B
+	p = _add2(z63, z67, r[1])
+	r = _sub2(p[0], w_y[i], p[1])
+	if r[1] == 0:
+		return [false, r[1]]            # $87B3
+	if cool[s] < 0x09:
+		# $87BA -- and the compare that said so is what the carry is left at.
+		return [true, 0]
+	_wear(s, 1)                         # $87BC, which is $83BC written out
+	# $87D9 -- the sound of it, $880A read with the behaviour, is not modelled;
+	# the carry it leaves is thrown away at $8731 either way.
+	return [true, 1]
+
+
 ## $83BC -- the thing loses what the hero's own body took off it.
 func _wear(s: int, n: int) -> void:
 	cool[s] = 0
@@ -1496,6 +1636,11 @@ func _done(s: int) -> void:
 ## $8266 -- something to pick up.  The low three bits say which of the six, and
 ## nought means it is not one after all.
 func _pick_up(s: int) -> void:
+	# Four of the six end by putting the thing away ($8290 sets bit seven of
+	# its behaviour), and $869C turns round at $86A4 on that, so what the carry
+	# is left at matters only for $82AE, $82B4 and $8336 -- and none of the
+	# three touches it.
+	z_c = 1
 	match z60 & 0x07:
 		0x01: _worth(s, 0x05)           # $827E
 		0x02: _worth(s, 0x14)           # $8299

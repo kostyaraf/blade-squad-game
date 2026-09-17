@@ -250,7 +250,6 @@ What a hit costs, at `$89A7`:
 
 ## What is still owed
 
-* the hero's own pool at `$0700` (`$869C`), which is a separate sixteen slots;
 * `$A6CD` — the drawing of those four slots, which is a different thing from
   the hitting and is not ported;
 * bank 6's entry `$79` (from `$A5BF` in bank 3) — прочитан, но упирается в
