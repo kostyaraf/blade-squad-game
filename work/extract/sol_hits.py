@@ -25,6 +25,12 @@ thing only on every other picture.  The table itself is twenty bytes long and
 the code that follows it is read as more of the table whenever a behaviour is
 numbered above nineteen -- so the whole hundred and twenty eight bytes are
 taken here as they stand, which is what the console reads.
+
+The fourth is bank eight's at $895C and does the same for the other pool:
+$8918 reads it with the *shot's* behaviour number when it lays the shots over
+one of the hero's own four slots.  That one is three bytes long before the
+code begins, so all but the first three behaviours are tested every other
+picture.  Taken whole for the same reason.
 """
 import os
 import sys
@@ -37,6 +43,7 @@ PICS = 974                 # as many as the picture table itself holds
 PIC_AT = 0x8A19
 BOX_AT = 0x91B5
 SLOW_AT, SLOW_N = 0xCFF1, 128
+HAND_AT, HAND_N = 0x895C, 128      # bank eight, and the same trick again
 
 
 def window(bank, base):
@@ -55,7 +62,8 @@ def main():
             for j in range(4)]
            for k in range(boxes)]
     out = dict(pic=pic, box=box,
-               slow=[b14(SLOW_AT + i) for i in range(SLOW_N)])
+               slow=[b14(SLOW_AT + i) for i in range(SLOW_N)],
+               hand=[b8(HAND_AT + i) for i in range(HAND_N)])
     d = outdir('sol')
     size = write_json(os.path.join(d, 'hits.json'), out)
     print('%d pictures, %d of them with a box, %d boxes, %d bytes'

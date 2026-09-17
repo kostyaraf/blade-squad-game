@@ -46,6 +46,9 @@ static func _one(o: SolObjects, x: int) -> void:
 		return                                          # $A511
 	_behave(o, x)                                       # $A513
 	o.id[x] = o.id[x] & 0x3F                            # $A516
+	# $A51E -- and what has been thrown at the hero is laid over the slot as
+	# well, so his own satellite can be shot down.
+	o.shots_hit_thing(x)
 
 
 ## $A4BC -- the slot has been knocked out and falls off the picture.  Which

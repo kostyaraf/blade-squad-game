@@ -239,6 +239,9 @@ var _groups: Dictionary
 var _hit_pic: Array
 var _hit_box: Array
 var _hit_slow: PackedByteArray
+## $895C -- and the same again for the other pool, read with the shot's own
+## behaviour when the shots are laid over one of the hero's four slots.
+var _hand_slow: PackedByteArray
 ## $9060 -- fifteen rings of sixteen, the quarter circle $8FF6 turns an angle
 ## into a step with.
 var _aim: PackedByteArray
@@ -265,6 +268,7 @@ func _init(lvl: SolLevel) -> void:
 	_hit_pic = h["pic"]
 	_hit_box = h["box"]
 	_hit_slow = PackedByteArray(h["slow"])
+	_hand_slow = PackedByteArray(h["hand"])
 	_aim = PackedByteArray(Nes._load_json("%s/sol/aim.json" % Nes.DATA)["ring"])
 	weapon_table = Nes._load_json("%s/sol/weapon.json" % Nes.DATA)
 	sat_table = Nes._load_json("%s/sol/sat.json" % Nes.DATA)
@@ -1373,6 +1377,98 @@ func _shot_on_hero(i: int, c: int) -> Array:
 	if hero.suit == 0:
 		return [false, r[1]]            # $88EA
 	blow(1)                             # $88F0 -> $8354
+	return [true, r[1]]
+
+
+## $88F6 and $8918 -- the same pool, laid over one of the hero's own four slots
+## instead of over him.  $A51E asks this for each of the four once a picture,
+## so the satellite, its bang, the swung weapon and his punch can all be shot
+## out of the air.
+##
+## The box is not the picture's.  It is a square $0101 across reaching from
+## $80 back of the slot's own point, built by hand at $88F6, so a shot within
+## about half a screen of the satellite counts as touching it.
+##
+## The carry standing when the box is built is whatever the slot's own
+## behaviour left: $A516 to $A51E and the bank change under it touch nothing,
+## so it walks straight in from $A56A.  Measured on the stand it is clear, and
+## a clear one reaches one sixteenth further back -- the near edge is at $81
+## and not $80.  The borrow the sideways pair leaves then runs on into the
+## other, which is one subtraction of four bytes and not two of two.
+func shots_hit_thing(s: int) -> void:
+	var r: Array = _sub2(x[s], 0x0080, 0)
+	var bx: int = r[0]
+	r = _sub2(y[s], 0x0080, r[1])
+	var by: int = r[0]
+	var c: int = r[1]
+	for i in range(SHOTS - 1, -1, -1):
+		if (s_kind[i] & 0x80) == 0:
+			continue                        # $891D
+		# $8924 -- three noughts and then the code itself, the same trick as
+		# $CFF1, so all but the first three behaviours are asked about every
+		# other picture -- and which one depends on the shot's own slot.
+		if _hand_slow[s_kind[i] & 0x7F] != 0:
+			if ((i ^ clock) & 0x01) != 0:
+				continue
+			# $8930 -- and the roll that asks the question is itself what
+			# leaves the carry for the compares below.  Getting here at all
+			# means it came out clear, so the box reads one sixteenth further
+			# back than it does for a shot that skipped the question.
+			c = 0
+		var hit: Array = _shot_on_thing(s, i, bx, by, c)
+		c = int(hit[1])
+		if not bool(hit[0]):
+			continue
+		# $893C -- it has given what it had, and stops flying.
+		if s_life[i] <= 1:
+			s_kind[i] = s_kind[i] & 0x7F
+			s_a[i] = 0
+			s_life[i] = 0
+		else:
+			s_life[i] -= 1
+		return
+
+
+## $895F -- one shot laid over that square, and what it costs the slot.  The
+## compares thread their carry the way $889F's do.
+##
+## Two of its answers are worth naming.  A slot already on its way out (bit 7
+## of its behaviour) swallows the shot and loses nothing; and a slot whose
+## last point of life is taken while it is not the satellite answers nought,
+## so the shot that finished it goes on flying.
+func _shot_on_thing(s: int, i: int, bx: int, by: int, c: int) -> Array:
+	var r: Array = _sub2(s_x[i], bx, c)
+	if r[1] == 0:
+		return [false, r[1]]                # $8969
+	var p: Array = _add2(bx, 0x0101, r[1])
+	r = _sub2(s_x[i], p[0], p[1])
+	if r[1] == 1:
+		return [false, r[1]]                # $8981
+	r = _sub2(s_y[i], by, r[1])
+	if r[1] == 0:
+		return [false, r[1]]                # $898D
+	p = _add2(by, 0x0101, r[1])
+	r = _sub2(p[0], s_y[i], p[1])
+	if r[1] == 0:
+		return [false, r[1]]                # $89A5
+	if (mind[s] & 0x80) != 0:
+		return [true, r[1]]                 # $8A13
+	# $89AC -- and a picture that carries no meaning at all is not touched.
+	var pic: int = pic_lo[s] | pic_hi[s] << 8
+	if _hit_of(pic)[0] == 0:
+		return [false, r[1]]                # $89CB
+	cool[s] = 0                             # $89CF
+	if life[s] >= 1:
+		life[s] -= 1                        # $89F6
+		# $89FD -- the satellite is the only one that makes a sound of it.
+		return [true if s == SolSat.FIRST else life[s] != 0, r[1]]
+	# $89DC -- it had nothing left, and this is the end of it.
+	a[s] = 0
+	if s == SolSat.FIRST:
+		b[s] = 0x20                         # $89E5
+		id[s] = 0xFF                        # $89EE
+	else:
+		id[s] = 0                           # $89F0
 	return [true, r[1]]
 
 

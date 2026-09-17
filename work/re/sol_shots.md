@@ -208,10 +208,51 @@ hit lands **one picture before** his own clock counts it.  That is what the
 knock-back in `$9AA5` (`CMP #$01` on `$05A3`) leans on, and getting the order
 wrong was what kept the last object script failing.
 
+## The shot against his own four slots
+
+`$88F6`, reached by `$A51E` -> `$C033` -> `$D005` -> bank eight's `$8022`, once
+a picture for each of `$0C`..`$0F`.  It lays the same `$0780` pool over one of
+the hero's own slots instead of over him, which is how the satellite is shot
+out of the air.  **Ported and accepted (Э4.17).**
+
+The box is built by hand and is not the picture's: a square `$0101` across --
+sixteen pixels and a sixteenth -- reaching from `$80` back of the slot's own
+point.  `$65`..`$68` are set to one apiece and the four subtractions thread one
+borrow, so it is one subtraction of four bytes and not two of two.
+
+Two carries decide where its edges really fall, and both were settled on the
+stand:
+
+* the carry walking into `$88F6` comes straight out of the slot's own
+  behaviour (`$A56A`; `$A516`..`$A51E` and the bank change under it touch
+  nothing), and it is **clear** -- so the near edge sits at `$81` back, not
+  `$80`;
+* `$8930`'s `ROR A`, which asks whether this is the shot's picture, is itself
+  what leaves the carry for `$895F`'s compares.  Reaching them at all means it
+  came out clear, so a shot that answered that question reads the box one
+  sixteenth further back again than one that skipped it.  `$895C` is three
+  noughts and then the code, the same trick as `$CFF1`, so only behaviours
+  `$00`..`$02` skip it.
+
+What a hit costs, at `$89A7`:
+
+* a slot whose behaviour has bit 7 -- already on its way out -- swallows the
+  shot and loses nothing (`$8A13`);
+* a picture that carries no meaning at all (`$8A19`'s first byte nought) is not
+  touched, and the shot flies on;
+* otherwise `$06E0` is put back to nought and `$06F0` loses one.  The last
+  point takes the slot with it: `$0610` is cleared, and for the satellite
+  (`$0C`) `$0620` becomes `$20`, the sound is `$0A` and `$0600` becomes `$FF`,
+  while any other slot simply has `$0600` cleared.
+* and a slot that is left with exactly nothing but is not the satellite
+  answers nought, so the shot that finished it goes on flying (`$8A01` returns
+  the life it wrote).
+
 ## What is still owed
 
-* `$88F6` / `$8918` — a shot against an object, not the hero;
 * the hero's own pool at `$0700` (`$869C`), which is a separate sixteen slots;
+* `$A6CD` — the drawing of those four slots, which is a different thing from
+  the hitting and is not ported;
 * bank 6's entry `$79` (from `$A5BF` in bank 3) — прочитан, но упирается в
   непереносённый пул.
 
