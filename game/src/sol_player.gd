@@ -411,16 +411,21 @@ func _mask(held: int, pressed: int) -> Array:
 	return [held, pressed]
 
 
+## $A172 -- the look at his own middle, handed on unchanged.  On the stage that
+## carries, and only there, it also hurts him where what it found is of a class
+## that hurts; everywhere else it is the bare probe.
+func _a172() -> int:
+	var v := _probe(x, y)
+	if map_kind == 0x3C and (v & 0xE0) != 0x60 and (v & 0x40) != 0:
+		_wound()                            # $A18F
+	return v
+
+
 ## $94FA -- what he is standing in, and what that does to the way he moves.
 ## Water, ice and the pull of a current are all the same one answer: the
 ## property byte of the metatile his own middle is inside.
 func _terrain() -> void:
-	var v := _probe(x, y)
-	# $A17A -- on the stage that carries, and only there, the look at his own
-	# middle hurts him if what it found is of a class that hurts.  The wrapper
-	# it goes through ($A172) hands the answer on unchanged either way.
-	if map_kind == 0x3C and (v & 0xE0) != 0x60 and (v & 0xE0 & 0x40) != 0:
-		_wound()                            # $A18F
+	var v := _a172()
 	var was := seen
 	seen = v
 	# $9503 -- inside something solid, nothing to say.
@@ -1266,6 +1271,21 @@ func _air(held: int, pressed: int) -> void:
 	# $A078 and $A084 -- the floor going down, the ceiling going up.  Both look
 	# where the move would put him, not where he is.
 	if rise >= 0:
+		# $A043 -- before the floor is looked for at all, what his own middle
+		# is inside is asked after.  Two classes are things to take hold of --
+		# $20 and $E0, which is to say bit five set and neither $60 nor $A0 --
+		# and there a press of A takes him out of the air one way ($0B), a
+		# held up the other ($09).  The noise ($F1 = $08) is not modelled.
+		var cls: int = _a172() & 0xE0
+		if cls != 0x60 and cls != 0xA0 and (cls & 0x20) != 0:
+			if (pressed & A) != 0:          # $A054
+				_settle(held)               # $A058
+				state = 0x0B                # $A05F
+				return
+			if (held & UP) != 0:            # $A065
+				_settle(held)               # $A06B
+				state = 0x09                # $A072
+				return
 		if _meet() >= 0x80:
 			_settle(held)
 			return
