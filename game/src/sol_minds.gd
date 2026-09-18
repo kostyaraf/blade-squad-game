@@ -330,7 +330,7 @@ static func _b11d(o: SolObjects, s: int, pic: int) -> void:
 		o.b[s] = 0xFF
 		return
 	_b134(o, s)                             # $B128
-	o.anim_second(s, pic, 3)                # $8985, the third book of walks
+	o.anim_second(s, pic, 3, false)                # $8985, the third book of walks
 	_b239(o, s)                             # $B130
 
 
@@ -605,7 +605,7 @@ static func _915b(o: SolObjects, s: int) -> void:
 	match o.kind[s] & 0x7F:
 		0x00:
 			o.face_hero(s)                  # $8118
-			o.anim_second(s, 0x49)          # $904B
+			o.anim_second(s, 0x49, 4, false)          # $904B
 			if o.z58 != 0x03 or o.left[s] != 0xFF:
 				return
 			o.z26 = 0x04                    # $A3FF -> $80A9
@@ -625,11 +625,11 @@ static func _915b(o: SolObjects, s: int) -> void:
 			o.id[0x0B] = 0
 			o.kind[s] = (o.kind[s] + 1) & 0xFF
 		0x02:
-			o.anim_second(s, 0x4E)
+			o.anim_second(s, 0x4E, 4, false)
 			if o.z26 == 0:
 				o.kind[s] = (o.kind[s] + 1) & 0xFF
 		0x03:
-			o.anim_second(s, 0x4A)
+			o.anim_second(s, 0x4A, 4, false)
 			if o.left[s] != 0xFF:
 				return
 			o.a[s] = 0x20
@@ -1764,7 +1764,7 @@ static func _af31(o: SolObjects, s: int, score: int) -> void:
 		var hi: int = o._sbc(0, (o.z50 >> 8) & 0xFF)
 		o.z50 = lo | hi << 8
 	o.move(s)
-	o.anim_second(s, 0x04)
+	o.anim_second(s, 0x04, 4, false)
 	if o.left[s] == 0xFF:                   # $80E0
 		_a989(o, s, score)
 
@@ -1861,7 +1861,7 @@ static func _a93c(o: SolObjects, s: int, lists: Array) -> int:
 static func _a8a7(o: SolObjects, s: int) -> bool:
 	_a931(o)
 	o.cool[s] = 0xFF                        # $80D4
-	o.anim_second(s, 0x00, 3)               # $8985
+	o.anim_second(s, 0x00, 3, false)               # $8985
 	# $A8B2 -- the compare leaves its own carry behind it.
 	o.carry = 1 if o.frame[s] >= 0x08 else 0
 	return o.frame[s] >= 0x08
@@ -2001,7 +2001,7 @@ static func _a82b(o: SolObjects, s: int) -> void:
 
 ## $AA41 -- [$15] it walks one picture and then it is over.
 static func _aa41(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x0B, 3)               # $8985
+	o.anim_second(s, 0x0B, 3, false)               # $8985
 	if o.left[s] == 0xFF:
 		_a989(o, s, 0x00)                   # $80E0
 
@@ -2013,7 +2013,7 @@ static func _a96c(o: SolObjects, s: int) -> void:
 	if o.hero_hurt != 0:
 		o.id[s] = 0                         # $A97B
 		return
-	o.anim_second(s, 0x09, 3)               # $8985
+	o.anim_second(s, 0x09, 3, false)               # $8985
 	if o.left[s] == 0xFF:
 		o.id[s] = 0                         # $80E0
 		return
@@ -2088,7 +2088,7 @@ static func _ground(o: SolObjects, s: int) -> void:
 		o.kind[s] = 0                       # $80B3
 		o.move(s)
 		return
-	o.anim_second(s, 0x00)
+	o.anim_second(s, 0x00, 4, false)
 	# $B004 -- one step along, and the same offset is what it looks ahead with.
 	o.step_facing(s, 0x10)
 	if o.probe_ahead(s, 0x0080, 0x0040) < 0x80:
@@ -2126,7 +2126,7 @@ static func _lift(o: SolObjects, s: int) -> void:
 
 ## $B03B -- and the same one while it is off the ground.
 static func _b03b(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x01)
+	o.anim_second(s, 0x01, 4, false)
 	o.fall(s, 0x02)                     # $B2BB
 	if (o.d[s] & 0x80) == 0:
 		# $B076 -- on the way down, and what it lands on stops it dead.
@@ -2649,7 +2649,7 @@ static func _8802(o: SolObjects, s: int) -> void:
 					o.z50 = 0
 			_8946(o, s)
 		0x04:
-			o.anim_second(s, 0x0F, 3)
+			o.anim_second(s, 0x0F, 3, false)
 			if o.left[s] == 0xFF:
 				o.kind[s] = 0
 		0x06:
@@ -2661,7 +2661,7 @@ static func _8802(o: SolObjects, s: int) -> void:
 				return
 			if far >= 0x08:
 				o.kind[s] = 0
-			o.anim_second(s, 0x0E, 3)
+			o.anim_second(s, 0x0E, 3, false)
 			_898a(o, s)
 			if o.frame[s] == 0x02:
 				_8894(o, s)
@@ -2681,7 +2681,7 @@ static func _8802(o: SolObjects, s: int) -> void:
 ## $8829 / $882D -- standing still and looking: near enough and it gathers
 ## itself, far enough and it gives up.
 static func _8829(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x13 if o.kind[s] == 0x0E else 0x12, 3)
+	o.anim_second(s, 0x13 if o.kind[s] == 0x0E else 0x12, 3, false)
 	var far: int = _898a(o, s)
 	if far >= 0x05:
 		o.kind[s] = 0
@@ -2716,7 +2716,7 @@ static func _898a(o: SolObjects, s: int) -> int:
 
 ## $888F -- the gather before the leap.
 static func _888f(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x0D, 3)
+	o.anim_second(s, 0x0D, 3, false)
 	_8894(o, s)
 
 
@@ -2753,7 +2753,7 @@ static func _8894(o: SolObjects, s: int) -> void:
 
 ## $8946 -- in the air: it falls, and what it meets decides where it lands.
 static func _8946(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x10, 3)
+	o.anim_second(s, 0x10, 3, false)
 	o.fall(s, 0x04)
 	if (o.d[s] & 0x80) != 0:
 		if _87cd(o, s, o.probe_above(s, 0x0080)) >= 0x80:
@@ -2791,12 +2791,12 @@ static func _87cd(o: SolObjects, s: int, r: int) -> int:
 ## is even, and while it is odd it plays the second half and stops.
 static func _8e86(o: SolObjects, s: int) -> void:
 	if (o.kind[s] & 0x01) == 0:
-		o.anim_second(s, 0x5E)
+		o.anim_second(s, 0x5E, 4, false)
 		o.face_hero(s)
 		if o.far_y(s) >= 0x02:
 			return
 	else:
-		o.anim_second(s, 0x5F)
+		o.anim_second(s, 0x5F, 4, false)
 		# $8EA4 -- and only on the third step of that walk.
 		if o.frame[s] != 0x02:                  # $80E6
 			if o.left[s] != 0xFF:               # $80E0
@@ -2876,7 +2876,7 @@ static func _adc5(o: SolObjects, s: int) -> void:
 	if flip:
 		o.face[s] = (o.face[s] ^ 0xFF) & 0xFF   # $AE24
 	o.move(s)
-	o.anim_second(s, 0x0D)
+	o.anim_second(s, 0x0D, 4, false)
 
 
 ## $8AA2 -- the flyer.  It never leaves the picture while the hero is near, it
@@ -2892,7 +2892,7 @@ static func _8aa2(o: SolObjects, s: int) -> void:
 		o.face_hero(s)
 		o.anim_first(s, 0x7B)
 		return
-	o.anim_second(s, 0x7A)
+	o.anim_second(s, 0x7A, 4, false)
 	if o.far_x(s) >= 0x0E:
 		o.id[s] = o.id[s] & 0xBF                # $906C -- far enough to let go
 	_8ae1(o, s)
@@ -3043,14 +3043,14 @@ static func _8f8d(o: SolObjects, s: int) -> void:
 	o.a[s] = (o.face_hero_far(s) ^ 0xFF) & 0xFF     # $810D, $9053
 	o.hold_on(s)
 	if o.probe_behind(s, 0x0080, 0x0100) < 0x80:
-		o.anim_second(s, 0x5C)          # $8FD4 -- nothing under it
+		o.anim_second(s, 0x5C, 4, false)          # $8FD4 -- nothing under it
 		return
 	var turned: int = (o.face[s] ^ o.hero_face) & 0xFF
 	var r := o.step_and_look(s, 0x20 if (turned & 0x80) != 0 else 0x10)
 	if r >= 0x80:
-		o.anim_second(s, 0x5C)
+		o.anim_second(s, 0x5C, 4, false)
 		return
-	o.anim_second(s, 0x08 if (turned & 0x80) != 0 else 0x5B)
+	o.anim_second(s, 0x08 if (turned & 0x80) != 0 else 0x5B, 4, false)
 	o.move(s)
 
 
@@ -3144,7 +3144,7 @@ static func _8767(o: SolObjects, s: int) -> void:
 		# $8796 -- the CMP's own carry; under $30 the walk is still shown.
 		o.carry = 1 if o.d[s] >= 0x30 else 0
 		if o.carry == 0:
-			o.anim_second(s, 0x6F)          # $879D
+			o.anim_second(s, 0x6F, 4, false)          # $879D
 		else:
 			_87a2(o, s)
 		return
@@ -3170,7 +3170,7 @@ static func _8767(o: SolObjects, s: int) -> void:
 ## $87AB -- [kind $08] it walks its picture, and once that is over it is given
 ## up; either way it is carried up and to the left.
 static func _87ab(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x70)                  # $904B
+	o.anim_second(s, 0x70, 4, false)                  # $904B
 	if o.frame[s] == 0x01:
 		return                              # $87B7
 	if o.left[s] == 0xFF:                   # $80E0
@@ -3185,14 +3185,14 @@ static func _87ab(o: SolObjects, s: int) -> void:
 static func _84ef(o: SolObjects, s: int) -> void:
 	if ((s ^ o.clock) & 0x01) != 0:
 		return                              # $84F3
-	o.anim_second(s, 0x78)
+	o.anim_second(s, 0x78, 4, false)
 
 
 ## $849C and $84A0 -- [kinds $20 and $22] it is turned one way or the other and
 ## walks the one picture.
 static func _849c(o: SolObjects, s: int, f: int) -> void:
 	o.face[s] = f                           # $84A2
-	o.anim_second(s, 0x79)                  # $904B
+	o.anim_second(s, 0x79, 4, false)                  # $904B
 
 
 ## $842F -- [kind $26] the four bytes it keeps are the step it is carried by.
@@ -3278,7 +3278,7 @@ static func _k84fb(o: SolObjects, s: int) -> void:
 
 ## $8545 -- it flickers and now and then lets something go.
 static func _k8545(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x77)
+	o.anim_second(s, 0x77, 4, false)
 
 
 ## $85B8 -- the fan, one table read at two offsets: the step down out of
@@ -3313,7 +3313,7 @@ static func _k856c(o: SolObjects, s: int, anim: int, way: int) -> void:
 ## $85EA / $85EE -- the blower: near enough, and the hero is pushed along.
 static func _k85ea(o: SolObjects, s: int, way: int) -> void:
 	o.face[s] = way
-	o.anim_second(s, 0x74)
+	o.anim_second(s, 0x74, 4, false)
 	o.far_y(s)                              # $AE2D falls into $AE30
 	o.far_x(s)
 	if ((o.z92 >> 8) & 0xFF) >= 0x02:
@@ -3329,11 +3329,11 @@ static func _k85ea(o: SolObjects, s: int, way: int) -> void:
 ## $861C -- it drifts toward the hero and sinks slowly.
 static func _k861c(o: SolObjects, s: int) -> void:
 	if o.d[s] == 0:
-		o.anim_second(s, 0x72)
+		o.anim_second(s, 0x72, 4, false)
 		if o.left[s] == 0xFF:
 			o.d[s] = (o.d[s] + 1) & 0xFF
 		return
-	o.anim_second(s, 0x73)
+	o.anim_second(s, 0x73, 4, false)
 	if (o.clock & 1) == 0:
 		return
 	if ((o.clock >> 1) & 0x03) == 0:
@@ -3382,7 +3382,7 @@ static func _k865c(o: SolObjects, s: int) -> void:
 
 ## $86A1 -- it hangs there until the hero is close, then picks which way to go.
 static func _k86a1(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x6C)
+	o.anim_second(s, 0x6C, 4, false)
 	o.far_y(s)
 	o.face_hero(s)
 	if o.left[s] != 0xFF:
@@ -3422,7 +3422,7 @@ static func _86ea(o: SolObjects, s: int, y: int) -> void:
 
 ## $86C9 -- the spread: on the third step of its walk it lets four go at once.
 static func _k86c9(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x6D)
+	o.anim_second(s, 0x6D, 4, false)
 	if o.frame[s] == 0x02:                  # $86CE
 		for y in range(4):                  # $86D3
 			_86ea(o, s, y)
@@ -3431,7 +3431,7 @@ static func _k86c9(o: SolObjects, s: int) -> void:
 
 ## $8729 -- and the single shot, a page to the side it faces and half a page up.
 static func _k8729(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x6E)
+	o.anim_second(s, 0x6E, 4, false)
 	if o.frame[s] == 0x02:                  # $872E
 		var i: int = SolShots.free_slot(o)  # $8733
 		if i >= 0:
@@ -3681,7 +3681,7 @@ static func _af67(o: SolObjects, s: int, pic: int, set: int) -> void:
 		if o.left[s] == 0xFF:
 			o.a[s] = (o.a[s] + 1) & 0xFF
 		return
-	o.anim_second(s, 0x04)                  # $AF8D
+	o.anim_second(s, 0x04, 4, false)                  # $AF8D
 	if o.left[s] == 0xFF:                   # $AFA0
 		_a989(o, s, 0x0A)
 
@@ -3755,7 +3755,7 @@ static func _8996(o: SolObjects, s: int) -> void:
 ## $899C -- [$35 dead] and the same again, standing still and wearing the
 ## seventh picture set.
 static func _899c(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x07)                              # $904B
+	o.anim_second(s, 0x07, 4, false)                              # $904B
 	_89a1(o, s)
 
 
@@ -3803,7 +3803,7 @@ static func _8f1c(o: SolObjects, s: int) -> void:
 		# $8F26 -- the noise it makes ($F1 = $2B) is not modelled.
 		o.a[s] = (o.a[s] + 1) & 0xFF                    # $8F2A
 	o.cool[s] = 0x0F + (o.clock & 0x01)                 # $80F2
-	o.anim_second(s, 0x69)                              # $904B
+	o.anim_second(s, 0x69, 4, false)                              # $904B
 	if o.left[s] != 0xFF:
 		return                                          # $80E0
 	o.a[s] = (o.a[s] + 1) & 0xFF                        # $8F3A
@@ -3880,7 +3880,7 @@ static func _9127(o: SolObjects, s: int) -> void:
 	# $9148 -- the step sideways, spread over both bytes by hand.
 	o.z50 = o.a[s] | (0xFF00 if o.a[s] >= 0x80 else 0)
 	o.fall(s, 0x04)                                     # $B2BB
-	o.anim_second(s, 0x08, 3)                           # $8985
+	o.anim_second(s, 0x08, 3, false)                           # $8985
 	o.move(s)                                           # $813F
 
 ## $B0CD -- [$14] it wears the one animation out and is then given up.
@@ -3928,7 +3928,7 @@ static func _b0ec(o: SolObjects, s: int) -> void:
 		o.finish(s)                                     # $80BF
 	o.fall(s, 0x03)                                     # $B2BB
 	o.move_facing(s)                                    # $813A
-	o.anim_second(s, o.a[s], 3)                         # $8985
+	o.anim_second(s, o.a[s], 3, false)                         # $8985
 
 ## $B255 -- [$06] lights its fuse the first time it is looked at and then does
 ## nothing but wear one picture until the fuse runs out.
@@ -3936,7 +3936,7 @@ static func _b255(o: SolObjects, s: int) -> void:
 	if o.kind[s] == 0x00:
 		o.kind[s] = (o.kind[s] + 1) & 0xFF              # $B25A
 		o.a[s] = 0x80                                   # $B25F
-	o.anim_second(s, 0x03, 3)                           # $8985
+	o.anim_second(s, 0x03, 3, false)                           # $8985
 	_b239(o, s)                                         # $B267
 
 
@@ -3954,7 +3954,7 @@ static func _b26b(o: SolObjects, s: int) -> void:
 			o.kind[s] = (o.kind[s] + 1) & 0xFF          # $B2A1
 		o.anim_second(s, 0x04, 3)                       # $B2A4
 		return
-	o.anim_second(s, 0x08, 3)                           # $B27D
+	o.anim_second(s, 0x08, 3, false)                           # $B27D
 	# $B282 -- the noise it makes ($F1 = $21) is not modelled.
 	if o.left[s] != 0xFF:
 		return                                          # $B292
@@ -3997,7 +3997,7 @@ static func _8bfa(o: SolObjects, s: int, b: int) -> void:
 ## Then it walks along until it reaches the side it is walking towards, turns
 ## round, and is pinned back onto the lift's height by $8C1B.
 static func _8bba(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x6B)                              # $904B
+	o.anim_second(s, 0x6B, 4, false)                              # $904B
 	var fr: int = o.frame[s]                            # $80E6
 	# $8BC4 -- the noise it makes ($F1 = $32) is not modelled.
 	if fr == 0x05:
@@ -4066,7 +4066,7 @@ static func _8fde(o: SolObjects, s: int) -> void:
 ## $8DD7 -- the part between two turns: while the hero is within five whole
 ## pictures it winds up again, and once he is further off it starts over.
 static func _8dd7(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x60)                              # $904B
+	o.anim_second(s, 0x60, 4, false)                              # $904B
 	o.face_hero(s)                                      # $8118
 	if ((o.z90 >> 8) & 0xFF) >= 0x05:                   # $8DE1
 		o.kind[s] = 0                                   # $80B3
@@ -4081,7 +4081,7 @@ static func _8dd7(o: SolObjects, s: int) -> void:
 static func _8deb(o: SolObjects, s: int) -> void:
 	var k: int = o.kind[s]
 	if k == 0x00:
-		o.anim_second(s, 0x60)                          # $8E31
+		o.anim_second(s, 0x60, 4, false)                          # $8E31
 		o.face_hero(s)                                  # $8118
 		if ((o.z90 >> 8) & 0xFF) < 0x05:                # $8E3B
 			o.kind[s] = 0x02                            # $8E41
@@ -4089,7 +4089,7 @@ static func _8deb(o: SolObjects, s: int) -> void:
 		_8eb3(o, s)                                     # $8E45
 		return
 	if k == 0x01:
-		o.anim_second(s, 0x61)                          # $8E48
+		o.anim_second(s, 0x61, 4, false)                          # $8E48
 		if o.frame[s] == 0x02:                          # $80E6
 			var j: int = SolShots.free_slot(o)          # $ADBA
 			if j >= 0:
@@ -4109,7 +4109,7 @@ static func _8deb(o: SolObjects, s: int) -> void:
 	if k == 0x02:
 		_8dd7(o, s)                                     # $8DF4
 		return
-	o.anim_second(s, 0x62)                              # $8DF6
+	o.anim_second(s, 0x62, 4, false)                              # $8DF6
 	if o.left[s] == 0x01:                               # $8DFE
 		_8fde(o, s)                                     # $8E02
 		o.id[s] = o.id[s] & 0xBF                        # $906C
@@ -4128,7 +4128,7 @@ static func _8deb(o: SolObjects, s: int) -> void:
 ## ends.  On the second and fourth pictures of its walk it lets a shot go
 ## instead of stepping, behind and above it or behind and below it.
 static func _8c40(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x6A)                              # $904B
+	o.anim_second(s, 0x6A, 4, false)                              # $904B
 	if (o.d[s] & 0x01) == 0:                            # $8C48
 		o.z50 = (o.z50 & 0xFF00) | 0x04                 # $8C4D
 		if ((o.x[s] >> 8) & 0xFF) >= 0x4B:              # $8C51
@@ -4163,7 +4163,7 @@ static func _8c40(o: SolObjects, s: int) -> void:
 ## answered and the answer turned round), and steps only while the ground
 ## behind its feet is solid; where it is not, it drops instead.
 static func _8ca8(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x68)                              # $904B
+	o.anim_second(s, 0x68, 4, false)                              # $904B
 	o.a[s] = (o.face_hero_far(s) ^ 0xFF) & 0xFF         # $810D, $8CB0
 	if o.probe_behind(s, 0x0080, 0x0100) >= 0x80:       # $B0AA
 		o.step_and_look(s, 0x04)                        # $9D0A
@@ -4195,7 +4195,7 @@ static func _90a7(o: SolObjects, s: int, j: int) -> void:
 ## second animation it lets one go, and when that animation is worn out it
 ## starts over.
 static func _9084(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x57)                              # $904B
+	o.anim_second(s, 0x57, 4, false)                              # $904B
 	if o.frame[s] == 0x02:                              # $80E6
 		o.face_hero(s)                                  # $8118
 		var j: int = SolShots.free_slot(o)              # $ADBA
@@ -4269,7 +4269,7 @@ static func _8a33(o: SolObjects, s: int) -> void:
 		o.a[s] = (o.a[s] ^ 0x20) & 0xFF                 # $8A4D
 		o.anim_first(s, 0x05)                           # $8A2E
 		return
-	o.anim_second(s, 0x67)                              # $8A55
+	o.anim_second(s, 0x67, 4, false)                              # $8A55
 	if o.d[s] == 0x00:                                  # $8A5D
 		if (o.clock & 0x01) != 0:                       # $8A67
 			o.turn_toward_hero(s)                       # $802B
@@ -4332,7 +4332,7 @@ static func _9588(o: SolObjects, s: int) -> void:
 ## and is then gone, and while it lasts it drifts by the two pairs the slot
 ## keeps -- $0610:$0620 down and $0630:$0640 along.
 static func _82fb(o: SolObjects, s: int) -> void:
-	o.anim_second(s, 0x08, 3)                           # $99DB
+	o.anim_second(s, 0x08, 3, false)                           # $99DB
 	if o.left[s] == 0xFF:
 		o.id[s] = 0                                     # $80B9
 	o.z52 = o.a[s] | o.b[s] << 8                        # $8307
@@ -4418,7 +4418,7 @@ static func _ad08(o: SolObjects, s: int) -> void:
 		n = 0x09                                        # $AD42
 		o.carry = 1                                     # $818F
 		o.z52 = o._neg16(o.z52)
-	o.anim_second(s, n)                                 # $AD47
+	o.anim_second(s, n, 4, false)                                 # $AD47
 	_ad50(o, s)                                         # $AD4A
 	o.move(s)                                           # $AD4D
 
@@ -4501,7 +4501,7 @@ static func _8cc9(o: SolObjects, s: int) -> void:
 		if o.d[s] == 0x00:
 			o.kind[s] = 0                               # $80B3
 			return
-		o.anim_second(s, 0x63)                          # $8D4C
+		o.anim_second(s, 0x63, 4, false)                          # $8D4C
 		o.carry = 1 if o.frame[s] >= 0x03 else 0        # $8D54
 		o.face[s] = 0xFF if o.carry != 0 else 0x00      # $8D5C
 		o.far_y(s)                                      # $AE5E
@@ -4530,7 +4530,7 @@ static func _8cc9(o: SolObjects, s: int) -> void:
 		o.move(s)                                       # $813F
 		return
 	if k == 0x02:
-		o.anim_second(s, 0x65)                          # $8D0D
+		o.anim_second(s, 0x65, 4, false)                          # $8D0D
 		if o.frame[s] == 0x02:                          # $80E6
 			var j: int = SolShots.free_slot(o)          # $ADBA
 			if j >= 0:
@@ -4540,7 +4540,7 @@ static func _8cc9(o: SolObjects, s: int) -> void:
 		if o.left[s] == 0xFF:                           # $8D24
 			o.kind[s] = 0                               # $80B3
 		return
-	o.anim_second(s, 0x66)                              # $8CD6
+	o.anim_second(s, 0x66, 4, false)                              # $8CD6
 	if o.frame[s] == 0x02:                              # $80E6
 		var j2: int = SolShots.free_slot(o)             # $ADBA
 		if j2 >= 0:
@@ -4609,7 +4609,7 @@ static func _8418(o: SolObjects, s: int, tpl: int) -> void:
 ## of a stage puts him in, it lets four things out of itself at once and goes.
 static func _83ef(o: SolObjects, s: int) -> void:
 	_8446(o, s)                                     # $8446
-	o.anim_second(s, 0x0C, 3)                       # $8985
+	o.anim_second(s, 0x0C, 3, false)                       # $8985
 	if o.hero_state != 0x13:                        # $05A2
 		return
 	for tpl in [0x48, 0x51, 0x5A, 0x63]:            # $83FE .. $840F
