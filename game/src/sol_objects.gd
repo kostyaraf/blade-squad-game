@@ -846,21 +846,16 @@ func hold_on(s: int) -> void:
 ## facing, and what lies that way is looked at.  Something solid stops the step
 ## and marks the slot.
 func step_and_look(s: int, n: int) -> int:
-	z50 = n
-	if (a[s] & 0x80) != 0:
-		carry = 1
-		var lo: int = _sbc(0, z50 & 0xFF)
-		var hi: int = _sbc(0, (z50 >> 8) & 0xFF)
-		z50 = lo | hi << 8
-	var px: int = (x[s] - 0x0080) if (a[s] & 0x80) != 0 else (x[s] + 0x0080)
-	if map_kind == 0x3C:
-		return 0
-	px += hero_vx                       # $D010
-	z9d = px & 0xFF
-	var r: int = probe(px, y[s] + 0x0040)
-	if r >= 0x80:
+	z50 = n                             # $9D0A
+	var neg: bool = (a[s] & 0x80) != 0  # $9D1C
+	if neg:
+		carry = 1                       # $8181
+		z50 = _neg16(z50)
+	var p: Array = _b189(s, neg, 0x0080, 0x0040)
+	var r: int = _d010(int(p[0]), int(p[1]))
+	if r >= 0x80:                       # $9D33
 		kind[s] = kind[s] | 0x80
-		z50 = 0
+		z50 = 0                         # $812C
 	return r
 
 
@@ -1075,38 +1070,38 @@ func probe(px: int, py: int) -> int:
 ## $B13F -- what is behind the slot's feet.  The offset along is turned round,
 ## because $B13F hands $B189 the facing the other way about.
 func probe_behind(s: int, ox: int, oy: int) -> int:
-	var px: int = (x[s] + ox) if (face[s] & 0x80) != 0 else (x[s] - ox)
-	var py: int = y[s] + oy
-	z9d = py & 0xFF                     # $D08F
-	return probe(px, py)
+	var p: Array = _b189(s, ((face[s] ^ 0xFF) & 0x80) != 0, ox, oy)
+	return probe_point(int(p[0]), int(p[1]))    # $C00C
 
 
-## $B151 -- and what is above it, at a given height.
+## $B151 -- and what is above it, at a given height.  The place along is the
+## slot's own, copied whole; only the height is taken away, and that with a SEC
+## of its own, so nothing here leans on the carry walking in.
 func probe_above(s: int, oy: int) -> int:
-	var py: int = y[s] - oy
-	z9d = py & 0xFF
-	return probe(x[s], py)
+	carry = 1                           # $B15B
+	var q: Array = _sub2(y[s], oy, carry)
+	carry = int(q[1])
+	return probe_point(x[s], int(q[0]))         # $C00C
 
 
 ## $B170 -- what lies ahead, looked at only every other picture, and offset by
 ## the hero's own speed ($D010).  Answers nothing on the picture it sits out.
+## The ROR at $B173 is what asks: the bit it rolls out is the answer, and it is
+## left standing in the carry, so the look below always walks in with one.
 func probe_ahead(s: int, ox: int, oy: int) -> int:
 	if ((s ^ clock) & 1) == 0:
+		carry = 0                       # $B176
 		return 0
-	if map_kind == 0x3C:
-		return map_kind                 # $D014 -- the carrying map says nothing
-	var px: int = (x[s] - ox) if (face[s] & 0x80) != 0 else (x[s] + ox)
-	px += hero_vx                       # $D018
-	z9d = px & 0xFF
-	return probe(px, y[s] + oy)
+	carry = 1                           # $B174
+	return probe_fwd(s, ox, oy)
 
 
 ## $B186 + $D032 -- what lies ahead of the slot's own facing, every picture and
 ## without the hero's speed in it.  The leftover here is the low byte of the
 ## height looked at, not of the place along.
 func probe_at(s: int, ox: int, oy: int) -> int:
-	var px: int = (x[s] - ox) if (face[s] & 0x80) != 0 else (x[s] + ox)
-	return probe_point(px, y[s] + oy)
+	var p: Array = _b189(s, (face[s] & 0x80) != 0, ox, oy)
+	return probe_point(int(p[0]), int(p[1]))
 
 
 ## $D032 itself -- the map at a plain place, whoever is asking.  The shots ask
@@ -1130,12 +1125,36 @@ func probe_point(px: int, py: int) -> int:
 
 ## $B179 -- the same look ahead as $B170, but taken every picture.
 func probe_fwd(s: int, ox: int, oy: int) -> int:
+	var p: Array = _b189(s, (face[s] & 0x80) != 0, ox, oy)
+	return _d010(int(p[0]), int(p[1]))          # $C00F
+
+
+## $B189 -- the place the look is taken at, in the slot's own two halves.  The
+## way the slot faces picks the sign: away from it is a take-away with a SEC of
+## its own, toward it an add that is handed the carry the caller left standing,
+## because there is no CLC in front of it.  The height below is a CLC add, and
+## the carry it leaves is the one $D010 goes on to add the hero's speed with.
+func _b189(s: int, neg: bool, ox: int, oy: int) -> Array:
+	var px: int
+	if neg:
+		carry = 1                       # $B18B
+		px = int(_sub2(x[s], ox, carry)[0])
+	else:
+		px = int(_add2(x[s], ox, carry)[0])     # $B19B -- no CLC
+	var q: Array = _add2(y[s], oy, 0)           # $B1A7
+	carry = int(q[1])
+	return [px, int(q[0])]
+
+
+## $D010 -- the same place, with the hero's own speed added along.  That add
+## takes the carry the height add left, and on a carrying map nothing is looked
+## at at all: the answer is the map's own number.
+func _d010(px: int, py: int) -> int:
 	if map_kind == 0x3C:
-		return map_kind
-	var px: int = (x[s] - ox) if (face[s] & 0x80) != 0 else (x[s] + ox)
-	px += hero_vx
-	z9d = px & 0xFF
-	return probe(px, y[s] + oy)
+		return map_kind                 # $D014
+	var r: Array = _add2(px, hero_vx, carry)    # $D016 -- no CLC
+	z9d = int(r[0]) & 0xFF              # $D01D
+	return probe(int(r[0]), py)         # $D09C
 
 
 func _neg16(v: int) -> int:
