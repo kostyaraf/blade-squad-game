@@ -516,6 +516,9 @@ func _run_sol_objects(path: String) -> void:
 	# handed over picture by picture, as the clocks above are.
 	var news: Array = cfg["new_at"] if cfg.has("new_at") else cfg["pads"]
 	var oweds: Array = cfg["owed_at"] if cfg.has("owed_at") else []
+	# $74 -- what the blanking is to move the lift's line by before the next
+	# picture.  See $C3E0 below.
+	var lines: Array = cfg["line_at"] if cfg.has("line_at") else []
 	var out := PackedStringArray()
 	var shots := PackedStringArray()
 	var arms := PackedStringArray()
@@ -643,6 +646,14 @@ func _run_sol_objects(path: String) -> void:
 			p.hold_max = pool.hero_hold_max
 			pool.step(view.x, view.y)                        # $CDDD
 			_sol_tab(pool)                                   # $CDE3
+			# $C3E0 -- the blanking pays off what the stage's own script asked
+			# of the lift's line.  Neither the script nor the blanking is this
+			# stand's business, so what it asked for is handed over; what the
+			# pool itself wrote into $75 this picture is the engine's own.
+			if n < lines.size():
+				pool.z74 = int(lines[n])
+			pool.z75 = (pool.z75 + pool.z74) & 0xFF
+			pool.z74 = 0
 		var row := PackedStringArray()
 		for i in range(SolObjects.SLOTS):
 			row.append("%d,%d,%d,%d,%d,%d,%d" % [pool.id[i], pool.x[i],
@@ -767,6 +778,7 @@ func _sol_pool_from(cfg: Dictionary) -> SolObjects:
 	pool.seen_y = int(cfg["seen_y"])
 	pool.room = int(cfg["room"])
 	pool.z75 = int(cfg["z75"]) if cfg.has("z75") else 0
+	pool.z72 = int(cfg["z72"]) if cfg.has("z72") else 0
 	pool.z7c = int(cfg["z7c"]) if cfg.has("z7c") else 0
 	pool.z58 = int(cfg["z58"]) if cfg.has("z58") else 0
 	pool.z26 = int(cfg["z26"]) if cfg.has("z26") else 0

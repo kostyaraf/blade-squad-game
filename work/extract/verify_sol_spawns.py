@@ -150,6 +150,10 @@ def seed(base):
     cfg['room'] = base[0x05EB]
     cfg['stage'] = base[0x55]
     cfg['z75'] = base[0x75]
+    # $72 -- how far the hero's feet sink into the line the lift keeps.  The
+    # stage's own script writes it once ($A8D4 and the four beside it) and
+    # nothing else ever touches it, so the seed is the whole of it.
+    cfg['z72'] = base[0x72]
     cfg['z7c'] = base[0x7C]
     cfg['z58'] = base[0x58]
     cfg['z26'] = base[0x26]

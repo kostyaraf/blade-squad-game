@@ -13,6 +13,7 @@ sixteen shot slots, on every finished picture of twelve hundred.
 """
 import json
 import os
+import struct
 import subprocess
 import sys
 
@@ -25,6 +26,13 @@ import verify_sol_player as V                                    # noqa: E402
 import verify_sol_spawns as S                                    # noqa: E402
 import verify_sol_minds as M                                     # noqa: E402
 import verify_sol_shots as H                                     # noqa: E402
+import verify_sol_draw as D                                      # noqa: E402
+
+# $C3E0 and $C398 are the two places the blanking pays off what the stage's own
+# script asked of the lift's line ($75 += $74).  Neither the script nor the
+# blanking is this stand's business, so what was asked for is read here and
+# handed to the engine picture by picture.
+PAID = (0xC3E0, 0xC398)
 
 SLOTS = S.SLOTS
 SHOTS = S.SHOTS
@@ -68,6 +76,40 @@ def cartridge(state, pads, base):
              c[0x07D0 + i], c[0x07E0 + i], c[0x07F0 + i])
             for i in range(SHOTS)))
     return pool, shot, ticks
+
+
+def line(state, pads, base, scratch):
+    """What the blanking was asked to move the lift's line by, per picture."""
+    inp = os.path.join(scratch, 'line.inp')
+    last = None
+    with open(inp, 'w') as f:
+        for i, p in enumerate(pads):
+            if p != last:
+                names = [n for n, b in V.BITS if p & b]
+                f.write('%d %s\n' % (base + i, ','.join(names) or '-'))
+                last = p
+    cmd = [D.EMU, P.ROM, '-loadstate', state, '-input', inp,
+           '-frames', str(base + len(pads))]
+    outs = []
+    for k, a in enumerate(PAID):
+        path = os.path.join(scratch, 'paid%d.bin' % k)
+        outs.append(path)
+        cmd += ['-ramat', '%s@%04X' % (path, a)]
+    subprocess.run(cmd, check=True, capture_output=True)
+    got = {}
+    for path in outs:
+        if not os.path.exists(path):
+            continue
+        with open(path, 'rb') as f:
+            while True:
+                b = f.read(D.REC)
+                if len(b) < D.REC:
+                    break
+                fr = struct.unpack('<I', b[:4])[0]
+                got[fr] = (got.get(fr, 0) + b[8 + 0x74]) & 0xFF
+        os.remove(path)
+    os.remove(inp)
+    return [got.get(base + i, 0) for i in range(len(pads))]
 
 
 def engine(cfg, scratch):
@@ -132,6 +174,7 @@ def main():
                 cfg['step_at'] = [t[3] for t in tk]
                 cfg['ride_at'] = [t[4] for t in tk]
                 cfg['new_at'] = [t[5] for t in tk]
+                cfg['line_at'] = line(state, pads, play, scratch)
                 gp, gs, missing = engine(cfg, scratch)
                 for k, v in missing.items():
                     owed[k] = owed.get(k, 0) + v

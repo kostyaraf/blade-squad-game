@@ -1058,7 +1058,16 @@ static func _9789(o: SolObjects, s: int) -> void:
 	if o.b[s] != 0:
 		return
 	o.b[s] = o._adc(o.noise & 0x0F, 0x18)
-	o.d[s] = (o.d[s] - 1) & 0xFF
+	o.d[s] = (o.d[s] - 1) & 0xFF            # $979C
+	# $979F -- and one of the things it has left goes out: the topmost free
+	# slot, behaviour $9D with one to give, at the slot's own place a whole
+	# picture higher.  The add at $A1D7 takes the carry the $18 above left,
+	# and that one never carries.
+	var i: int = SolShots.free_slot(o)      # $ADBA
+	if i < 0:
+		return                              # $97A2
+	SolShots.put(o, i, 0x9D)                # $907B
+	SolShots.place(o, s, i, 0x0000, 0xFF00, o.carry)
 
 
 ## $98F2 -- a rise is cut short when the slot is nearly at the top of the view.

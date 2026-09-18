@@ -140,6 +140,10 @@ var clock := 0                  # $0C, the frame counter the whole game shares
 ## carry that comparison left, so on a map numbered above $3C every one of
 ## those probes lands a sixteenth further along.
 var map_kind := 0
+## $9D -- what the last probe left behind.  Off the stage that carries it is
+## the low byte of the point that was looked at; on it, where the lift's own
+## line answered, it is nought.  $A209 and $A221 read it back.
+var z9d := 0
 ## The animation.  $05B5 is the one the state itself asks for and $05A5 the
 ## named one a shot or an arrival sets going; $05A4 counts the current step
 ## down and $05B4 says which step it is; $05A6:$05A7 is the picture those two
@@ -412,6 +416,11 @@ func _mask(held: int, pressed: int) -> Array:
 ## property byte of the metatile his own middle is inside.
 func _terrain() -> void:
 	var v := _probe(x, y)
+	# $A17A -- on the stage that carries, and only there, the look at his own
+	# middle hurts him if what it found is of a class that hurts.  The wrapper
+	# it goes through ($A172) hands the answer on unchanged either way.
+	if map_kind == 0x3C and (v & 0xE0) != 0x60 and (v & 0xE0 & 0x40) != 0:
+		_wound()                            # $A18F
 	var was := seen
 	seen = v
 	# $9503 -- inside something solid, nothing to say.
@@ -461,15 +470,38 @@ func _dry(was: int, now: int) -> void:
 
 
 ## $95AD -- under water: a tenth of the gravity and a hold that lasts five
-## times as long, which together are what swimming is.
+## times as long, which together are what swimming is.  And once in every two
+## hundred and fifty six pictures a bubble goes up.
 func _wet() -> void:
-	_flip_rise(0)
+	_flip_rise(0)                       # $9603
 	flags = 0
 	ground = GROUND_WATER
 	jump = 0xE0
 	gravity = 1
 	hold_max = 0x20
 	step_down = 6
+	_bubble()
+
+
+## $95CD -- the bubble itself.  It is let go on the one picture in two hundred
+## and fifty six the count is nought, and not while he is being hurt or put
+## away.  $8D9B hands back the topmost free slot rather than the first, and the
+## height is a hundred and twenty nine sixteenths above him, not a hundred and
+## twenty eight: the compare that let him through left the carry down and the
+## take-away below it has no SEC of its own.
+func _bubble() -> void:
+	if pool == null or pool.clock != 0:
+		return                          # $95CF
+	if state >= 0x11:
+		return                          # $95D6
+	var i: int = SolShots.free_slot(pool)       # $8D9B
+	if i < 0:
+		return                          # $95DB
+	pool.s_kind[i] = 0x03               # $95DD
+	pool.s_life[i] = 0x03
+	pool.s_b[i] = 0xE0                  # $95E5
+	pool.s_x[i] = x                     # $95EA
+	pool.s_y[i] = int(pool._sub2(y, 0x0080, 0)[0])      # $95F4
 
 
 ## $9565 -- a current: past a walking pace it pushes back half a pixel a frame.
@@ -1533,9 +1565,9 @@ func _side(dx: int) -> int:
 	var px: int = x + dx + step
 	var near: int = WALL_HIGH_DY if dx < 0 else WALL_LOW_DY
 	var far: int = WALL_LOW_DY if dx < 0 else WALL_HIGH_RIGHT_DY
-	var v := _probe(px, y + near)
+	var v := _probe_side(px, y + near)
 	if v < 0x80:
-		v = _probe(px + step, y + far)
+		v = _probe_side(px + step, y + far)
 	if (v & 0xE0) != 0x60 and (v & 0x40) != 0:
 		_wound()
 	return v
@@ -1563,11 +1595,13 @@ func _meet() -> int:
 	var py: int = y + vy
 	var v := _probe(x + vx, py + (-FOOT_DY if up else FOOT_DY))
 	if v >= 0x80:
-		# $A221 going down, $A209 going up.
+		# $A221 going down, $A209 going up.  What is taken off is $9D, which
+		# the probe itself left behind: the low byte of the point it looked
+		# at, or nought where the lift's own line answered ($D087).
 		if up:
-			vy = _s16(vy + (0xFF - (py & 0xFF)))
+			vy = _s16(vy + (0xFF - z9d))
 		else:
-			vy = _s16(vy - (py & 0xFF))
+			vy = _s16(vy - z9d)
 	return v
 
 
@@ -1586,9 +1620,9 @@ func _ceiling() -> int:
 		# $A29E -- how far into the metatile above him the move would have
 		# taken him, taken back off the move.
 		if up:
-			vy = _s16(vy - (py & 0xFF))
+			vy = _s16(vy - z9d)
 		else:
-			vy = _s16(vy + (0xFF - (py & 0xFF)))
+			vy = _s16(vy + (0xFF - z9d))
 	_react(v)
 	return v
 
@@ -1631,6 +1665,34 @@ func _wound() -> void:
 ## The property byte of the metatile at a point, shifted up three the way the
 ## cartridge shifts it ($D101): bit 7 solid, bit 6 hurts, bit 5 a second kind.
 func _probe(px: int, py: int) -> int:
+	# $D035 -- the stage that carries has no tile map under him at all.  Its
+	# floor is the one line the lift keeps: $75 sixteen times over, taken from
+	# the top of the view, and a point between that line and two hundred and
+	# fifty five sixteenths below it is answered solid.
+	#
+	# The routine does not only answer, though.  It takes however far past the
+	# line the point was off his fall and puts $72 back on, which is what
+	# settles him $E0 above the line and carries him up with it.  Every probe
+	# that comes this way does it, not only the one that means to land him.
+	if map_kind == 0x3C and pool != null:
+		var line: int = ((pool.z75 << 4) + pool.cam_y) & 0xFFFF     # $D04E
+		var d: int = (py - line) & 0xFFFF                           # $D059
+		if d < 0x100:
+			z9d = 0                                                 # $D087
+			vy = _s16(vy - d + pool.z72)            # $D06B and $D079
+			return 0x80                                             # $D08B
+	z9d = py & 0xFF                                                 # $D08F
+	return (lvl.collision_at((px & 0xFFFF) >> 4, (py & 0xFFFF) >> 4) << 3) & 0xFF
+
+
+## $D010 -- the lookup the two side probes go through instead.  On the stage
+## that carries it answers nothing at all: $D014 turns straight round with $70
+## still in hand, so both walls read $3C, which is neither a block nor anything
+## to react to.
+func _probe_side(px: int, py: int) -> int:
+	if map_kind == 0x3C:
+		return 0x3C                                                 # $D014
+	z9d = px & 0xFF                                                 # $D01D
 	return (lvl.collision_at((px & 0xFFFF) >> 4, (py & 0xFFFF) >> 4) << 3) & 0xFF
 
 

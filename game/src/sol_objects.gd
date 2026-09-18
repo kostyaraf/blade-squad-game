@@ -141,6 +141,14 @@ var hero_face := 0                  # $05B2 -- bit 7 set means he looks left
 var z34 := 0                        # $34 -- how fast a carrying map drags down
 var z7c := 0                        # $7C -- which piece of rubble comes next
 var z75 := 0                        # $75 -- the height a lift keeps for the rest
+# $74 -- how far the blanking is to move that height before the next picture.
+# The stage's own script works it out ($AA46 is one that does) and $C3E0 pays
+# it, both outside anything the pool does, so a stand hands it over.
+var z74 := 0
+# $72 -- how far the hero's feet sink into the line the lift keeps.  It is the
+# stage's own script's again ($A8D4, $A933, $ABC4 and $A6DE all write it once
+# and nothing writes it twice), and $D032 is the only thing that reads it.
+var z72 := 0
 var z58 := 0                        # $58 -- how many are still on the ride
 var hero_suit := 0                  # $05C5 -- which suit is on
 var hero_flags := 0                 # $05CB
@@ -484,13 +492,19 @@ func anim_reset(s: int) -> void:
 	left[s] = 0
 
 
-## $BDAB -- the second one, which has no such tail.
-func anim_second(s: int, n: int, set := 4) -> void:
+## $BDAB -- the second one.  It has no tail of its own, but all but two of the
+## seventy six places that want it go through $99D9, which puts $80E0 on the
+## end: the compare of what is left against $FF, whose carry is read by
+## whatever adds next ($9797 is one such).  So the tail is here, and the two
+## that want it bare ($8985 and $904B) say so.
+func anim_second(s: int, n: int, set := 4, tail := true) -> void:
 	if anim_b[s] != n:
 		anim_b[s] = n
 		frame[s] = 0
 		left[s] = 0
 	_tick(s, anim_b[s], set)
+	if tail:
+		carry = 1 if left[s] == 0xFF else 0     # $99DE -> $80E0
 
 
 ## $BDBD -- one picture of the walk: a hold of $FF stays where it is, anything
