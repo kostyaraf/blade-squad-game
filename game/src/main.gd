@@ -525,6 +525,9 @@ func _run_sol_objects(path: String) -> void:
 	var heroes := PackedStringArray()
 	var hands := PackedStringArray()
 	var odds := PackedStringArray()
+	# Where the view stands, so that a stand can say whether a difference in
+	# the pool came from the pool or from the view under it.
+	var views := PackedStringArray()
 	# All eighteen numbers of all sixteen slots.  The unprefixed rows above
 	# carry seven of them, which is enough for who is where but not for what a
 	# thing has left of its life; Э4.18 needs that.
@@ -730,6 +733,7 @@ func _run_sol_objects(path: String) -> void:
 		# off yet ($56), and the four a panel buys with and into.
 		odds.append("Y %d %d %d %d %d %d %d" % [pool.zf8, pool.z0112, pool.z56,
 				pool.hero_bonus, p.suit, p.shield, pool.w_x[0x0C] & 0xFF])
+		views.append("V %d %d %d %d %d %d" % [view.x, view.y, p.hurt, p.timer, p.jump_flags, p.clock])
 		if want_crates:
 			var crow := PackedStringArray()
 			for i in range(level_sol.present.size()):
@@ -744,6 +748,7 @@ func _run_sol_objects(path: String) -> void:
 	print("\n".join(heroes))
 	print("\n".join(hands))
 	print("\n".join(odds))
+	print("\n".join(views))
 	print("\n".join(fulls))
 	if not pool.skipped.is_empty():
 		printerr("minds not read yet: ", pool.skipped)

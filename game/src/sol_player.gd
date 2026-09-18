@@ -216,9 +216,21 @@ func place(px: int, py: int) -> void:
 func skip(pad: int) -> void:
 	was_x = x
 	was_y = y
-	clock = (clock + 1) & 0xFF
+	_clock()
 	_aura()
 	pad_held = pad
+
+
+## $0C is one byte for the whole game, and the pool is where it lives.  The
+## hero used to keep a second copy and count it himself, and the two drifted
+## apart by the one frame a seed is taken in: on ice ($9670 gives a step back
+## every eighth picture) that showed as a step given back a picture early.
+## Where there is no pool -- the stands that run him alone -- he counts still.
+func _clock() -> void:
+	if pool != null:
+		clock = pool.clock
+	else:
+		clock = (clock + 1) & 0xFF
 
 
 ## $9159 -- what being hit costs him, which runs before $9477 and so before
@@ -248,7 +260,7 @@ func step(pad: int) -> void:
 	was_y = y
 	# The frame counter the whole game shares has already moved on by the time
 	# the hero is asked to run: ice reads it, and reads it after the step.
-	clock = (clock + 1) & 0xFF
+	_clock()
 	_aura()                                 # $9159, and it runs before $9477
 	# The kind of ground he is on is worked out afresh every frame: the level's
 	# own frame routine clears it ($AAA9 in bank 9) before the hero runs, and
