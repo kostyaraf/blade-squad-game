@@ -2780,7 +2780,10 @@ static func _8163(o: SolObjects, s: int, n: int) -> void:
 static func _87cd(o: SolObjects, s: int, r: int) -> int:
 	var was: int = o.a[s]
 	o.a[s] = r
-	if r < 0x80 and was != r and (was & 0x78) >= 0x60:
+	# $87D3 -- the sign that is asked after is the sign of what stood there
+	# before, not of what has just been written: $87CD reads the old byte into
+	# Y and the STA over it leaves the flags alone.
+	if was < 0x80 and was != r and (was & 0x78) >= 0x60:
 		var m: int = was & 0x18
 		if (m == 0 or m >= 0x10) and o.stage != 0x09:
 			o.hatch(o.x[s], (o.y[s] & 0xFF00), 0x36)
