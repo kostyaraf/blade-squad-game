@@ -55,12 +55,18 @@ def at(rom, where, n):
     return bank(rom, b)[off:off + n]
 
 
-def anims(rom, where=None, count=None):
+def anims(rom, where=None, count=None, ptrs=False):
     """$8026 in bank 12 -- one animation set, and the steps each of its ids holds.
 
     A step is three bytes: how many pictures to hold it for, and the two bytes
     of the picture.  A hold of zero is not a step; it means "start again".  A
     hold of $FF is the last one: it is held and never left.
+
+    With `ptrs` it hands back the addresses instead of the steps: $8026 leaves
+    the set's own table in $90:$91 and the id's step list in $92:$93, and both
+    are read afterwards as though they were numbers of its own -- $9BCF asks
+    $B0AE to look a whole picture down and however far along $90 happens to
+    say.
     """
     where = where or ANIMS
     count = count or N_ANIMS
@@ -68,7 +74,11 @@ def anims(rom, where=None, count=None):
     base = where[1] & 0x1FFF
     out = []
     for i in range(count):
-        p = (b[base + i * 2] | b[base + i * 2 + 1] << 8) & 0x1FFF
+        w = b[base + i * 2] | b[base + i * 2 + 1] << 8
+        if ptrs:
+            out.append(w)
+            continue
+        p = w & 0x1FFF
         steps = []
         while b[p] and len(steps) < 64:
             steps.append([b[p], b[p + 1], b[p + 2]])
@@ -106,6 +116,15 @@ def export():
         # $BDB9 -- the second set.  $8DA6 and $8DD6 both hand $8DEF a one, so
         # everything in the hero's own four slots wears these pictures.
         anims1=anims(rom, ANIMS1, N_ANIMS1),
+        # $802D and $8038 -- where each set's own table stands and where each
+        # id's steps stand.  $8026 leaves both in $90:$93, and what is left
+        # there is read as a number by whoever looks next.
+        anim_base={'4': ANIMS[1], '3': ANIMS3[1], '1': ANIMS1[1]},
+        anim_ptrs={
+            '4': anims(rom, ANIMS, N_ANIMS, True),
+            '3': anims(rom, ANIMS3, N_ANIMS3, True),
+            '1': anims(rom, ANIMS1, N_ANIMS1, True),
+        },
         # $AB77 -- nine bytes apiece, but reached by a plain byte offset, so
         # they are kept as bytes and read out where a behaviour asks.
         hatch=[int(v) for v in at(rom, HATCH, N_HATCH)],

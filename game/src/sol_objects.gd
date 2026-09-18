@@ -252,6 +252,8 @@ var _types: Array
 var _anims: Array
 var _anims3: Array
 var _anims1: Array
+var _anim_base := {}                ## $801C -- where each set's table stands
+var _anim_ptrs := {}                ## $8038 -- where each id's steps stand
 var _hatch: PackedByteArray
 var _hatch2: PackedByteArray
 var _steps: PackedByteArray
@@ -289,6 +291,8 @@ func _init(lvl: SolLevel) -> void:
 	_anims = t["anims"]
 	_anims3 = t["anims3"]
 	_anims1 = t["anims1"]
+	_anim_base = t["anim_base"]
+	_anim_ptrs = t["anim_ptrs"]
 	_hatch = PackedByteArray(t["hatch"])
 	_hatch2 = PackedByteArray(t["hatch2"])
 	_steps = PackedByteArray(t["steps"])
@@ -538,6 +542,15 @@ func _advance(s: int, n: int, set := 4) -> void:
 	var steps: Array = book[n]
 	if steps.is_empty():
 		return
+	# $802D and $8038 -- the set's own table and the id's step list are left
+	# standing in $90:$91 and $92:$93, and whoever looks next reads them as
+	# numbers of its own: $9BCF asks $B0AE for a look a picture down and
+	# however far along the low byte of $90 happens to say.
+	var key: String = str(set)
+	z90 = int(_anim_base[key])
+	var ptrs: Array = _anim_ptrs[key]
+	if n < ptrs.size():
+		z92 = int(ptrs[n])
 	if frame[s] >= steps.size():
 		frame[s] = 0
 	var st: Array = steps[frame[s]]
