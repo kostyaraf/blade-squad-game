@@ -3239,15 +3239,33 @@ static func _k8545(o: SolObjects, s: int) -> void:
 	o.anim_second(s, 0x77)
 
 
+## $85B8 -- the fan, one table read at two offsets: the step down out of
+## $85B8 itself and the step along five bytes further on, out of $85BD.
+const FAN := [0x00, 0xE4, 0xE4, 0x00, 0xEF, 0xE0, 0xF0, 0x10, 0x20, 0xE4,
+		0x00, 0x1B]
+
+
+## $85AB -- one of the fan.
+static func _85ab(o: SolObjects, s: int, y: int) -> void:
+	o.z94 = FAN[y + 5]                      # $85BD,Y
+	o.z95 = FAN[y]                          # $85B8,Y
+	_85c4(o, s)
+
+
 ## $856C / $8566 -- the one that faces a way and fires a spread.
 static func _k856c(o: SolObjects, s: int, anim: int, way: int) -> void:
 	o.face[s] = way
 	o.anim_second(s, anim)
-	if o.frame[s] != 0x02:
-		if o.frame[s] == 0x03:
-			o.d[s] = (o.d[s] + 1) & 0xFF    # $8583 -- which half of the spread
+	if o.frame[s] == 0x02:                  # $8577
+		o.cool[s] = 0x0F + (o.clock & 1)    # $80F2
 		return
-	o.cool[s] = 0x0F + (o.clock & 1)        # $80F2
+	if o.frame[s] != 0x03:                  # $857F
+		return
+	# $8583 -- every other time it is the four of the fan that go sideways,
+	# and the rest of the time the three that go up.
+	o.d[s] = (o.d[s] + 1) & 0xFF
+	for k in ([4, 5, 6] if (o.d[s] & 1) != 0 else [0, 1, 2, 3]):
+		_85ab(o, s, k)
 
 
 ## $85EA / $85EE -- the blower: near enough, and the hero is pushed along.
@@ -3337,15 +3355,52 @@ static func _k86a1(o: SolObjects, s: int) -> void:
 		o.kind[s] = 0x04
 
 
-## $86C9 -- the spread, and $8729 the single shot.  What they let go is the
-## other pool ($0780), which is not here yet.
+## $8721 -- the four of the spread, one table read at two offsets: the step
+## along out of $8721 itself and the step down four bytes further on.
+const SPREAD := [0x1E, 0x1A, 0x13, 0x09, 0xF6, 0xED, 0xE6, 0xE2]
+
+
+## $86EA -- one of the spread.  The step along is turned round for the side it
+## faces, and whatever that take-away left is the carry the placing goes on
+## with.
+static func _86ea(o: SolObjects, s: int, y: int) -> void:
+	var i: int = SolShots.free_slot(o)      # $86F4
+	if i < 0:
+		return
+	# $86F9 -- the noise ($F1 = $2C) is not modelled.
+	SolShots.put(o, i, 0xAA)                # $86FD -> $907B
+	o.carry = (o.face[s] >> 7) & 1          # $870A ASL
+	var v: int = SPREAD[y]                  # $870B
+	if o.carry == 0:
+		v = o._adc(v ^ 0xFF, 0x01)          # $870F and $8711
+	o.s_a[i] = v                            # $8713
+	o.s_b[i] = SPREAD[y + 4]                # $8716
+	SolShots.place(o, s, i, 0x0000, 0xFF00, o.carry)    # $871B -> $A1D7
+
+
+## $86C9 -- the spread: on the third step of its walk it lets four go at once.
 static func _k86c9(o: SolObjects, s: int) -> void:
 	o.anim_second(s, 0x6D)
+	if o.frame[s] == 0x02:                  # $86CE
+		for y in range(4):                  # $86D3
+			_86ea(o, s, y)
 	_pickup_tail(o, s)
 
 
+## $8729 -- and the single shot, a page to the side it faces and half a page up.
 static func _k8729(o: SolObjects, s: int) -> void:
 	o.anim_second(s, 0x6E)
+	if o.frame[s] == 0x02:                  # $872E
+		var i: int = SolShots.free_slot(o)  # $8733
+		if i >= 0:
+			# $8738 -- the noise ($F1 = $28) is not modelled.
+			SolShots.put(o, i, 0xA9)        # $873C -> $907B
+			# $874E is an INC the other side takes back at $8754, so the page
+			# along is only added where it looks right.
+			var c: int = (o.face[s] >> 7) & 1       # $874D ASL
+			o.s_a[i] = 0x10 if c == 1 else 0xF0     # $8750 and $8756
+			SolShots.place(o, s, i, 0x0100 if c == 1 else 0x0000,
+					0xFF80, c)              # $875B -> $A1D7
 	_pickup_tail(o, s)
 
 

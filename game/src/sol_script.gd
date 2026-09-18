@@ -2574,6 +2574,7 @@ const LINKS := [
 	[0x0058, "pool", "z58", 1],
 	[0x005B, "hero", "step_down", 1],
 	[0x0070, "view", "map_kind", 1],
+	[0x0072, "pool", "z72", 1],
 	[0x0075, "pool", "z75", 1],
 	[0x007F, "pool", "z7f", 1],
 	[0x0080, "hero", "x", 2],

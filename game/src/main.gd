@@ -673,6 +673,10 @@ func _run_sol_objects(path: String) -> void:
 				# shadow from one picture to the next.
 				pool.z74 = sol_script.g(0x74)
 				sol_script.p(0x74, 0)                    # $C39F
+				# $FBDB -- the blanking keeps $7D of the picture just gone in
+				# $70, so what kind of stage this is lags the script's own
+				# byte by one picture.
+				view.map_kind = sol_script.g(0x7D)
 			elif n < lines.size():
 				pool.z74 = int(lines[n])
 			pool.z75 = (pool.z75 + pool.z74) & 0xFF

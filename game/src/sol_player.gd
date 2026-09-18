@@ -467,6 +467,11 @@ func _dry(was: int, now: int) -> void:
 		rise = -36
 	else:
 		hold = 0
+	# $9633 -- and the splash, whichever way he was going.  It goes in at his
+	# own place but on the row above him, and $8C6E counts the slots upward.
+	# The noise ($F1 = $09) is not modelled.
+	if pool != null:
+		pool.hatch_up(x, y & 0xFF00, 0x36)
 
 
 ## $95AD -- under water: a tenth of the gravity and a hold that lasts five

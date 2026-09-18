@@ -93,17 +93,22 @@ def main():
             for i, d in enumerate(order)}
     # $9410 and its like are all the same eighteen bytes: LDA rooms,Y / ASL /
     # TAX / LDA ptrs,X / STA $90 / LDA ptrs+1,X / STA $91 / JMP ($0090).
+    #
+    # Y is a register of one byte and the room id is a column added to a row of
+    # sixteens, so it runs the whole two hundred and fifty six.  The tables are
+    # not that long -- they stand one after another from $9534 -- and a room
+    # the stage never stands in reads whatever the next table holds there.  So
+    # the length here is the length the cartridge can reach, not the length the
+    # table was written to be; the same for the pointers, which an index of one
+    # byte reaches a hundred and twenty eight of.
     dispatch = []
-    rooms_at = sorted(set(word(d + 1) for d in order)) + [0x98FF + 1]
     for d in order:
         at = word(d + 1)
         ptrs = word(d + 6)
-        n = (stop[d] - ptrs) // 2
-        end = rooms_at[rooms_at.index(at) + 1]
         dispatch.append({
             'at': d,
-            'rooms': [rd(a) for a in range(at, end)],
-            'routines': [word(ptrs + 2 * k) for k in range(n)],
+            'rooms': [rd(a) for a in range(at, at + 256)],
+            'routines': [word(ptrs + 2 * k) for k in range(128)],
         })
 
     # The second level.  Each of these is walked by a routine that reads $7F

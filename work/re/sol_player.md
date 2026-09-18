@@ -593,3 +593,24 @@ and `P.watched` the two together — the standing value carried forward through
 the frames nobody wrote. Frame numbers are **absolute**, counted from the reset,
 not from the savestate. Everything the emulator writes goes under `P.SCRATCH`
 and `P.sweep` throws it away; leave nothing behind.
+
+## Долг: `$A043` — ветка в воздухе, которой в движке нет
+
+`$A036` после падения (`$A0BB`) и до пола (`$A078`) щупает клетку под самим
+героем ещё раз (`$A172`) и смотрит на её класс:
+
+```
+A043: JSR $A172
+A046: AND #$E0 / CMP #$60 / BEQ $A078      ; обычная земля
+A04C:            CMP #$A0 / BEQ $A078      ; толкающая — тоже мимо
+A050: AND #$20 / BEQ $A078                 ; без пятого бита — мимо
+A054: LDA $04 / BPL $A065                  ; нажали A -> состояние $0B
+A058: JSR $A30C / $F1 = $08 / $05A2 = $0B
+A065: LDA $06 / AND #$08 / BEQ $A078       ; держат вверх -> состояние $09
+A06B: JSR $A30C / $F1 = $08 / $05A2 = $09
+```
+
+То есть классы `$20` и `$E0` — это то, за что в воздухе можно ухватиться, и
+герой переходит в одно из двух состояний. `SolPlayer._air` этой ветки не знает
+и всегда идёт на `$A078`. На стендах игрока это не всплывало (0 из 138), но на
+этапах с лестницами всплывёт.
