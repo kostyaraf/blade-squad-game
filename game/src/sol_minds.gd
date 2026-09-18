@@ -1390,10 +1390,16 @@ static func _9894(o: SolObjects, s: int) -> void:
 ## $9CDD -- the step, and what the step runs into.  A hit one takes the hero's
 ## side afresh; one that is still flinching only carries on as it was.
 static func _9cdd(o: SolObjects, s: int, n: int) -> void:
+	# $9CE2 -- the ask about the wait is a compare, and a compare leaves a
+	# carry behind.  Nothing between here and the add inside $B189 puts
+	# another one there ($8173 is an AND, $9D00 a load), so the step is added
+	# with the answer to "has the wait run down".
+	o.carry = 1 if o.cool[s] >= 0x08 else 0
 	if o.cool[s] >= 0x08 or (o.mind[s] & 0x40) != 0:
 		if n != 0:                          # $9D00
 			o.step_and_look(s, n)
 		return
+	o.carry = 1 if o.cool[s] >= 0x01 else 0  # $80DD -- and so does this one
 	if o.cool[s] == 0x01:                   # $80DA
 		o.far_x(s)
 		o.a[s] = o.z94

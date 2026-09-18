@@ -1186,13 +1186,17 @@ func _b189(s: int, neg: bool, ox: int, oy: int) -> Array:
 	return [px, int(q[0])]
 
 
-## $D010 -- the same place, with the hero's own speed added along.  That add
-## takes the carry the height add left, and on a carrying map nothing is looked
-## at at all: the answer is the map's own number.
+## $D010 -- the same place, with the hero's own speed added along.  On a
+## carrying map nothing is looked at at all: the answer is the map's own
+## number.  The add has no CLC, and the carry it takes is the one the ask
+## about that map left.
 func _d010(px: int, py: int) -> int:
 	if map_kind == 0x3C:
 		return map_kind                 # $D014
-	var r: Array = _add2(px, hero_vx, carry)    # $D016 -- no CLC
+	# $D012 -- the compare just above is what the add takes its carry from,
+	# not whatever the caller was holding.
+	carry = 1 if map_kind >= 0x3C else 0
+	var r: Array = _add2(px, hero_vx, carry)    # $D016 -- no CLC of its own
 	z9d = int(r[0]) & 0xFF              # $D01D
 	return probe(int(r[0]), py)         # $D09C
 
