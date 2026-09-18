@@ -2628,6 +2628,10 @@ static func _a750(o: SolObjects, s: int) -> void:
 static func _8802(o: SolObjects, s: int) -> void:
 	if ((s ^ o.clock) & 0x01) == 0:
 		return
+	# $8805 -- the ROR that asked the question leaves its answer standing, and
+	# the answer is one wherever the turn happens at all.  $AE30 has no SEC of
+	# its own, so that one is what the distance to the hero is taken with.
+	o.carry = 1
 	match o.kind[s]:
 		0x00:
 			if _898a(o, s) < 0x05:
@@ -2720,7 +2724,9 @@ static func _888f(o: SolObjects, s: int) -> void:
 static func _8894(o: SolObjects, s: int) -> void:
 	var solid := _87cd(o, s, o.probe_behind(s, 0x0080, 0x0100)) >= 0x80
 	if not solid:
-		solid = _87cd(o, s, o.probe_behind(s, 0x0000, 0x0100)) >= 0x80
+		# $889C -- the second look is not remembered: only the first goes
+		# through $87CD and into $0610.
+		solid = o.probe_behind(s, 0x0000, 0x0100) >= 0x80
 		if not solid:
 			o.kind[s] = 0x06
 			_8163(o, s, 0xFF)
