@@ -168,9 +168,13 @@ var hero_hurt := 0                  # $05C2 -- frames of being left alone
 var hero_shield := 0                # $05C8
 var z5fa := 0                       # $05FA -- set while the stage is ending
 var pad_new := 0                    # $04 -- what was pressed this picture
-## The Y register as the animation walk leaves it.  $C051 saves Y in $90
-## before it swaps banks and so destroys what the caller put there; $A802 is
-## the one place that notices.
+## The Y register, as far as anything outside a routine can see it.  $C12E,
+## which every $C051 goes through, opens with STY $90 and so writes the Y of
+## the moment over the low byte of $90 before it swaps banks.  Two places
+## notice: $A802, whose $90 is gone altogether, and $8E44, which is handed the
+## hero's own place in $90 by $8043 a few instructions earlier and reads the
+## register back as the low byte of it.  So the angle a thing takes to the
+## hero is not quite the angle to the hero.
 var y_reg := 0
 var stage := 0                      # $55 -- which stage is up
 var zf8 := 0                        # $F8 -- what the game is to be put to next
@@ -1007,7 +1011,9 @@ func angle_to_hero(s: int) -> int:
 
 ## $804B -- the same, but the height is the caller's own, not the hero's.
 func angle_to(s: int, tx: int, ty: int) -> int:
-	return angle_between(x[s], y[s], tx, ty)
+	# $C12E -- and the low byte of the place asked after is the Y of whoever
+	# asked, not the byte $8043 put there.  See `y_reg`.
+	return angle_between(x[s], y[s], (tx & 0xFF00) | y_reg, ty)
 
 
 ## $8E44 itself, over two places neither of which need be a slot.
@@ -1019,17 +1025,22 @@ func angle_between(px: int, py: int, tx: int, ty: int) -> int:
 	var bx: int = _sbc(p[1], (tx >> 8) & 0xFF)
 	var turn := 0
 	if carry == 0:
-		var t: int = _neg16(ax | bx << 8)
-		ax = t & 0xFF
-		bx = (t >> 8) & 0xFF
+		# $8E55 -- and $8FD2 turns straight round where the high byte has no
+		# sign on it, so a pair that borrowed and yet reads positive is left
+		# as it stands.  The quarter of the turn is counted either way.
+		if (bx & 0x80) != 0:
+			var t: int = _neg16(ax | bx << 8)
+			ax = t & 0xFF
+			bx = (t >> 8) & 0xFF
 		turn = 2
 	carry = 1
 	var ay: int = _sbc(p[2], ty & 0xFF)
 	var by: int = _sbc(p[3], (ty >> 8) & 0xFF)
 	if carry == 0:
-		var t: int = _neg16(ay | by << 8)
-		ay = t & 0xFF
-		by = (t >> 8) & 0xFF
+		if (by & 0x80) != 0:                # $8FE6
+			var t: int = _neg16(ay | by << 8)
+			ay = t & 0xFF
+			by = (t >> 8) & 0xFF
 		turn += 1
 	if turn != 0 and turn != 3:
 		var t0 := ax
@@ -1171,7 +1182,13 @@ func _d010(px: int, py: int) -> int:
 	return probe(int(r[0]), py)         # $D09C
 
 
+## $8FD2 and $8FE4 -- nought take away the pair.  Both begin with a SEC of
+## their own ($8FD6, $8FE8), so the borrow is never the caller's; every place
+## that jumps in here is written as though it were, and one of them ($8E55)
+## reaches it with the borrow of the very subtraction that asked for the
+## negating still down.
 func _neg16(v: int) -> int:
+	carry = 1
 	var lo: int = _sbc(0, v & 0xFF)
 	var hi: int = _sbc(0, (v >> 8) & 0xFF)
 	return lo | hi << 8

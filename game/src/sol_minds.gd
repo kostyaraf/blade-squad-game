@@ -47,6 +47,7 @@ static func _body(o: SolObjects, s: int) -> void:
 
 ## $81EA -- the table for a thing that is alive.
 static func _live(o: SolObjects, s: int, m: int) -> void:
+	o.y_reg = (m << 1) & 0x7E               # $81DC TAY
 	match m:
 		0x00, 0x01, 0x02, 0x36, 0x37:
 			pass                            # $B0CC -- nothing at all
@@ -174,6 +175,7 @@ static func _live(o: SolObjects, s: int, m: int) -> void:
 ## the ones that look alike are the easiest to get wrong -- $1E, $1B and $18
 ## all point somewhere else once bit 7 is on.
 static func _dead(o: SolObjects, s: int, m: int) -> void:
+	o.y_reg = (m << 1) & 0x7E               # $826D TAY
 	match m:
 		0x00, 0x01:
 			_a883(o, s)                     # $A883
@@ -3023,6 +3025,7 @@ static func _b0bb(o: SolObjects, s: int) -> void:
 
 ## $8398 -- behaviour $3F is a family: which one runs is $0690.
 static func _pickup(o: SolObjects, s: int) -> void:
+	o.y_reg = o.kind[s]                     # $839B TAY
 	match o.kind[s]:
 		0x00, 0x0A: _k86a1(o, s)
 		0x02: _k86c9(o, s)
@@ -3051,6 +3054,7 @@ static func _pickup(o: SolObjects, s: int) -> void:
 
 ## $8359 -- and the same family once it has been finished off.
 static func _pickup_dead(o: SolObjects, s: int) -> void:
+	o.y_reg = o.kind[s]                     # $835C TAY
 	match o.kind[s]:
 		0x00, 0x02, 0x04, 0x0E, 0x10: _af31(o, s, 0x32)     # $8F83
 		0x06: _8767(o, s)

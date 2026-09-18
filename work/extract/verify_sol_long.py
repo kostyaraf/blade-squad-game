@@ -175,6 +175,11 @@ def main():
                 cfg['ride_at'] = [t[4] for t in tk]
                 cfg['new_at'] = [t[5] for t in tk]
                 cfg['line_at'] = line(state, pads, play, scratch)
+                # Э4.23 -- the stage's own script runs.  It is not scenery to a
+                # stand of the pool: $A211 is one of several steps that write a
+                # slot's own kind, and without it a stage's machinery never
+                # moves on.
+                cfg['script'] = 1
                 gp, gs, missing = engine(cfg, scratch)
                 for k, v in missing.items():
                     owed[k] = owed.get(k, 0) + v

@@ -544,6 +544,14 @@ func _run_sol_objects(path: String) -> void:
 	# not been counted yet, what a panel has taken of it, and his tries.
 	var odd_put: Array = cfg["odd_put"] if cfg.has("odd_put") else []
 	var want_crates: bool = cfg.has("crates")
+	# Whether the stage's own script is to run.  The stands that came before
+	# Э4.23 stood without it and are left standing without it.
+	var want_script: bool = cfg.has("script")
+	if want_script and cfg.has("ram0"):
+		# A third of what the script touches has no home in the pool, and it
+		# carries that third from one picture to the next itself, so the
+		# shadow starts as the cartridge's own memory rather than as nought.
+		sol_script.m = PackedByteArray(String(cfg["ram0"]).hex_decode())
 	var crates := PackedStringArray()
 	var n := 0
 	for f in cfg["pads"]:
@@ -570,11 +578,14 @@ func _run_sol_objects(path: String) -> void:
 			pool.clock = int(clocks[n])
 			pool.noise = int(noises[n])
 			pool.six = int(sixes[n])
-			pool.z7f = int(steps[n])
-			if n < oweds.size():
-				pool.z26 = int(oweds[n])
-			if n < rides.size():
-				pool.z58 = int(rides[n])
+			# $7F, $26 and $58 are the stage script's own.  A stand that runs
+			# the script lets it keep them; one that does not is handed them.
+			if not want_script:
+				pool.z7f = int(steps[n])
+				if n < oweds.size():
+					pool.z26 = int(oweds[n])
+				if n < rides.size():
+					pool.z58 = int(rides[n])
 			pool.drew()
 			view.step(p.vx, p.vy, p.x, p.y)
 			pool.hero = p
@@ -590,8 +601,15 @@ func _run_sol_objects(path: String) -> void:
 			pool.z34 = view.fall
 			pool.cam_x = view.x
 			pool.cam_y = view.y
-			# $CDB3 -- his breath, and the bubbles it leaves behind in the pool.
-			SolShots.breathe(pool, p)
+			# $CDB3 -- the stage's own script, and with it his breath and the
+			# bubbles it leaves behind ($A7B0): the script calls them, so
+			# nothing here does.  The script is not scenery to a stand of the
+			# pool: $A211 is one of several steps that write a slot's own kind,
+			# and without it a stage's own machinery never moves on.
+			if want_script:
+				sol_script.run(pool, p, view, null, null)
+			else:
+				SolShots.breathe(pool, p)
 			pool.scrolled(view.x, view.y)
 			pool.room = pool.room_of(view.x, view.y)
 			_hero_into(pool, p)
@@ -650,7 +668,12 @@ func _run_sol_objects(path: String) -> void:
 			# of the lift's line.  Neither the script nor the blanking is this
 			# stand's business, so what it asked for is handed over; what the
 			# pool itself wrote into $75 this picture is the engine's own.
-			if n < lines.size():
+			if want_script:
+				# $74 has no home in the pool, so it lives in the script's own
+				# shadow from one picture to the next.
+				pool.z74 = sol_script.g(0x74)
+				sol_script.p(0x74, 0)                    # $C39F
+			elif n < lines.size():
 				pool.z74 = int(lines[n])
 			pool.z75 = (pool.z75 + pool.z74) & 0xFF
 			pool.z74 = 0
@@ -781,6 +804,7 @@ func _sol_pool_from(cfg: Dictionary) -> SolObjects:
 	pool.z72 = int(cfg["z72"]) if cfg.has("z72") else 0
 	pool.z7c = int(cfg["z7c"]) if cfg.has("z7c") else 0
 	pool.z58 = int(cfg["z58"]) if cfg.has("z58") else 0
+	pool.z7f = int(cfg["z7f"]) if cfg.has("z7f") else 0
 	pool.z26 = int(cfg["z26"]) if cfg.has("z26") else 0
 	pool.z399 = int(cfg["z399"]) if cfg.has("z399") else 0
 	pool.letters = int(cfg["letters"]) if cfg.has("letters") else 0

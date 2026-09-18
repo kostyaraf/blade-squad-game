@@ -154,8 +154,13 @@ def seed(base):
     # stage's own script writes it once ($A8D4 and the four beside it) and
     # nothing else ever touches it, so the seed is the whole of it.
     cfg['z72'] = base[0x72]
+    # The whole two kilobytes, for a stand that lets the stage's own script
+    # run: a third of what the script touches has no home in the pool, and it
+    # carries that third from one picture to the next itself.
+    cfg['ram0'] = base[:0x800].hex()
     cfg['z7c'] = base[0x7C]
     cfg['z58'] = base[0x58]
+    cfg['z7f'] = base[0x7F]
     cfg['z26'] = base[0x26]
     # $0399 -- the first of the three numbers of the tile set the screen is
     # next owed.  $B966 is the only thing that reads it back, and it does so to
