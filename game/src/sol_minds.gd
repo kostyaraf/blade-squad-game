@@ -2030,12 +2030,19 @@ static func _afba(o: SolObjects, s: int) -> void:
 ## it either walks on, stops at a wall or hops over what is in the way.
 static func _ground(o: SolObjects, s: int) -> void:
 	_lift(o, s)
-	if o.kind[s] >= 0x02:
-		# $AFE8 -- it is getting back up; what it says while it does is sound.
-		if o.kind[s] == 0x08:
-			o.face_hero(s)              # $8118
-			o.face[s] = o.face[s] ^ 0xFF
-		o.kind[s] = 0
+	if o.kind[s] >= 0x02:                   # $AFE1
+		# $AFE8 -- it is getting back up.  $99D9 hands back what is left of
+		# the walk, and it is that, not the turn, that both compares read: the
+		# turn is only over when the walk has run out, and on the one picture
+		# eight are left it turns to face the hero first.
+		o.anim_second(s, 0x02)              # $AFEA
+		if o.left[s] != 0xFF:               # $AFED
+			if o.left[s] != 0x08:           # $AFEF
+				o.move(s)                   # $AFFC
+				return
+			o.face_hero(s)                  # $8118
+			o.face[s] = o.face[s] ^ 0xFF    # $AE24
+		o.kind[s] = 0                       # $80B3
 		o.move(s)
 		return
 	o.anim_second(s, 0x00)
@@ -2376,15 +2383,23 @@ static func _a53d(o: SolObjects, s: int) -> void:
 		0x13, 0x1C:
 			_a6ab(o, s)
 		0x14:
-			_a5c6(o, s, 0x11)
+			_a5c6(o, s, 0x11)                   # $A5B2
+			# $A5B7 -- $80E0 asks whether the walk has just run out, and that
+			# is what lets the pair go.
+			if o.left[s] == 0xFF:
+				SolStage.call_at(o, s, 0x79)    # $A5BA
 		0x15, 0x17:
 			_a7e7(o, s, 0x12)
 		0x16:
 			_a5c6(o, s, 0x18)                   # $A598
 			if o.kind[s] != 0x17:
-				return
-			if (o.clock & 0x01) == 0:
-				o.kind[s] = 0x19
+				return                          # $A5A2
+			# $A5A6 -- the ROR hands over bit nought of the clock: one picture
+			# in two lets the pair go, the other steps the turn on.
+			if (o.clock & 0x01) != 0:
+				SolStage.call_at(o, s, 0x79)    # $A5A9
+			else:
+				o.kind[s] = 0x19                # $A5AC
 		0x18:
 			_a5c6(o, s, 0x18)
 		0x19, 0x1E:

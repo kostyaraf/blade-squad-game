@@ -14,7 +14,10 @@ class_name SolStage
 ## free slot and $84B3 for taking it -- which behave exactly as $ADBA and $907B
 ## do; they are not repeated here.
 ##
-## `work/re/sol_shots.md` lists which entry each mind asks for.
+## `work/re/sol_shots.md` lists which entry each mind asks for.  Three of the
+## ten -- `$8085`, `$8088` and `$808B` -- are not shot behaviours at all: they
+## walk the mode counters `$4D`..`$4F` and write the queue at `$0301`, so they
+## belong to a mode script and are not here.
 
 
 ## $8081 (bank 2) -> $C081 -> the entry `n` of the table at the top of bank 6.
@@ -22,6 +25,8 @@ static func call_at(o: SolObjects, s: int, n: int) -> void:
 	match n:
 		0x07:
 			_862c(o, s)
+		0x79:
+			_859e(o, s)
 		0x7C:
 			_8553(o, s)
 		0x0A:
@@ -72,6 +77,33 @@ static func _84ca(o: SolObjects, s: int) -> void:
 		return
 	SolShots.put(o, i, 0x8B)                # $84CD
 	o.s_b[i] = 0x20                         # $84D2
+
+
+## $859E, entry $79 -- two at once, both standing exactly where the thing does.
+## They are told apart only by $07D0: nought for the first, one for the second.
+## If there is no room for the first there is no second either.
+static func _859e(o: SolObjects, s: int) -> void:
+	var i: int = _85b3(o, s)
+	if i < 0:
+		return                                  # $85A1
+	o.s_a[i] = 0x00                             # $85A3
+	i = _85b3(o, s)
+	if i < 0:
+		return                                  # $85AB
+	o.s_a[i] = 0x01                             # $85AD
+
+
+## $85B3 -- one of the two.  The place is the thing's own, byte for byte, and
+## the behaviour $86 goes into the life as well as into the pool.
+static func _85b3(o: SolObjects, s: int) -> int:
+	var i: int = SolShots.free_slot(o)          # $84A8
+	if i < 0:
+		return -1
+	SolShots.place_at(o, i, s)                  # $85B8
+	o.s_kind[i] = 0x86                          # $85CC
+	o.s_life[i] = 0x86
+	o.s_b[i] = 0xAC                             # $85D4
+	return i
 
 
 ## $8553, entry $7C -- one page to the side it faces and two pages up.
