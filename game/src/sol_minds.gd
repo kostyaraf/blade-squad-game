@@ -523,6 +523,10 @@ static func _9eaf(o: SolObjects, s: int) -> void:
 		o.kind[s] = (o.kind[s] + 1) & 0xFF
 		return
 	_9efc(o, s)
+	# $9EBD -- $9EFC ends on a jump to $813F, so its return goes back to the
+	# instruction after the call, and that is $9EC0: the waiting falls straight
+	# through into the catch, and both run in the one picture.
+	_9ec0(o, s)
 
 
 ## $9E52 -- it opens, and two more come out, one each side.
