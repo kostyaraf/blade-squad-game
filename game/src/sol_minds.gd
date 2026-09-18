@@ -2275,6 +2275,11 @@ static func _a1f4(o: SolObjects, s: int) -> void:
 	if _busy(o):
 		return
 	o.anim_second(s, 0x1E)
+	# $A218 -- and only on the third step of that walk.
+	if o.frame[s] != 0x02:                          # $80E6
+		if o.left[s] == 0xFF:                       # $A24C
+			o.kind[s] = 0                           # $A2D4
+		return
 	# $A21D -- and on step two it lets one go, which way round taken from the
 	# hero's own byte and from the side it faces.
 	var i: int = SolShots.free_slot(o)
@@ -2750,6 +2755,12 @@ static func _8e86(o: SolObjects, s: int) -> void:
 			return
 	else:
 		o.anim_second(s, 0x5F)
+		# $8EA4 -- and only on the third step of that walk.
+		if o.frame[s] != 0x02:                  # $80E6
+			if o.left[s] != 0xFF:               # $80E0
+				return
+			o.kind[s] = (o.kind[s] + 1) & 0xFF
+			return
 		# $8EA9 -- and while there is room it lets one go and does nothing
 		# else; only when the pool is full does the walk step on.
 		var i: int = SolShots.free_slot(o)
