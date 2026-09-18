@@ -2171,6 +2171,10 @@ static func _a052(o: SolObjects, s: int) -> void:
 		if o.id[i] == 0:
 			f = i
 			break
+	# $A060 -- the walk down leaves where it stopped in Y, and $C12E writes
+	# that over the low byte of the next place asked after.  See
+	# `SolObjects.y_reg`.
+	o.y_reg = f if f >= 0 else 0xFF
 	if f < 0:
 		return
 	o.x[f] = o.x[0]

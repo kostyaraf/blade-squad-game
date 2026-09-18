@@ -161,6 +161,8 @@ var hero_pose := 0                  # $05B5 -- the walk the state itself asks
 var hero_step_t := 0                # $05A4 -- how far into that walk he is
 var z5ab := 0                       # $05AB -- the burst of the doubled weapon
 var hero_rise := 0                  # $05AD:$05AE -- the fall he has built up
+var hero_ground := 0                # $05CD -- what he is standing on, which
+                                    #          the turning puts back to plain
 var hero_jump := 0                  # $05E8 -- and the three numbers a jump
 var hero_grav := 0                  # $05E9    is made of, which the one that
 var hero_hold_max := 0              # $05EA    turns the world over rewrites

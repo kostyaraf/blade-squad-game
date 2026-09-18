@@ -1247,10 +1247,22 @@ func _air(held: int, pressed: int) -> void:
 			_spring(pressed)
 	# $A036 -- the frame's move across, then $A0BB's gravity down.
 	_apply_speed()
-	rise = _s16(rise + (-gravity if (flags & UPSIDE_DOWN) != 0 else gravity))
-	vy = _s16(vy + rise)
-	if vy > FALL_MAX:
-		vy = FALL_MAX
+	# $A0BB -- the fall gathers the same way round whichever way up the world
+	# is: $B9F5 leaves $05E9 at four either way, and the turning itself
+	# ($BA0A) takes the fall's own sign over, once, at the moment it turns.
+	rise = _s16(rise + gravity)
+	if (flags & UPSIDE_DOWN) != 0:
+		# $A0D0 -- and it comes off the move rather than going on, with the
+		# borrow still down: the add above clears the carry on both its ways
+		# out ($A0C5 falls through with it clear, $A0CA clears it), so one
+		# more than the fall is what is taken.
+		vy = _s16(vy - rise - 1)
+		if vy < -FALL_MAX - 1:                  # $A0E4 and $A0EB, $FF9F
+			vy = -FALL_MAX - 1
+	else:
+		vy = _s16(vy + rise)                    # $A0FA
+		if vy > FALL_MAX:                       # $A113
+			vy = FALL_MAX
 	# $A078 and $A084 -- the floor going down, the ceiling going up.  Both look
 	# where the move would put him, not where he is.
 	if rise >= 0:

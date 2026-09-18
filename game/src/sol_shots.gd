@@ -1097,7 +1097,10 @@ static func _turn_world(o: SolObjects, i: int) -> void:
 			row = 2
 		elif ((o.s_b[i] ^ o.hero_flags) & 0x80) != 0:
 			# $B97C -- the shot's own sign says which way up it wants him.
-			var f: int = (o.s_b[i] & 0x80) ^ o.hero_flags
+			# $B97C -- the AND falls on the difference of the two, not on
+			# the shot's own byte, so what comes out is the shot's sign with
+			# the rest of his flags left as they were.
+			var f: int = ((o.s_b[i] ^ o.hero_flags) & 0x80) ^ o.hero_flags
 			_turn_rise(o, f)                # $BA0A
 			o.hero_flags = f                # $B984
 			# $B987 -- four rolls and a mask, which is bit seven and nothing
@@ -1108,7 +1111,8 @@ static func _turn_world(o: SolObjects, i: int) -> void:
 			o.z39a = TURN_TILES[row][1]
 			o.z39b = TURN_TILES[row][2]
 			# $B9A6 -- the noise ($F1 = $14) is not modelled.
-			o.hero_jump = 0x00              # $B9F5
+			o.hero_ground = 0x00            # $B9F5
+			o.hero_jump = 0xB8
 			o.hero_grav = 0x04
 			o.hero_hold_max = 0x06
 	o.hatch(o.s_x[i], o.s_y[i], 0x87)       # $B9AD -> $AAC2

@@ -659,6 +659,7 @@ func _run_sol_objects(path: String) -> void:
 			p.flags = pool.hero_flags
 			p.rise = pool.hero_rise - 0x10000 \
 					if pool.hero_rise >= 0x8000 else pool.hero_rise
+			p.ground = pool.hero_ground
 			p.jump = pool.hero_jump
 			p.gravity = pool.hero_grav
 			p.hold_max = pool.hero_hold_max
@@ -782,6 +783,7 @@ func _hero_into(pool: SolObjects, p: SolPlayer) -> void:
 	pool.hero_pose = p.pose
 	pool.hero_step_t = p.step_t
 	pool.hero_rise = p.rise & 0xFFFF
+	pool.hero_ground = p.ground
 	pool.hero_jump = p.jump
 	pool.hero_grav = p.gravity
 	pool.hero_hold_max = p.hold_max
@@ -2053,6 +2055,7 @@ func _step_sol() -> void:
 	p.flags = pool.hero_flags
 	p.rise = pool.hero_rise - 0x10000 \
 			if pool.hero_rise >= 0x8000 else pool.hero_rise
+	p.ground = pool.hero_ground
 	p.jump = pool.hero_jump
 	p.gravity = pool.hero_grav
 	p.hold_max = pool.hero_hold_max
