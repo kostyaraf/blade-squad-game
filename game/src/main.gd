@@ -48,6 +48,7 @@ func _ready() -> void:
 	var sollive := ""
 	var solrun := ""
 	var pb3floor := ""
+	var pb3pair := ""
 	var solflow := ""
 	var solscript := ""
 	var solscene := ""
@@ -87,6 +88,7 @@ func _ready() -> void:
 		elif a.begins_with("--sollive="): sollive = a.substr(10)
 		elif a.begins_with("--solrun="): solrun = a.substr(9)
 		elif a.begins_with("--pb3floor="): pb3floor = a.substr(11)
+		elif a.begins_with("--pb3pair="): pb3pair = a.substr(10)
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
 		elif a.begins_with("--solscript="): solscript = a.substr(12)
 		elif a.begins_with("--solscene="): solscene = a.substr(11)
@@ -154,6 +156,10 @@ func _ready() -> void:
 		return
 	if pb3floor != "":
 		_run_pb3_floor(pb3floor)
+		get_tree().quit()
+		return
+	if pb3pair != "":
+		_run_pb3_pair(pb3pair)
 		get_tree().quit()
 		return
 	if sollive != "":
@@ -519,18 +525,37 @@ func _run_pb3_floor(path: String) -> void:
 
 
 ## Places worth standing in, found out of the level's own answers.
-func _pb3_spots(solid: Callable, w: int, h: int, want: int) -> Array:
+## `room` is how many cells to the right of a place have to be empty; five is
+## enough for one hero and the pair wants room for two.  `band` is the part of
+## the level the view is able to show, in cells: outside it the game itself
+## never puts anybody, so a place found there would be judged against a screen
+## that cannot be brought to it.
+## `stand` names the other columns, counted from the place, that have to have
+## a floor under them as well: with two heroes the second one is put down a
+## few cells along and starting him over a hole means a walk that spends all
+## its pictures falling and says nothing about anything else.
+func _pb3_spots(solid: Callable, w: int, h: int, want: int,
+		room: int = 5, band: Rect2i = Rect2i(),
+		stand: Array = []) -> Array:
+	if band.size == Vector2i.ZERO:
+		band = Rect2i(0, 0, w, h)
 	var found: Array = []
 	var step: int = maxi(1, w / (want * 2))
-	var cx := 1
-	while cx < w - 5 and found.size() < want:
-		for cy in range(1, h - 1):
+	var cx: int = maxi(1, band.position.x)
+	while cx < mini(w - room, band.end.x) and found.size() < want:
+		for cy in range(maxi(1, band.position.y), mini(h - 1, band.end.y)):
 			if solid.call(cx, cy) or solid.call(cx, cy - 1):
 				continue
 			if not solid.call(cx, cy + 1):
 				continue
 			var clear := true
-			for k in range(1, 5):
+			for k in stand:
+				if not solid.call(cx + int(k), cy + 1):
+					clear = false
+					break
+			if not clear:
+				continue
+			for k in range(1, room):
 				if solid.call(cx + k, cy) or solid.call(cx + k, cy - 1) \
 						or solid.call(cx + k, cy - 2):
 					clear = false
@@ -648,6 +673,144 @@ func _pb3_walk_pb2(lvl: SolAsPb2, pad: int, frames: int, at: Vector2i,
 			+ " drop %3d left %d front %d") % [
 			tag, at.x, at.y, pad, world_x, ex, ey + lvl.cam_y, worst, drop,
 			left, front]
+
+
+## Э5.2 -- two heroes in one level, and the view that has to hold both.
+##
+## The same shape as `_run_pb3_floor`: the mode is handed a list of runs, finds
+## places to stand out of the level's own answers, and prints one line a walk.
+## What is judged is in `verify_pb3_pair.py`.
+func _run_pb3_pair(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	pb3_loud = bool(cfg.get("loud", false))
+	var out := PackedStringArray()
+	for one in cfg["runs"]:
+		var run: Dictionary = one
+		var from: int = Pb3Pair.PB2 if String(run["game"]) == "pb2" \
+				else Pb3Pair.SOL
+		var stage := int(run["stage"])
+		var area := int(run.get("area", 0))
+		var spots := int(run.get("spots", 4))
+		var frames := int(run.get("frames", 100))
+		var pads: Array = run.get("pads", [[Pad.RIGHT, Pad.RIGHT]])
+		var kinds: Array = run.get("kinds", [["pb2", "sol"]])
+		var tag := "%s%d.%d" % ["p" if from == Pb3Pair.PB2 else "s",
+				stage, area]
+		# Where to stand is asked of the level once, through whichever of the
+		# two classes the level is: the answers are the same either way.
+		var look := Pb3Pair.new(from, stage, area, ["sol"])
+		var lvl: SolLevel = look.solv
+		var solid := func(cx: int, cy: int) -> bool:
+			return lvl.collision_at(cx * 16 + 8, cy * 16 + 8) >= Pb2AsSol.SOLID
+		var at: Array = _pb3_spots(solid, lvl.width_tiles / 2,
+				lvl.height_tiles / 2, spots, 8, _pb3_band(look), [3])
+		for pair in kinds:
+			for pad in pads:
+				for spot in at:
+					out.append(_pb3_walk_pair(from, stage, area, pair, pad,
+							Vector2i(spot), frames, tag))
+	print("\n".join(out))
+
+
+## Which cells of the level the view is able to bring to the screen.
+##
+## A Power Blade area is never bigger than its view can cover, so the whole of
+## it counts.  A Solbrain stage is sixteen screens tall and its own record
+## ($E72D) says how far the view may go each way; above the first line it may
+## reach, and below the last, the game never puts anybody, and there is no
+## screen to judge them against either.
+func _pb3_band(two: Pb3Pair) -> Rect2i:
+	if two.game == Pb3Pair.PB2:
+		return Rect2i()
+	var eye: SolCamera = two.sol_eye
+	var x0: int = eye.x_min >> 4
+	var x1: int = maxi(x0, (eye.x_end >> 4) - 0x100)
+	var y0: int = eye.y_min >> 4
+	var y1: int = maxi(y0, (eye.y_end >> 4) - 0x100)
+	# The cells whose middle a reachable view can hold, his shoulder and his
+	# head inside the screen (`Pb3Pair.EDGE` and `HEAD`).
+	return Rect2i((x0 + Pb3Pair.EDGE) / 16,
+			(y0 + Pb3Pair.HEAD) / 16,
+			maxi(1, (x1 + 0x100 - Pb3Pair.EDGE) / 16 - (x0 + Pb3Pair.EDGE) / 16),
+			maxi(1, (y1 + 0xF0 - Pb3Pair.EDGE) / 16 - (y0 + Pb3Pair.HEAD) / 16))
+
+
+## One walk of the two of them.
+##
+## They start four cells apart on the same ledge -- `_pb3_spots` has already
+## made sure the four cells to the right of a place are clear -- so the view
+## begins with the middle of them in the middle of the screen and neither of
+## them at an edge.  What is written down is what the two questions of Э5.2
+## need: how far outside the screen anybody ever ended a picture, and the same
+## two counts Э5.1 kept about the floor.
+func _pb3_walk_pair(from: int, stage: int, area: int, kinds: Array,
+		pads: Array, at: Vector2i, frames: int, tag: String) -> String:
+	var two := Pb3Pair.new(from, stage, area, kinds)
+	# Both are put down in the middle of the cell rather than on the floor of
+	# it, and each game's own weight drops him the last eight pixels.  Power
+	# Blade's hero will not walk while his feet are on the line itself: $A036
+	# reads the cell his feet are in and finds the floor.
+	two.begin([Vector2i(at.x * 16 + 8, at.y * 16 + 8),
+			Vector2i((at.x + 3) * 16 + 8, at.y * 16 + 8)])
+	var bottom: int = two.solv.height_tiles * 8
+	var off := 0
+	var below := 0
+	var walled := [0, 0]
+	var stuck := [0, 0]
+	var drop := 0
+	var was := [two.flat_of(0).y, two.flat_of(1).y]
+	var apart := 0
+	var began: int = (two.world_of(0).x + two.world_of(1).x) / 2
+	var i := 0
+	while i < frames and two.alive():
+		two.step(pads)
+		for k in range(2):
+			if two.gone[k]:
+				continue
+			var w: Vector2i = two.world_of(k)
+			var s: Vector2i = two.screen_of(k)
+			if pb3_loud:
+				print("    %3d %d w %5d %5d s %4d %4d view %5d %4d st %02X"
+						% [i, k, w.x, w.y, s.x, s.y, two.view_x(),
+						two.line_at(0),
+						two.sol[k].state if two.who[k] == Pb3Pair.SOL
+						else two.pb2[k].sub])
+			# Off the side of the screen, which the edge is there to prevent,
+			# and off the top or bottom, which it is not: that one is only
+			# written down, to show the view keeping up with a fall.
+			off = maxi(off, maxi(-s.x, s.x - 0x100))
+			below = maxi(below, maxi(-s.y, s.y - 0xF0))
+			# The edge moving him is not a fall, so what it moved him by is
+			# taken back out before the picture's fall is measured.  Both
+			# ways are measured, not only downwards: a Power Blade hero is
+			# kept as one byte of the screen, and a hero who went off the
+			# bottom of it and came round the top would show here as a leap
+			# upwards and nowhere else.
+			var fell: int = absi(two.flat_of(k).y - two.shoved[k].y - was[k])
+			if fell > drop and w.y < bottom:
+				drop = fell
+			was[k] = two.flat_of(k).y
+			if two.solv.collision_at(w.x, w.y - 8) >= Pb2AsSol.SOLID:
+				stuck[k] += 1
+				walled[k] = maxi(walled[k], stuck[k])
+			else:
+				stuck[k] = 0
+		apart = maxi(apart, absi(two.world_of(0).x - two.world_of(1).x))
+		i += 1
+	var left := 0
+	for k in range(2):
+		if two.gone[k]:
+			left += 1
+	# How far the middle of them got, which is how far the view was made to
+	# travel: a pair that never moved proves nothing about a view that follows
+	# them.
+	var went: int = absi((two.world_of(0).x + two.world_of(1).x) / 2 - began)
+	return ("%-6s %s %s %3d %3d pads %02X %02X ran %3d off %4d walled %3d"
+			+ " drop %3d apart %4d left %d held %4d stuck %3d went %4d"
+			+ " below %4d") % [
+			tag, String(kinds[0]), String(kinds[1]), at.x, at.y,
+			int(pads[0]), int(pads[1]), i, off, maxi(walled[0], walled[1]),
+			drop, apart, left, two.held_in, two.could_not, went, below]
 
 
 func _run_sol_live(spec: String, st: int) -> void:
