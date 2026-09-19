@@ -52,6 +52,7 @@ func _ready() -> void:
 	var pb3hits := ""
 	var pb3pick := ""
 	var pb3gear := ""
+	var pb3list := ""
 	var solflow := ""
 	var solscript := ""
 	var solscene := ""
@@ -95,6 +96,7 @@ func _ready() -> void:
 		elif a.begins_with("--pb3hits="): pb3hits = a.substr(10)
 		elif a.begins_with("--pb3pick="): pb3pick = a.substr(10)
 		elif a.begins_with("--pb3gear="): pb3gear = a.substr(10)
+		elif a.begins_with("--pb3list="): pb3list = a.substr(10)
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
 		elif a.begins_with("--solscript="): solscript = a.substr(12)
 		elif a.begins_with("--solscene="): solscene = a.substr(11)
@@ -166,12 +168,22 @@ func _ready() -> void:
 		return
 	if pb3pair != "":
 		_run_pb3_pair(pb3pair)
+		get_tree().quit()
+		return
 	if pb3hits != "":
 		_run_pb3_hits(pb3hits)
+		get_tree().quit()
+		return
 	if pb3pick != "":
 		_run_pb3_pick(pb3pick)
+		get_tree().quit()
+		return
 	if pb3gear != "":
 		_run_pb3_gear(pb3gear)
+		get_tree().quit()
+		return
+	if pb3list != "":
+		_run_pb3_list(pb3list)
 		get_tree().quit()
 		return
 	if sollive != "":
@@ -1389,6 +1401,81 @@ static func _pb3_gear_sat(pool: SolObjects) -> String:
 			% [pool.id[s], pool.b[s], pool.c[s], pool.d[s], pool.kind[s],
 					pool.left[s], pool.frame[s], pool.anim_a[s],
 					pool.anim_b[s], pool.pic_lo[s], pool.pic_hi[s]])
+
+
+## Э5.6 -- the fifty three areas and the twenty stages behind one cursor.
+##
+## Every record in every pairing, raised, played and left again.  See
+## `work/extract/verify_pb3_list.py` for what each line is asked about.
+func _run_pb3_list(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var frames: int = int(cfg["frames"])
+	var pads: Array = cfg["pads"]
+	var out := PackedStringArray()
+	for kinds in cfg["kinds"]:
+		var lst := Pb3List.new(kinds)
+		var recs: Array = Pb3List.records()
+		for n in range(recs.size()):
+			# The cursor is walked to the record rather than set, so that
+			# every line below is about a record the list could actually
+			# offer.
+			lst.at = 0
+			lst.last_pad = 0
+			for _s in range(n):
+				lst.step(Pb3List.RIGHT)
+				lst.step(0)
+			var from: int = lst.at
+			var up: int = 1 if lst.enter() else 0
+			var where: String = Pb3List.say(recs[n])
+			if up == 0:
+				out.append(("rec %s %s %s up 0 solid 0 ran 0 alive 0 "
+						+ "ground 0 back %d from %d")
+						% [where, kinds[0], kinds[1], from, from])
+				continue
+			var two: Pb3Pair = lst.two
+			# Nobody put inside something, counted the way Э5.1 and Э5.2
+			# count it: at the start and after every picture.
+			var walled := 0
+			for i in range(two.who.size()):
+				if not two.standing(two.world_of(i)):
+					walled += 1
+			# Whether the level has anything under the place it opens on:
+			# one area opens over water with no floor in that column at all,
+			# and a hero who sinks out of it there was not dropped by the
+			# engine.  Asked of the level, not decided here.
+			var ground := 0
+			for i in range(two.who.size()):
+				if two.ground_under(two.world_of(i)):
+					ground += 1
+			# Every picture is played whatever becomes of the two of them:
+			# a record that stops early is the fault this is looking for, and
+			# a pair with nobody left in it still has to step without
+			# falling over.
+			var ran := 0
+			for f in range(frames):
+				two.step(pads)
+				ran += 1
+				for i in range(two.who.size()):
+					if two.gone[i]:
+						continue
+					if not two.standing(two.world_of(i)):
+						walled += 1
+			var alive: int = 1 if two.alive() else 0
+			lst.leave()
+			out.append(("rec %s %s %s up 1 solid %d ran %d alive %d "
+					+ "ground %d back %d from %d")
+					% [where, kinds[0], kinds[1], walled, ran, alive,
+							ground, lst.at, from])
+		# And that the cursor reaches every one of them, walked and not
+		# counted: a record nobody can walk to is a record missing.
+		var seen := {}
+		var walker := Pb3List.new(kinds)
+		for _s in range(recs.size() * 2):
+			seen[walker.at] = true
+			walker.step(Pb3List.RIGHT)
+			walker.step(0)
+		out.append("walked %d of %d" % [seen.size(), recs.size()])
+	print("\n".join(out))
 
 func _run_sol_live(spec: String, st: int) -> void:
 	bg.z_index = -1

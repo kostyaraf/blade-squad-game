@@ -226,6 +226,49 @@ func flat_of(i: int) -> Vector2i:
 	return w
 
 
+## Э5.6 -- where the level itself puts a hero when it opens, said in the
+## level's own pixels at his feet.
+##
+## A Solbrain stage says it outright: $E520 raises the stage out of a record
+## and the record holds the place ($80:$83, sixteen pixels above his feet).  A
+## Power Blade area says it on the screen instead ($0300 and $0320), which is
+## only half the answer: the view the area opens with ($D3B8) is the other
+## half.  A fresh `Pb2Camera` already stands where the area opens, so the two
+## halves are put together by the same pair of sums every other place in this
+## class is read through -- and that matters twice over, because a sideways
+## area keeps the top sixteen lines of the screen for the bar and a downward
+## one counts its view in pages of two hundred and forty while its map is laid
+## out in pages of two hundred and fifty six.  Asked before `begin`, which is
+## the only time it means anything.
+func home() -> Vector2i:
+	if game == SOL:
+		return Vector2i(solv.start.x >> 4,
+				(solv.start.y >> 4) + SolPlayer.FOOT_DY / 16)
+	return Vector2i(view_x() + pb2v.start_x, line_at(pb2v.start_y))
+
+
+## Whether a hero standing with his feet on that pixel is standing in
+## something.  What the level says, and nothing of the pair's own.
+func standing(w: Vector2i) -> bool:
+	return not _solid(w)
+
+
+## Э5.6 -- whether there is anything under that pixel at all, asked straight
+## down its own column to the foot of the level.  Neither game promises it:
+## one Power Blade area opens over water with no floor beneath it anywhere in
+## that column, and a hero put there sinks out of the level because that is
+## what the level says happens there.  The list has to be able to tell that
+## apart from a hero the engine dropped, so the level is asked outright.
+func ground_under(w: Vector2i) -> bool:
+	var y: int = w.y
+	var bottom: int = solv.height_tiles * 8
+	while y < bottom:
+		if _solid(Vector2i(w.x, y)):
+			return true
+		y += 8
+	return false
+
+
 ## Where each of them stood when the picture ended, for the next picture's
 ## sums.
 func _remember() -> void:
@@ -252,6 +295,16 @@ func begin(spots: Array) -> void:
 				maxi(sol_eye.x_min, sol_eye.x_end - 0x1000))
 		sol_eye.y = clampi((mid.y << 4) - 0x780, sol_eye.y_min,
 				maxi(sol_eye.y_min, sol_eye.y_end - 0x1000))
+		# Those two ends are the ones the view is *driven* between ($E72D);
+		# the raise itself does not consult them at all -- $E70C simply
+		# rounds the hero down to a whole room -- and the third stage begins
+		# below its own bottom end, so keeping to the ends there would leave
+		# the place the stage puts a hero off the screen.  Where that
+		# happens the cartridge's own raise is taken instead.
+		if mid.x < (sol_eye.x >> 4) or mid.x >= (sol_eye.x >> 4) + 0x100:
+			sol_eye.x = (mid.x << 4) & 0xF000
+		if mid.y < (sol_eye.y >> 4) or mid.y >= (sol_eye.y >> 4) + 0xF0:
+			sol_eye.y = (mid.y << 4) & 0xF000
 		_led_by_sol()
 	elif pb2v.vertical:
 		# The view of an area that scrolls downwards is counted in pages of
