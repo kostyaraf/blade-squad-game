@@ -51,6 +51,7 @@ func _ready() -> void:
 	var pb3pair := ""
 	var pb3hits := ""
 	var pb3pick := ""
+	var pb3gear := ""
 	var solflow := ""
 	var solscript := ""
 	var solscene := ""
@@ -93,6 +94,7 @@ func _ready() -> void:
 		elif a.begins_with("--pb3pair="): pb3pair = a.substr(10)
 		elif a.begins_with("--pb3hits="): pb3hits = a.substr(10)
 		elif a.begins_with("--pb3pick="): pb3pick = a.substr(10)
+		elif a.begins_with("--pb3gear="): pb3gear = a.substr(10)
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
 		elif a.begins_with("--solscript="): solscript = a.substr(12)
 		elif a.begins_with("--solscene="): solscene = a.substr(11)
@@ -168,6 +170,8 @@ func _ready() -> void:
 		_run_pb3_hits(pb3hits)
 	if pb3pick != "":
 		_run_pb3_pick(pb3pick)
+	if pb3gear != "":
+		_run_pb3_gear(pb3gear)
 		get_tree().quit()
 		return
 	if sollive != "":
@@ -1142,6 +1146,249 @@ func _pb3_pick_put(w: Pb3Pick, k: Array) -> void:
 	w.ready[1] = bool(k[3])
 	w.last_pad[0] = int(k[4])
 	w.last_pad[1] = int(k[5])
+
+
+## Э5.5 -- one bar for the two of them.
+##
+## Two of the four questions compare against the class that owns the answer
+## rather than against a mechanical rule, so the same input is run twice: once
+## through a plain `Pb2Status`, which is the cartridge's own $CDB8, and once
+## through `Pb3Gear`.  `work/extract/verify_pb3_gear.py` says what each line
+## means.
+func _run_pb3_gear(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var suits: int = int(cfg["suits"])
+	var guns: int = int(cfg["guns"])
+	var frames: int = int(cfg["frames"])
+	var out := PackedStringArray()
+	# Which of them can be reached from the menu, by each of the two, walked
+	# out rather than asserted.
+	for i in range(2):
+		for k in range(suits):
+			out.append("choose p%d suit n %d got %d"
+					% [i, k, 1 if _pb3_gear_reach(i, Pb3Gear.PB2, k) else 0])
+		for k in range(1, guns + 1):
+			out.append("choose p%d gun n %d got %d"
+					% [i, k, 1 if _pb3_gear_reach(i, Pb3Gear.SOL, k) else 0])
+	# The wear, suit by suit, against the cartridge's own class alone.
+	for k in range(1, suits):
+		out.append("wear suit n %d alone %s shared %s"
+				% [k, _pb3_gear_alone(k, frames), _pb3_gear_shared(k, frames)])
+	# And two of them on the one bar: what came off between them is what each
+	# would have taken alone.
+	out.append(_pb3_gear_both(frames))
+	# The ending, when the bar runs dry.
+	for k in range(1, suits):
+		out.append("empty suit n %d alone %s shared %s"
+				% [k, _pb3_gear_end_alone(k), _pb3_gear_end_shared(k)])
+	for k in range(1, guns + 1):
+		out.append("empty gun n %d alone %s shared %s"
+				% [k, _pb3_gear_gun_alone(k), _pb3_gear_gun_shared(k)])
+	print("\n".join(out))
+
+
+## Is this suit, or this gun, one the menu can be walked to?  Nothing here
+## knows which button does what: every pad the player can hold is tried, in
+## the breadth-first way Э5.3's own walk goes, and the gear is asked what it
+## is holding.
+func _pb3_gear_reach(i: int, kind: int, want: int) -> bool:
+	var pads: Array = [0x00, 0x04, 0x08, 0x10]
+	var kinds: Array = [Pb3Gear.PB2, Pb3Gear.PB2]
+	kinds[i] = kind
+	var seen := {}
+	var edge: Array = [_pb3_gear_seed(kinds, i)]
+	seen[_pb3_gear_word(edge[0], i)] = true
+	if int(edge[0].pick(i)) == want:
+		return true
+	for _round in range(8):
+		var next: Array = []
+		for g in edge:
+			for p in pads:
+				var w: Pb3Gear = _pb3_gear_copy(g, kinds)
+				var hits: Array = [0, 0]
+				hits[i] = p
+				w.step(hits)
+				var key: String = _pb3_gear_word(w, i)
+				if seen.has(key):
+					continue
+				seen[key] = true
+				if int(w.pick(i)) == want:
+					return true
+				next.append(w)
+		if next.is_empty():
+			return false
+		edge = next
+	return false
+
+
+func _pb3_gear_seed(kinds: Array, i: int) -> Pb3Gear:
+	var g := Pb3Gear.new(kinds)
+	if kinds[i] == Pb3Gear.SOL:
+		g.gun[i] = 1
+	return g
+
+
+## Everything of his side of the gear that a walk has to tell apart.
+func _pb3_gear_word(g: Pb3Gear, i: int) -> String:
+	return "%d %d %d" % [g.pick(i), 1 if g.menu_open(i) else 0, g.last_pad[i]]
+
+
+func _pb3_gear_copy(g: Pb3Gear, kinds: Array) -> Pb3Gear:
+	var w := Pb3Gear.new(kinds, g.energy, g.tanks)
+	for i in range(kinds.size()):
+		w.gun[i] = g.gun[i]
+		w.open[i] = g.open[i]
+		w.last_pad[i] = g.last_pad[i]
+		var a: Pb2Status = g.st[i]
+		var b: Pb2Status = w.st[i]
+		b.suit = a.suit
+		b.menu = a.menu
+		b.came_in = a.came_in
+		b.mode = a.mode
+		b.drain_hi = a.drain_hi
+		b.drain_lo = a.drain_lo
+		b.clock = a.clock
+	return w
+
+
+## The cells, picture by picture, as one word.  A suit that took the same
+## total by a different road is not the same suit, so the whole run is kept
+## and not just how much is left at the end.
+func _pb3_gear_alone(suit: int, frames: int) -> String:
+	var s := Pb2Status.new()
+	s.stage = Pb2Status.LAST_STAGE
+	s.area = 0
+	s.suit = suit
+	s.energy = 16
+	var out := PackedStringArray()
+	for f in range(frames):
+		s.step(0)
+		out.append(str(s.energy))
+	return _pb3_gear_runs(out)
+
+
+func _pb3_gear_shared(suit: int, frames: int) -> String:
+	var g := Pb3Gear.new([Pb3Gear.PB2], 16, 0)
+	(g.st[0] as Pb2Status).suit = suit
+	var out := PackedStringArray()
+	for f in range(frames):
+		g.step([0])
+		out.append(str(g.energy))
+	return _pb3_gear_runs(out)
+
+
+## The same run of numbers, said short: a number and how many pictures it
+## stood for.  A long word compares the same and prints readably.
+static func _pb3_gear_runs(v: PackedStringArray) -> String:
+	var out := PackedStringArray()
+	var i := 0
+	while i < v.size():
+		var j: int = i
+		while j < v.size() and v[j] == v[i]:
+			j += 1
+		out.append("%s:%d" % [v[i], j - i])
+		i = j
+	return ",".join(out)
+
+
+## Two of them wearing two suits on the one bar, and what each would have
+## taken alone.  Both are counted in cells and not in what is left, because
+## the bar is refilled under them as it empties.
+func _pb3_gear_both(frames: int) -> String:
+	var a: int = _pb3_gear_took(1, frames)
+	var b: int = _pb3_gear_took(4, frames)
+	var g := Pb3Gear.new([Pb3Gear.PB2, Pb3Gear.PB2], 16, 0)
+	(g.st[0] as Pb2Status).suit = 1
+	(g.st[1] as Pb2Status).suit = 4
+	var took := 0
+	for f in range(frames):
+		var was: int = g.energy
+		g.step([0, 0])
+		took += maxi(0, was - g.energy)
+		if g.energy == 0:
+			g.energy = 16
+			for s in g.st:
+				(s as Pb2Status).suit = 1 if s == g.st[0] else 4
+	return "shared cells %d apart %d %d" % [took, a, b]
+
+
+## How many cells one suit takes off in that many pictures, alone, with the
+## bar filled again each time it empties so that the suit never comes off.
+func _pb3_gear_took(suit: int, frames: int) -> int:
+	var s := Pb2Status.new()
+	s.stage = Pb2Status.LAST_STAGE
+	s.area = 0
+	s.suit = suit
+	s.energy = 16
+	var took := 0
+	for f in range(frames):
+		var was: int = s.energy
+		s.step(0)
+		took += maxi(0, was - s.energy)
+		if s.energy == 0:
+			s.energy = 16
+			s.suit = suit
+	return took
+
+
+## What $D312 leaves when the bar runs out, said as the fields it touches.
+func _pb3_gear_end_alone(suit: int) -> String:
+	var s := Pb2Status.new()
+	s.stage = Pb2Status.LAST_STAGE
+	s.area = 0
+	s.suit = suit
+	s.energy = 1
+	s.tanks = 0
+	while s.suit != 0:
+		s.step(0)
+	return "%d,%d,%d,%d" % [s.suit, s.energy, s.chr_bank,
+			1 if s.clear_shots else 0]
+
+
+func _pb3_gear_end_shared(suit: int) -> String:
+	var g := Pb3Gear.new([Pb3Gear.PB2], 1, 0)
+	var s: Pb2Status = g.st[0]
+	s.suit = suit
+	while s.suit != 0:
+		g.step([0])
+	return "%d,%d,%d,%d" % [s.suit, g.energy, s.chr_bank,
+			1 if g.clear_shots[0] else 0]
+
+
+## And what $9347 leaves when the satellite is given no life, which is how his
+## own game takes it away.
+func _pb3_gear_gun_alone(gun: int) -> String:
+	_load("sol", 0, 0)
+	var pool := SolObjects.new(level_sol)
+	var him := SolPlayer.new(level_sol)
+	him.pool = pool
+	var d: Dictionary = Nes._load_json(Nes.DATA + "/sol/sat.json")
+	pool.mind[SolObjects.SAT] = gun - 1
+	pool.id[SolObjects.SAT] = int(d["weapon_of"][gun - 1])
+	pool.life[SolObjects.SAT] = 0x10
+	SolSat.lose(pool)                       # $9359 and $A4FD
+	return _pb3_gear_sat(pool)
+
+
+func _pb3_gear_gun_shared(gun: int) -> String:
+	_load("sol", 0, 0)
+	var pool := SolObjects.new(level_sol)
+	var g := Pb3Gear.new([Pb3Gear.SOL], 16, 0)
+	g.gun[0] = gun
+	g.arm(pool, 0)
+	# Sixteen off the sixteen, which is the whole bar.
+	g.hurt_gun(0, 16)
+	g.arm(pool, 0)
+	return _pb3_gear_sat(pool)
+
+
+## Slot twelve, as the numbers $9359 and $A4FD touch between them.
+static func _pb3_gear_sat(pool: SolObjects) -> String:
+	var s: int = SolObjects.SAT
+	return ("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d"
+			% [pool.id[s], pool.b[s], pool.c[s], pool.d[s], pool.kind[s],
+					pool.left[s], pool.frame[s], pool.anim_a[s],
+					pool.anim_b[s], pool.pic_lo[s], pool.pic_hi[s]])
 
 func _run_sol_live(spec: String, st: int) -> void:
 	bg.z_index = -1

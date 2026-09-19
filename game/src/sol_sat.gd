@@ -113,8 +113,15 @@ static func _dying(o: SolObjects, x: int) -> void:
 	if (o.left[x] & 0x80) == 0:
 		_draw(o, x)                                     # $A4F8
 		return
+	lose(o)                                             # $9359, $A4FD
+
+
+## $9359 and $A4FD -- the satellite is lost: its ten bytes are wiped and the
+## slot stops being anything at all.  It is one place and not two because
+## losing it is one thing, and Э5.5 takes a gun away by the same door.
+static func lose(o: SolObjects) -> void:
 	_clear_sat(o)                                       # $9359
-	o.id[x] = 0                                         # $A4FD
+	o.id[FIRST] = 0                                     # $A4FD
 
 
 ## $934C -- the satellite is taken back in hand: it may be hit again and its
