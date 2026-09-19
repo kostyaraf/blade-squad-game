@@ -207,6 +207,10 @@ var hero_bh := 0                    # $8E:$8F
 ## Nothing there means nobody is there.  See `work/re/pb3_hits.md`.
 var guest: SolPlayer = null
 var guest_box: Array = []
+## Э5.7 -- and more than one of them, as `[SolPlayer, box]`, for when neither
+## of a pair's two heroes came from the game the stage did.  The one named
+## above stays what it is: it is what Э5.4's stand hands over.
+var more_guests: Array = []
 ## $60..$68 -- and the box of the thing whose turn it is.
 var z60 := 0                        # $60, what touching it means
 var z61 := 0                        # $61:$62
@@ -1383,17 +1387,24 @@ func touch(s: int) -> void:
 	# Э5.4 -- and the other game's hero over the same thing, in the same
 	# picture and in the same order, out of the same six numbers.  His box is
 	# handed over rather than built, because $8A19 has no picture of his.
+	var over: Array = []
 	if guest != null and guest_box.size() == 5:
+		over.append([guest, guest_box])
+	for g in more_guests:
+		over.append(g)
+	if not over.is_empty():
 		var was: SolPlayer = hero
 		var was_box: Array = [hero_box_flags, hero_bx, hero_by,
 				hero_bw, hero_bh]
-		hero = guest
-		hero_box_flags = int(guest_box[0])
-		hero_bx = int(guest_box[1])
-		hero_by = int(guest_box[2])
-		hero_bw = int(guest_box[3])
-		hero_bh = int(guest_box[4])
-		_lay(s)
+		for g in over:
+			var box: Array = g[1]
+			hero = g[0]
+			hero_box_flags = int(box[0])
+			hero_bx = int(box[1])
+			hero_by = int(box[2])
+			hero_bw = int(box[3])
+			hero_bh = int(box[4])
+			_lay(s)
 		hero = was
 		hero_box_flags = int(was_box[0])
 		hero_bx = int(was_box[1])

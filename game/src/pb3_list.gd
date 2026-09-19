@@ -89,7 +89,8 @@ func step(pad: int) -> void:
 
 ## Raise the record the cursor stands on, and put both of them on the level's
 ## own start.
-func enter() -> bool:
+## Э5.7 -- `flow` raises the level's own game round the two of them as well.
+func enter(flow: bool = false) -> bool:
 	if playing():
 		return false
 	var rec: Array = records()[at]
@@ -99,7 +100,7 @@ func enter() -> bool:
 	var spots: Array = []
 	for _i in kinds:
 		spots.append(home)
-	two.begin(spots)
+	two.begin(spots, flow)
 	return true
 
 

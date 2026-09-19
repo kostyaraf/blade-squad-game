@@ -53,6 +53,7 @@ func _ready() -> void:
 	var pb3pick := ""
 	var pb3gear := ""
 	var pb3list := ""
+	var pb3run := ""
 	var solflow := ""
 	var solscript := ""
 	var solscene := ""
@@ -97,6 +98,7 @@ func _ready() -> void:
 		elif a.begins_with("--pb3pick="): pb3pick = a.substr(10)
 		elif a.begins_with("--pb3gear="): pb3gear = a.substr(10)
 		elif a.begins_with("--pb3list="): pb3list = a.substr(10)
+		elif a.begins_with("--pb3run="): pb3run = a.substr(9)
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
 		elif a.begins_with("--solscript="): solscript = a.substr(12)
 		elif a.begins_with("--solscene="): solscene = a.substr(11)
@@ -180,6 +182,10 @@ func _ready() -> void:
 		return
 	if pb3gear != "":
 		_run_pb3_gear(pb3gear)
+		get_tree().quit()
+		return
+	if pb3run != "":
+		_run_pb3_run(pb3run)
 		get_tree().quit()
 		return
 	if pb3list != "":
@@ -308,26 +314,7 @@ func _sol_bar(pool: SolObjects) -> void:
 ## for exactly this ($91DD to $923B) and the game calls it once a picture.
 static func _sol_strip(suit: int, clock: int, bonus: int,
 		t: SolSprites.Table) -> void:
-	# $91E5 -- under the third suit the mark blinks; from the third up it is
-	# steady.
-	var y: int = suit
-	if y < 0x03 and (clock & 0x04) != 0:
-		y = 0                                            # $91F2
-	# $91FB -- $C009, which is $F3F0: whole pixels and the forward walk, not
-	# the divider $CF73 goes through.  The mark stands at sixteen across and
-	# two hundred down, on the screen and not in the level.
-	SolSprites.forward(y + 2, 0, 0x10, 0xC8, t)
-	if (clock & 0x01) != 0:
-		return                                           # $9201
-	# $9203 -- what is still to be paid, shown ten times over: four figures of
-	# it and a nought that is always a nought ($9236).
-	var fig := SolSprites.figures(bonus)
-	for i in range(5):
-		var at: int = (1 + i) * 4
-		t.oam[at] = 0xD0                                 # $9222
-		t.oam[at + 1] = 0x81 if i == 4 else fig[2 + i]
-		t.oam[at + 2] = 0x01                             # $922E
-		t.oam[at + 3] = (i * 8 + 0x18) & 0xFF            # $9227
+	SolTurn.strip(suit, clock, bonus, t)
 
 
 ## A look at the whole live Solbrain picture, run through $02 from the stage
@@ -1477,6 +1464,228 @@ func _run_pb3_list(path: String) -> void:
 		out.append("walked %d of %d" % [seen.size(), recs.size()])
 	print("\n".join(out))
 
+## Э5.7 -- the whole list played by two, with the levels themselves running.
+##
+## Э5.6 walked the same eighty three records with the levels empty: two heroes
+## and a view and nothing else in the room.  This raises each record with its
+## own game round it -- its things, its order, and in a Solbrain stage its
+## script -- and plays it out with both heroes in it, whichever games they came
+## from.  Whoever came from the game the level did stands in the one place that
+## game keeps for a hero; the other is a guest of it (Э5.4).
+##
+## A pilot holds the two of them apart and taps the buttons.  The pilot is not
+## on trial and cannot play either game: it keeps both of them alive, the way
+## every other run here does, because a pilot that cannot fight would otherwise
+## spend the record dying rather than playing it.
+##
+## What is on trial is the run.  One line per record and pairing: how many
+## pictures it played, the most things the level had out at once, how far each
+## of the two was carried, how many pictures either of them spent inside
+## something solid, what the order said the picture ended as, and what the
+## engine did not know -- a behaviour it has never read, a routine that ran off
+## the end of its own table, a record the export has never seen.
+func _run_pb3_run(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var frames: int = int(cfg["frames"])
+	# The level's own game can be left out, which is Э5.6's empty room played
+	# by this run's pilot: it is how a thing the level did is told from a thing
+	# the two of them would have done anyway.
+	var flow: bool = not cfg.has("flow") or int(cfg["flow"]) != 0
+	var out := PackedStringArray()
+	for kinds in cfg["kinds"]:
+		var lst := Pb3List.new(kinds)
+		var recs: Array = Pb3List.records()
+		for n in range(recs.size()):
+			lst.at = 0
+			lst.last_pad = 0
+			for _s in range(n):
+				lst.step(Pb3List.RIGHT)
+				lst.step(0)
+			var where: String = Pb3List.say(recs[n])
+			if not lst.enter(flow):
+				out.append("run %s %s %s ran 0 things 0 went 0 0 solid 0 "
+						% [where, kinds[0], kinds[1]]
+						+ "ends none owed 0 wild 0 lost 0 up 0")
+				continue
+			out.append(_pb3_one_run(lst, where, kinds, frames))
+			lst.leave()
+	print("\n".join(out))
+
+
+## One record, played out.
+func _pb3_one_run(lst: Pb3List, where: String, kinds: Array,
+		frames: int) -> String:
+	var two: Pb3Pair = lst.two
+	var began: Array[Vector2i] = []
+	for i in range(two.who.size()):
+		began.append(two.world_of(i))
+	var went: Array[int] = [0, 0]
+	var walled := 0
+	var most := 0
+	var ends := {}
+	var ran := 0
+	# The pilot holds them along the level and, in an area that scrolls
+	# downwards, down it as well -- the same two the accepted runs hold.  It
+	# cannot climb, so when neither of them has got anywhere for two seconds
+	# it turns them round: a level walked into a wall for four hundred pictures
+	# would never be made to put its things out, and what is on trial is the
+	# level and not the pilot.
+	var down: bool = two.game == Pb3Pair.PB2 \
+			and (two.pb2v as Pb2Level).vertical
+	var along: int = Pad.RIGHT
+	var still := 0
+	var furthest := 0
+	# How many of the level's own things came out over the whole run, counted
+	# as a place in the pool going from empty to taken, and how many its own
+	# data holds to put out at all.  A record with nothing to put out is not
+	# a record that failed to put anything out.
+	var born := 0
+	# And, in a Solbrain stage, how many of its sixteen rooms the view stood
+	# in: a stage puts out the group its room names ($9A), so a stage that
+	# never left the room it opened in was never asked for a second group.
+	var rooms := {}
+	var was_out: Array[bool] = []
+	for k in range(maxi(Pb2Objects.SLOTS, SolObjects.SLOTS)):
+		was_out.append(false)
+	for f in range(frames):
+		# The pilot: both of them are held the same way and turned round every
+		# so often, so that the middle of them -- which is what the view
+		# follows -- really travels and the level is made to put its things
+		# out where it keeps them, rather than sitting still between two
+		# heroes pulling apart.  The buttons are tapped on a rhythm neither
+		# game reads as a hold.
+		var way: int = along | (Pad.DOWN if down else 0)
+		var pads_now: Array = [way, way]
+		for i in range(2):
+			if f % 24 == 8:
+				pads_now[i] |= Pad.A
+			if f % 8 < 2:
+				pads_now[i] |= Pad.B
+		_pb3_keep_alive(two)
+		two.step(pads_now)
+		ran += 1
+		ends[two.ended] = true
+		for i in range(two.who.size()):
+			if two.gone[i]:
+				continue
+			went[i] = maxi(went[i], absi(two.world_of(i).x - began[i].x))
+			if not two.standing(two.world_of(i)):
+				walled += 1
+		var far: int = maxi(went[0], went[1])
+		if far > furthest:
+			furthest = far
+			still = 0
+		else:
+			still += 1
+			if still >= 120:
+				still = 0
+				along = Pad.LEFT if along == Pad.RIGHT else Pad.RIGHT
+		if two.host_sol != null:
+			rooms[two.host_sol.room] = true
+		var now: Array[bool] = _pb3_who_is_out(two)
+		var n := 0
+		for k in range(now.size()):
+			if now[k]:
+				n += 1
+				if not was_out[k]:
+					born += 1
+			was_out[k] = now[k]
+		most = maxi(most, n)
+	# What the engine did not know.  A Power Blade area has no such count --
+	# every one of its minds is ported -- so the three below are a Solbrain
+	# stage's, and a Power Blade area answers them with noughts.
+	var owed := 0
+	var wild := 0
+	var lost := 0
+	if two.host_sol != null:
+		owed = 1 if two.host_script.owed else 0
+		wild = 1 if two.host_script.wild else 0
+		for d in [two.host_sol.skipped, two.host_sol.shots_skipped,
+				two.host_sol.weapons_skipped, two.host_sol.sat_skipped]:
+			lost += (d as Dictionary).size()
+	var named := PackedStringArray()
+	for e in ends.keys():
+		named.append(_pb3_end_name(int(e)))
+	named.sort()
+	return ("run %s %s %s ran %d things %d born %d has %d first %d reach %d "
+			+ "rooms %d went %d %d solid %d ends %s owed %d wild %d lost %d "
+			+ "up 1") % [
+			where, kinds[0], kinds[1], ran, most, born, _pb3_has(two),
+			_pb3_first(two), two.host_pb2.reached if two.host_pb2 != null
+			else -1, rooms.size(), went[0], went[1], walled,
+			"+".join(named), owed, wild, lost]
+
+
+## `Pb2Turn`'s five, by name.  Anything else is a mode the engine does not
+## know, and that is the whole point of putting it out.
+func _pb3_end_name(e: int) -> String:
+	match e:
+		Pb2Turn.NONE: return "none"
+		Pb2Turn.NEXT_AREA: return "door"
+		Pb2Turn.INTERLUDE: return "scene"
+		Pb2Turn.DIED: return "died"
+		Pb2Turn.HELD: return "held"
+	return "unknown%d" % e
+
+
+## Which places of the level's own pool are taken, asked of the pool itself.
+func _pb3_who_is_out(two: Pb3Pair) -> Array[bool]:
+	var out: Array[bool] = []
+	if two.host_pb2 != null:
+		for k in range(Pb2Objects.SLOTS):
+			out.append(k >= Pb2Objects.FIRST_LIVE
+					and two.host_pb2.slots[k][Pb2Objects.F_TYPE] != 0)
+	elif two.host_sol != null:
+		for k in range(SolObjects.SLOTS):
+			out.append(two.host_sol.id[k] != 0)
+	return out
+
+
+## And how many the level's own data holds to put out at all: the records of a
+## Power Blade area ($B0D7's table), and of a Solbrain stage the groups its
+## rooms name ($9C).
+## Which column of a Power Blade area its earliest thing stands in ($E44D
+## counts in sixteens), and below nought where the level has no such list: a
+## Solbrain stage puts its things out of the groups its rooms name and out of
+## its own script, and neither is a column.
+func _pb3_first(two: Pb3Pair) -> int:
+	if two.game != Pb3Pair.PB2:
+		return -1
+	var first := -1
+	for rec in (two.pb2v as Pb2Level).spawns:
+		var along: int = int((rec as Dictionary)["along"])
+		if along == Pb2Objects.END_OF_LIST:
+			break
+		if first < 0 or along < first:
+			first = along
+	return first
+
+
+func _pb3_has(two: Pb3Pair) -> int:
+	if two.game == Pb3Pair.PB2:
+		return (two.pb2v as Pb2Level).spawns.size()
+	var n := 0
+	for g in (two.solv as SolLevel).object_groups.values():
+		n += (g as Array).size()
+	return n
+
+
+## The pilot cannot fight, so it keeps both of them standing: the same poking
+## every other run here does ($D0F1 for Power Blade, $05C5 for Solbrain).
+func _pb3_keep_alive(two: Pb3Pair) -> void:
+	for i in range(two.who.size()):
+		if two.who[i] == Pb3Pair.SOL:
+			two.sol[i].suit = 0x08
+			two.sol[i].hurt = 0
+		else:
+			var w: Pb2Objects = two.things[i]
+			w.slots[0][Pb2Objects.F_LIFE] = 0x10
+	if two.host_status != null:
+		two.host_status.life = 0x10
+		# $0470 -- and the clock, which a pilot has no way of beating.
+		two.host_status.restart_time(two.came, 0)
+
+
 func _run_sol_live(spec: String, st: int) -> void:
 	bg.z_index = -1
 	var f := spec.split(",")
@@ -1948,37 +2157,13 @@ func _run_sol_objects(path: String) -> void:
 ## the wait a suitless hero puts the game through ($CE09) -- is the frame's
 ## own pacing and not the game's state.
 func _sol_tab(pool: SolObjects) -> void:
-	if pool.z56 == 0:
-		return
-	pool.z56 -= 1
-	pool.hero_bonus = (pool.hero_bonus - 1) & 0xFFFF
+	SolTurn.tick_bonus(pool)
 
 
 ## The hero's own numbers, copied into the pool.  $CDBB and $CDBE read them
 ## before his step and $CDDD after it, so the pool is handed them twice.
 func _hero_into(pool: SolObjects, p: SolPlayer) -> void:
-	pool.hero_x = p.x
-	pool.hero_y = p.y
-	pool.hero_vx = p.vx
-	pool.hero_vy = p.vy & 0xFFFF
-	pool.hero_face = p.face
-	pool.hero_suit = p.suit
-	pool.hero_flags = p.flags
-	pool.hero_state = p.state
-	pool.hero_timer = p.timer
-	pool.hero_pic_lo = p.pic_lo
-	pool.hero_pic_hi = p.pic_hi
-	pool.hero_fuel = p.fuel
-	pool.hero_pose = p.pose
-	pool.hero_step_t = p.step_t
-	pool.hero_rise = p.rise & 0xFFFF
-	pool.hero_ground = p.ground
-	pool.hero_jump = p.jump
-	pool.hero_grav = p.gravity
-	pool.hero_hold_max = p.hold_max
-	pool.hero_hurt = p.hurt
-	pool.hero_shield = p.shield
-	pool.z5ab = p.burst
+	SolTurn.hero_into(pool, p)
 
 
 ## Everything the cartridge had in the hero when the buttons started, put back
@@ -3202,92 +3387,21 @@ func _start_sol_boot() -> void:
 ## ($CDDD).  The one difference is that the stand is handed the cartridge's
 ## $0C, $0E, $06, $26, $58 and $7F picture by picture and here they are made.
 func _step_sol() -> void:
-	var p := sol_hero
-	var pool := sol_pool
-	var held: int = pads[0].held
-	# $0C simply counts pictures.  $0E is the hash $CD57 stirs out of the whole
-	# of RAM and is not ported (`work/re/sol_minds.md` says what it wants);
-	# what stands in for it is a counter of its own, so what leans on it --
-	# which way a flyer turns, which thing refuses to be carried off -- is not
-	# the cartridge's answer but is at least not always the same one.
-	pool.clock = (pool.clock + 1) & 0xFF
-	pool.noise = (pool.noise * 5 + 0x3D) & 0xFF
-	# $06 is the buttons the hero is handed; only a stage's own script ever
-	# wipes it, and no script is ported, so it is the pad as read.
-	pool.six = held
-	pool.pad_new = held & ~sol_pad_was
-	sol_pad_was = held
-	# $C72D -- a picture starts with an empty table: both ends are put back
-	# where they start, which moves on by $50 every time so that the sprite
-	# the console drops on a crowded line is a different one each picture.
-	SolSprites.reset(sol_table, pool.clock)
-	pool.drew()
-	sol_view.step(p.vx, p.vy, p.x, p.y)
-	pool.born_wait = sol_view.hold
-	pool.map_kind = sol_view.map_kind
-	p.map_kind = sol_view.map_kind
-	pool.z34 = sol_view.fall
-	pool.cam_x = sol_view.x
-	pool.cam_y = sol_view.y
-	# $CDB3 -- the stage's own script, which is also where his breath and the
-	# bubbles it leaves come from ($A7B0): the script calls them, so nothing
-	# here does.
-	sol_script.run(pool, p, sol_view, sol_table, sol_flow)
-	pool.scrolled(sol_view.x, sol_view.y)
-	pool.room = pool.room_of(sol_view.x, sol_view.y)
-	_hero_into(pool, p)
-	pool.scan(sol_view.x, sol_view.y, p.x, p.state)      # $CDBB
-	pool.hero_box()                                      # $CDBE
-	pool.shots_hit_hero()                                # $CDCC
-	# $9163 -- being hit puts an aura round him, one of sixteen pictures by
-	# how much of the hurt is left.  It is drawn before he moves.
-	if p.hurt != 0:
-		SolSprites.picture(0x14 + ((p.hurt >> 3) & 0x0F), 0,
-				0x0080, 0x0018, sol_table)
-	# $91AC -- while the wait for a satellite is between one and $2F he does
-	# not move at all: $9477 is simply not called.
-	if sol_view.hold == 0 or sol_view.hold >= 0x30:
-		p.step(held)                                     # $91B5
+	# The order itself is `SolTurn` ($CDB3); what it needs is whatever
+	# `_start_sol` last built, because a new stage builds a new hero, a new
+	# pool and a new view, while what was pressed last picture belongs to the
+	# turn and carries across.
+	if sol_turn == null:
+		sol_turn = SolTurn.new(sol_hero, sol_pool, sol_view, sol_script,
+				sol_table, sol_flow)
 	else:
-		p.skip(held)
-	# $91C0 -- where he is, counted from the corner of the view.  He goes into
-	# the table here, before the pools do, exactly as the cartridge has it.
-	SolSprites.hero(p, (p.x - sol_view.x) & 0xFFFF,
-			(p.y - sol_view.y) & 0xFFFF, sol_table)
-	_sol_bar(pool)                                       # $91DD
-	_hero_into(pool, p)
-	# $B862 -- one step of a handful of his animations strikes, and what it
-	# strikes with goes into slot fifteen while he is still the one running.
-	if p.punch >= 0:
-		SolSat.strike(pool, p.punch, p.punch_x, p.punch_y)
-		p.punch = -1
-	SolSat.letters(pool)                                 # $923B
-	sol_view.hold = pool.born_wait
-	p.state = pool.hero_state
-	p.fuel = pool.hero_fuel
-	p.burst = pool.z5ab
-	SolWeapon.step(pool)                                 # $B168
-	SolSat.step(pool)                                    # $9156
-	# $AD45 writes back into $05B2, which he reads again next picture.
-	p.face = pool.hero_face
-	SolShots.step(pool)                                  # $CDDA
-	# $B984 -- the shot that turns the world over writes his own numbers.
-	p.flags = pool.hero_flags
-	p.rise = pool.hero_rise - 0x10000 \
-			if pool.hero_rise >= 0x8000 else pool.hero_rise
-	p.ground = pool.hero_ground
-	p.jump = pool.hero_jump
-	p.gravity = pool.hero_grav
-	p.hold_max = pool.hero_hold_max
-	pool.step(sol_view.x, sol_view.y, sol_table)         # $CDDD
-	# $D065 again: the carrying map answers the pool's own looks and writes
-	# his falling while it does, so it comes back out of the pool.
-	p.vy = pool.hero_vy - 0x10000 if pool.hero_vy >= 0x8000 else pool.hero_vy
-	_sol_tab(pool)                                       # $CDE3
-	# $05AF is one byte of memory and not two: a mind that writes it -- $847E,
-	# which is what ends his arriving -- writes what he reads next picture, so
-	# it is taken back out of the pool after the pool has run and not before.
-	p.fuel = pool.hero_fuel
+		sol_turn.hero = sol_hero
+		sol_turn.pool = sol_pool
+		sol_turn.view = sol_view
+		sol_turn.script_ = sol_script
+		sol_turn.table = sol_table
+		sol_turn.flow = sol_flow
+	sol_turn.step(pads[0].held)
 
 
 func _show_sol() -> void:
@@ -3981,6 +4095,8 @@ func _run_oam(path: String) -> void:
 var world: Pb2Objects = null
 var hero: Pb2Player = null
 var view: Pb2Camera = null
+## $CEF0 itself: the order one picture of an area is played in.
+var turn: Pb2Turn = null
 ## $28 -- where in the console's sprite table this picture starts writing.
 var rot := 0
 ## The console's own sprite table, kept from one picture to the next: what the
@@ -3993,10 +4109,11 @@ var oam_tex: ImageTexture
 var sol_hero: SolPlayer
 var sol_pool: SolObjects
 var stage_sol := 0
-## $04 is what was pressed this picture, which is the pad now against the pad
-## last time; the stands are handed the cartridge's own byte, the live game
-## has to keep the one before itself.
-var sol_pad_was := 0
+## Э5.7 -- the order of one picture ($CDB3), which the paired mode plays as
+## well.  $04 -- the pad now against the pad last time -- is kept inside it:
+## the stands are handed the cartridge's own byte, the live game has to work
+## the one before out for itself, and now the turn is what does.
+var sol_turn: SolTurn = null
 ## $04 -- what has just gone down, as the mode reads it.  A stage reads the pad
 ## for itself and keeps its own $06; the screens read it through here.
 var sol_pad_edge := 0
@@ -4088,6 +4205,7 @@ func _start_play(st: int, ar: int) -> void:
 	# clock is concerned; a door goes through $1A := 6 and never touches it.
 	if opened:
 		status.restart_time(came, phase)
+	turn = Pb2Turn.new(level_pb2, world, hero, view, status)
 	view.place(level_pb2.cam_start_page, level_pb2.cam_start_low, 0, 0)
 	hero.place(level_pb2.start_x, level_pb2.start_y, view.pos)
 	hero.face_left = level_pb2.start_face != 0
@@ -4116,80 +4234,28 @@ func _start_play(st: int, ar: int) -> void:
 	var img := Image.create(Pb2Sprites.SPRITES, 1, false, Image.FORMAT_RGBA8)
 	oam_tex = ImageTexture.create_from_image(img)
 	bg.material.set_shader_parameter("oam", oam_tex)
-	_mirror_hero()
+	turn._mirror_hero()
 	# The area brought its own palette with it, so the suit's three colours
 	# have to be put back over sprite palette one.
 	_wear_suit()
 
 
-## One step of the game, in the cartridge's own order ($CEF0).
+## One step of the game.  The order itself is `Pb2Turn` ($CEF0); what is left
+## here is what comes after it -- the sprite table, the colours a suit brings,
+## and what the three ways a picture can end mean to the mode.
 func _step_pb2() -> void:
 	var pad: Pad = pads[0]
-	# $EE5D -- SELECT spends one spare health tank on the health bar.  It only
-	# looks like the suit menu; the suits are on START.
-	if pad.pressed & Pad.SELECT:
-		status.life = world.slots[0][Pb2Objects.F_LIFE]
-		status.spend_life_tank()
-	# $CDBB and $CEFD -- the suits: the pause menu, and the wearing out of
-	# whichever one he has on.  While either has something to say the level
-	# itself does not run at all.
-	status.life = world.slots[0][Pb2Objects.F_LIFE]
-	# $53 is the stage the hero walked in from, not the table the room was
-	# built out of: a boss room is the seventh table and no stage at all.
-	status.stage = came
-	# $CEEC and $CA3A -- what the clock has to know: whose room this is, and
-	# whether the level is standing still.
-	status.boss = world.boss
-	status.area = world.area
-	status.frozen = world.frozen != 0
-	# Pad already keeps the console's own order of the eight, so what it
-	# reports is what $48 would hold.
-	var play: bool = status.step(pad.pressed)
-	# $27 -- the level's things write it as well as read it: the boss's meter
-	# puts it out of play while it fills and back into play when it is full.
-	world.playing = status.mode
-	world.slots[0][Pb2Objects.F_LIFE] = status.life
-	world.suit = status.suit
-	world.power = status.power_level
-	world.second = status.second_blade
-	world.extra = status.extra_shot
-	if status.repaint:
-		status.repaint = false
+	turn.came = came
+	turn.slid = slid
+	var how: int = turn.step(pad.held, pad.pressed)
+	slid = turn.slid
+	if turn.repaint:
+		turn.repaint = false
 		_wear_suit()
-	if status.clear_shots:
-		# $D768 -- what he had in the air belonged to the suit he was wearing.
-		status.clear_shots = false
-		for k in range(1, Pb2Objects.FIRST_LIVE):
-			world.clear(k)
-	if not play:
-		return
-	world.frame = (world.frame + 1) & 0xFF          # $0110
-	world.step_colour(status.menu != 0)             # $BF32
-	world.status = status
-	# $CF00 -- how long the button has been down.
-	hero.step_charge(world.frame)
-	# $CF08 -- what touches what.
-	world.contact()
-	# $CF0E -- what the view has uncovered since the last step.
-	world.scan(view.pos, slid)
-	# $CF11 -- the view follows him.
-	view.drive()
-	slid = view.shift
-	world.cam = view.pos
-	# $CF14 -- the view slid, so everything standing on it slid back.
-	world.shift(view.shift)
-	# $CF1C -- every thing gets its turn.
-	world.turns()
-	status.mode = world.playing
-	# $1A := 6 -- something has told the level to build itself again.  The
-	# door at the end of an area is what usually does it.
-	if world.live == 6:
+	if how == Pb2Turn.NEXT_AREA:
 		_next_area()
 		return
-	# $18 := 6 -- the scene between the two halves of the fifth stage.  There
-	# is nothing to show here yet, so it is over at once and the same area is
-	# built again with $AD one, where the same record is a door ($B0D7).
-	if world.interlude:
+	if how == Pb2Turn.INTERLUDE:
 		phase = world.phase
 		interludes += 1
 		_start_play(level_pb2.stage, world.area)
@@ -4197,44 +4263,10 @@ func _step_pb2() -> void:
 		status.restart_time(came, phase)
 		_apply()
 		return
-	# $8E26 -- what is already in the air moves first, and only then does
-	# $8E29 let go of the next one; $8E2C moves him after both.
-	world.shots_turn()
-	hero.shift = view.shift
-	hero.held = world.held
-	hero.suit = world.suit
-	# $011F and $0120..$0150, $063C and $0652 -- what the level worked out
-	# about him during the turns of the things.  The two pushes are bytes with
-	# a sign in them and his own step reads them as numbers.
-	hero.solids = world.solids
-	hero.push_x = world.push_x - 256 if world.push_x > 127 else world.push_x
-	hero.push_y = world.push_y - 256 if world.push_y > 127 else world.push_y
-	# $8BBE -- the break in the middle of the fifth stage takes the pad away
-	# and holds it towards the left itself ($48 := 0, $4A := 2).
-	if world.take_pad:
-		hero.step(Pad.LEFT, 0, view.pos, hero_shots_out(), world.extra)
-	else:
-		hero.step(pad.held, pad.pressed, view.pos,
-				hero_shots_out(), world.extra)
-	view.decide(((hero.y if level_pb2.vertical else hero.x) >> 8) & 0xFF)
-	_mirror_hero()
-	# $8E2C -- the fourth suit's two satellites take their turn last of all,
-	# after his step has moved him, because the ellipse they walk is measured
-	# from where he stands now.
-	world.orbit()
-	# $8E32..$8E52 -- everything the level said about him this frame ends with
-	# his step; the head of the next sweep would wipe it again anyway.
-	world.push_x = 0
-	world.push_y = 0
-	world.solids = []
-	world.claimed = 0
-	# $8E4C and $8E4F -- and so do the marks the things left for the
-	# satellites, which is why a thing has to set its bit on every turn.
-	world.marks = 0
-	world.marks2 = 0
-	# $A17A -- no health left, or no time left, and he dies either way.
-	if world.slots[0][Pb2Objects.F_LIFE] == 0 or status.out_of_time:
+	if how == Pb2Turn.DIED:
 		_die()
+		return
+	if how == Pb2Turn.HELD:
 		return
 	# $8038 -- and then the picture of it all.
 	oam = Pb2Sprites.build(world.slots, rot, oam)
@@ -4290,48 +4322,6 @@ func _die() -> void:
 
 
 ## How many of his throws are still in the air ($A1C2 counts them).
-func hero_shots_out() -> int:
-	var n := 0
-	for k in range(1, Pb2Objects.FIRST_LIVE):
-		if world.slots[k][Pb2Objects.F_TYPE] != 0:
-			n += 1
-	return n
-
-
-## His own place in the table is his picture and where he stands; the rest of
-## that row -- his health, his forty pictures of grace, which way a blow threw
-## him -- belongs to the sweep and is left alone.
-func _mirror_hero() -> void:
-	var s: PackedByteArray = world.slots[0]
-	s[Pb2Objects.F_KIND] = hero.pose
-	s[Pb2Objects.F_BITS] = (s[Pb2Objects.F_BITS] & ~0x40) \
-			| (0x40 if hero.face_left else 0)
-	s[Pb2Objects.F_X] = (hero.x >> 8) & 0xFF
-	s[Pb2Objects.F_XHI] = (hero.x >> 16) & 0xFF
-	s[Pb2Objects.F_Y] = (hero.y >> 8) & 0xFF
-	s[Pb2Objects.F_YHI] = (hero.y >> 16) & 0xFF
-	# $0534:$054A -- how fast he is falling.  A blade thrown straight down
-	# rides down with him ($A671 reads it), so it has to be in the table.
-	#
-	# It is a picture behind what the cartridge reads there, and cannot yet be
-	# anything else: the cartridge moves him ($8E20), then sweeps what he has
-	# thrown ($8E26), then changes his fall speed again ($8E29 -> $91EF), and
-	# here his whole picture is one call.  Splitting him in two belongs with
-	# the rest of the step's order and is left for later.
-	s[Pb2Objects.F_VY] = (hero.vy >> 8) & 0xFF
-	s[Pb2Objects.F_VYFR] = hero.vy & 0xFF
-	# $0416 outright.  `Pb2Player.state` is that byte and nothing else: every
-	# place the cartridge writes it -- $9E26 with the state ($8EBE $00/$04,
-	# $8F89 $08/$05, $8FF5 $10/$07, $A000 $01/$08, $94A6 $04/$10 and the rest),
-	# $8EC1 while he swings, $A21A when a throw begins, $99C1 when it ends --
-	# has a line of its own in the hero's module.  The sweep reads it for his
-	# box ($B2C1, bits three and four), for whether something has hold of him
-	# (bits five and six), for whether he is off the ground (bit nought, which
-	# a blade thrown down rides on) and for his pose ($BA44 counts the noughts
-	# under it), so it is handed over whole rather than rebuilt bit by bit.
-	s[Pb2Objects.F_MARK] = hero.state
-
-
 ## Hand the picture to the shader: where the view stands, which tile banks the
 ## sprites come out of, and the console's sprite table.
 func _show() -> void:

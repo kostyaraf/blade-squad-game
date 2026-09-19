@@ -457,6 +457,10 @@ func scan(pos: int, shift: int) -> void:
 		return
 	var world := _world(pos)
 	var edge := (world >> 4) & 0xFF
+	# Э5.7 -- the furthest column the list was ever read up to, so that a run
+	# can tell "the level put nothing out" from "the level was never walked as
+	# far as its first thing".  Nothing reads it but a stand.
+	reached = maxi(reached, edge + 0x0F)
 	var list: Array = lvl.spawns
 	for i in range(list.size()):
 		var rec: Dictionary = list[i]
@@ -731,8 +735,25 @@ func _middle_of(s: PackedByteArray) -> int:
 ## own game gives him, because his picture means nothing to this game's
 ## tables.  Empty means nobody is there, and then everything below is the
 ## cartridge unchanged.  See `work/re/pb3_hits.md`.
+## Э5.7 -- how far along the list the scan has ever looked.
+var reached := -1
 var guest_row := PackedByteArray()
 var guest_box: Array = []
+## Э5.7 -- and more than one of them.  When neither of a pair's two heroes came
+## from the game the level did, both of them are guests in it; the pair puts
+## the rest here, as `[row, box]`, and the one named above stays what it is
+## because it is what Э5.4's stand hands over.
+var more_guests: Array = []
+
+
+## Everyone in the room who is not the row at $0400, as `[row, box]`.
+func guest_list() -> Array:
+	var out: Array = []
+	if not guest_row.is_empty() and guest_box.size() == 3:
+		out.append([guest_row, guest_box])
+	for g in more_guests:
+		out.append(g)
+	return out
 
 
 ## $B2C1 -- the hero's own box, by what he is doing: how far above his feet
@@ -760,8 +781,8 @@ func contact() -> void:
 	if playing != 3:
 		return
 	var hero: PackedByteArray = slots[0]
-	var guest: bool = not guest_row.is_empty() and guest_box.size() == 3
-	if hero[F_LIFE] == 0 and not guest:
+	var guests: Array = guest_list()
+	if hero[F_LIFE] == 0 and guests.is_empty():
 		return
 	# $B248 -- the forty pictures after a blow are counted down here and
 	# nowhere else, and he flashes for as long as they last.  When the harness
@@ -771,8 +792,10 @@ func contact() -> void:
 		hero[F_BITS] ^= 0x80
 	# And the guest's own grace is counted down the same way.  The flashing is
 	# not: how a guest is drawn is his own game's business.
-	if guest and guest_row[F_STUN] != 0:
-		guest_row[F_STUN] -= 1
+	for g in guests:
+		var row: PackedByteArray = g[0]
+		if row[F_STUN] != 0:
+			row[F_STUN] -= 1
 	var n: int = 6 if (frame & 1) != 0 else 7
 	while n < SLOTS:
 		var s: PackedByteArray = slots[n]
@@ -780,8 +803,10 @@ func contact() -> void:
 			if slots[0][F_LIFE] != 0:
 				_touch(n, slots[0], own_box(slots[0]))
 				_shots(n)
-			if guest and guest_row[F_LIFE] != 0 and slots[n][F_TYPE] != 0:
-				_touch(n, guest_row, guest_box)
+			for g in guests:
+				var row: PackedByteArray = g[0]
+				if row[F_LIFE] != 0 and slots[n][F_TYPE] != 0:
+					_touch(n, row, g[1])
 		n += 2
 
 

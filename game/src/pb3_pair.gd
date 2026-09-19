@@ -101,17 +101,73 @@ var shoved: Array[Vector2i] = []
 ## from.
 var was_at: Array[Vector2i] = []
 
+## Which record the level came from, which the level itself does not keep.
+var stage := 0
+var area := 0
+## $53 -- the stage the hero walked in from, which is not always the table the
+## room was built out of: the boss rooms are the seventh table and belong to no
+## stage of their own, so walking into one leaves $53 where it was ($86F0 and
+## $84F6 touch $79 and $9C and not $53).  A record stood up cold was walked
+## into from nowhere, so a boss room is given the first stage and the clock has
+## a number to read.
+var came := 0
+
+
+# ---- Э5.7: the level's own game, running under the two of them ------------
+
+## Whether the level's own things are running at all.  Э5.2 to Э5.6 walk two
+## heroes through an empty level and nothing else; `begin(spots, true)` is what
+## opens it.
+var flowing := false
+## The things of the level.  They belong to the level and not to a hero: one
+## area has one pool of them however many heroes walk in it, and only the game
+## the level came from has one here.
+var host_pb2: Pb2Objects = null
+var host_sol: SolObjects = null
+var host_script: SolScript = null
+var host_table: SolSprites.Table = null
+var host_status: Pb2Status = null
+## The order of one picture: the level's own, $CEF0 or $CDB3, and the very
+## same class the single game plays.
+var turn_pb2: Pb2Turn = null
+var turn_sol: SolTurn = null
+## Which of the two heroes stands in the one place the level's own game keeps
+## for a hero ($0400 in a Power Blade area, $80 in a Solbrain stage), and below
+## nought when neither of them came from that game: then the place is held by a
+## hero nothing ever steps, which is how both cartridges are told there is
+## nobody in it ($B23D reads no life left, $CFDB reads no suit).
+var host := -1
+var spare_pb2: Pb2Player = null
+var spare_sol: SolPlayer = null
+## Everyone who is not that one is a guest of the level (Э5.4).  Per hero:
+## his row in a Power Blade pool, or the `SolPlayer` a Solbrain pool reads him
+## through, and the entry in the pool that carries his box.
+var guest_row: Array = []
+var guest_sol: Array = []
+var guest_at: Array = []
+## A pool of his own game, borrowed, only to work out the box his own game
+## gives him -- his picture means nothing to the other game's tables.
+var guest_pool: Array = []
+## What the last picture ended as, in `Pb2Turn`'s words.
+var ended := 0
+## The pads of the picture being played, because the order calls back into
+## here to step the heroes and has no pads of its own to hand over.
+var pads_now: Array = []
+
 
 ## `kinds` is one of `PB2`/`SOL` a hero, in the order their pads come.
-func _init(from: int, stage: int, area: int, kinds: Array) -> void:
+func _init(from: int, st: int, ar: int, kinds: Array) -> void:
 	game = from
+	stage = st
+	area = ar
+	came = 0 if st == Pb2Objects.BOSS_STAGE else st
 	if game == PB2:
-		var src := Pb2Level.new(stage, area)
+		var src := Pb2Level.new(st, ar)
 		pb2v = src
 		solv = Pb2AsSol.new(src)
 		eye = Pb2Camera.new(pb2v)
 	else:
-		var src := SolLevel.new(stage)
+		var src := SolLevel.new(st)
 		solv = src
 		down = SolAsPb2.new(src)
 		pb2v = down
@@ -279,7 +335,12 @@ func _remember() -> void:
 # ---- the picture ----------------------------------------------------------
 
 ## Put both of them down and set the view around them.
-func begin(spots: Array) -> void:
+##
+## Э5.7 -- `flow` raises the level's own game round them as well: its things,
+## its order and, in a Solbrain stage, its script.  Left off, the level is
+## empty and only the two of them and the view move, which is what Э5.2 to
+## Э5.6 walk.
+func begin(spots: Array, flow: bool = false) -> void:
 	# The view first, so that the middle of them is the middle of the screen,
 	# and then the two: a Power Blade hero's place is read off the view.
 	var mid := Vector2i.ZERO
@@ -323,6 +384,112 @@ func begin(spots: Array) -> void:
 		place_at(i, Vector2i(spots[i]))
 	_remember()
 	started = true
+	flowing = flow
+	if flowing:
+		_raise_flow()
+
+
+## Э5.7 -- the level's own game, raised round the two of them.
+##
+## One pool of things, belonging to the level and not to a hero, stepped by the
+## level's own order -- the very class the single game plays, with the two
+## places a second hero changes handed in (`Pb2Turn.walk`, `SolTurn.walk`).
+##
+## Whichever of the two came from the game the level did stands in the one
+## place that game keeps for a hero; every other is a guest of it (Э5.4).  When
+## neither came from it the place is held by a hero nothing ever steps, with no
+## health in a Power Blade area ($B23D) and no suit in a Solbrain stage
+## ($CFDB), which is how each cartridge is told there is nobody there.
+func _raise_flow() -> void:
+	for i in range(who.size()):
+		guest_row.append(null)
+		guest_sol.append(null)
+		guest_at.append(null)
+		guest_pool.append(null)
+		if who[i] == game and host < 0:
+			host = i
+	if game == PB2:
+		host_pb2 = Pb2Objects.new(pb2v)
+		host_status = Pb2Status.new()
+		host_pb2.status = host_status
+		host_pb2.came = came
+		host_pb2.suit = host_status.suit
+		host_pb2.power = host_status.power_level
+		host_pb2.second = host_status.second_blade
+		host_pb2.extra = host_status.extra_shot
+		# $CE45 -- an area opened on its own is the top of a stage as far as
+		# the clock is concerned.
+		host_status.restart_time(came, 0)
+		# The area has just opened, so everything already on the screen comes
+		# out at once rather than waiting for the view to move ($E3F3).
+		host_pb2.fill = 1
+		host_pb2.slots[0][Pb2Objects.F_TYPE] = 0x01
+		host_pb2.slots[0][Pb2Objects.F_LIFE] = 0
+		if host >= 0:
+			# His own pool was only ever a place for his own sums to live; in
+			# a room with things in it there is one pool and it is this one.
+			var q: Pb2Player = pb2[host]
+			q.world = host_pb2
+			things[host] = host_pb2
+			host_pb2.slots[0][Pb2Objects.F_LIFE] = 0x10
+		else:
+			spare_pb2 = Pb2Player.new(pb2v)
+			spare_pb2.world = host_pb2
+		turn_pb2 = Pb2Turn.new(pb2v, host_pb2,
+				pb2[host] if host >= 0 else spare_pb2, eye, host_status)
+		turn_pb2.slid_already = true
+		turn_pb2.walk = _walk_pb2
+		turn_pb2.came = came
+	else:
+		host_sol = SolObjects.new(solv)
+		host_script = SolScript.new()
+		host_table = SolSprites.Table.new()
+		for i in range(4):
+			host_table.banks[i] = solv.spr_banks[i]
+		# $C72D never wipes the first eight entries: that corner of the table
+		# belongs to the strip.
+		for i in range(0, SolSprites.FWD_START, 4):
+			host_table.oam[i] = SolSprites.HIDDEN
+		# $E788 gave it an empty pool and every spawn still to come; what is
+		# left is where the view stands and that the first picture owes a scan.
+		host_sol.seen_x = sol_eye.x
+		host_sol.seen_y = sol_eye.y
+		host_sol.col_due = 0xFF
+		host_sol.row_due = 0xFF
+		host_sol.stage = stage
+		host_sol.room = host_sol.room_of(sol_eye.x, sol_eye.y)
+		if host >= 0:
+			host_sol.hero = sol[host]
+			sol[host].pool = host_sol
+		else:
+			spare_sol = SolPlayer.new(solv)
+			spare_sol.suit = 0
+			host_sol.hero = spare_sol
+		turn_sol = SolTurn.new(host_sol.hero, host_sol, sol_eye, host_script,
+				host_table, null)
+		turn_sol.slid_already = true
+		turn_sol.walk = _walk_sol
+	for i in range(who.size()):
+		if i == host:
+			continue
+		if who[i] == SOL:
+			# A pool of his own game, never stepped, only ever asked what box
+			# his picture gives him ($80DE).
+			guest_pool[i] = SolObjects.new(solv)
+		if game == PB2:
+			var row := Pb2Objects.empty_row()
+			row[Pb2Objects.F_LIFE] = 0x10
+			guest_row[i] = row
+			guest_at[i] = [row, [0x0F, 6, 13]]
+			host_pb2.more_guests.append(guest_at[i])
+		else:
+			var carrier := SolPlayer.new(solv)
+			carrier.suit = _health_sol(i)
+			carrier.timer = 0xFF
+			guest_sol[i] = carrier
+			guest_at[i] = [carrier, [0x01, 0, 0, 0x10, 0x10]]
+			host_sol.more_guests.append(guest_at[i])
+	_mirror_them()
 
 
 ## One picture of both of them and of the view.
@@ -346,6 +513,65 @@ func step(pads: Array) -> void:
 		slid = Vector2i((sol_eye.x >> 4) - was_eye.x,
 				(sol_eye.y >> 4) - was_eye.y)
 		_led_by_sol()
+	pads_now = pads
+	ended = Pb2Turn.NONE
+	if turn_pb2 != null:
+		turn_pb2.slid = slid.y if pb2v.vertical else slid.x
+		turn_pb2.came = came
+		var held: int = int(pads[host]) if host >= 0 else 0
+		var hit: int = held & ~last_pad[host] if host >= 0 else 0
+		ended = turn_pb2.step(held, hit)
+		# With nobody of this game in the room the empty place at $0400 has no
+		# health, and $A17A reads that as a death.  It is not one: the two who
+		# are really here are guests, and how they end is asked of them.
+		if host < 0 and ended == Pb2Turn.DIED:
+			ended = Pb2Turn.NONE
+		if ended == Pb2Turn.HELD:
+			_walk_them()
+	elif turn_sol != null:
+		_stand_in()
+		turn_sol.step(int(pads[host]) if host >= 0 else 0)
+	else:
+		_walk_them()
+	for i in range(who.size()):
+		if world_of(i).y >= solv.height_tiles * 8:
+			gone[i] = true
+
+
+## Where the hero nobody steps stands, when the stage has no hero of its own in
+## it.
+##
+## $CF11 asks the stage where he is, because a stage puts its things out round
+## him ($E3F3 reads $80 along with the corner of the view), so with nobody there
+## the stage would put nothing out at all.  He is stood in the middle of the two
+## who really are there -- the same middle the view follows, and for the same
+## reason: it is the one place in the room that belongs to both of them.  He
+## still has no suit, so nothing ever touches him ($CFDB).
+func _stand_in() -> void:
+	if host >= 0 or spare_sol == null:
+		return
+	var mid := Vector2i.ZERO
+	var n := 0
+	for i in range(who.size()):
+		if gone[i]:
+			continue
+		mid += world_of(i)
+		n += 1
+	if n == 0:
+		return
+	mid /= n
+	spare_sol.place(mid.x << 4, (mid.y - SolPlayer.FOOT_DY / 16) << 4)
+	spare_sol.suit = 0
+
+
+## The two of them and the view, which is where the level's own order calls
+## back into ($CF3B for a Power Blade area, $91B5 for a Solbrain stage).
+## `take_pad`, `shots` and `extra` are the three things a Power Blade area
+## tells its own hero at $CF3B and has no way of telling a guest; a level with
+## no order running has none of them.
+func _walk_them(take_pad: bool = false, shots: int = 0,
+		extra: int = 0, hold: int = 0) -> void:
+	var pads: Array = pads_now
 	for i in range(who.size()):
 		shoved[i] = Vector2i.ZERO
 		if gone[i]:
@@ -353,11 +579,18 @@ func step(pads: Array) -> void:
 		if who[i] == SOL:
 			# Solbrain's hero works out for himself what was newly pressed
 			# ($C882 keeps the picture before), so he is handed the pad whole.
-			sol[i].step(int(pads[i]))
+			#
+			# $91AC -- and in his own stage, while the wait for a satellite is
+			# between one and $2F, $9477 is not called at all.  A guest of the
+			# stage waits with it: the wait is the stage's and not his own.
+			if game == SOL and hold != 0 and hold < 0x30:
+				sol[i].skip(int(pads[i]))
+			else:
+				sol[i].step(int(pads[i]))
 			continue
 		var q: Pb2Player = pb2[i]
-		var w: Pb2Objects = things[i]
-		w.cam = eye.pos
+		var v: Pb2Objects = things[i]
+		v.cam = eye.pos
 		if game == PB2 and pb2v.vertical:
 			q.shift = slid.y
 			q.shift_y = 0
@@ -367,12 +600,170 @@ func step(pads: Array) -> void:
 		var held: int = int(pads[i])
 		var hit: int = held & ~last_pad[i]
 		last_pad[i] = held
-		q.step(held, hit, eye.pos, 0, 0)
+		# $8BBE -- the break in the middle of the fifth stage takes the pad
+		# away from whoever the area's own hero is and holds it towards the
+		# left itself.  A guest is left his own pad: the break is a thing the
+		# area does to its hero, and a guest has no part in it.
+		if i == host and take_pad:
+			q.step(Pad.LEFT, 0, eye.pos, shots, extra)
+		elif i == host:
+			q.step(held, hit, eye.pos, shots, extra)
+		else:
+			q.step(held, hit, eye.pos, 0, 0)
 	_drive_view()
 	_hold_them_in()
+	_mirror_them()
+
+
+## $CF3B -- where a Power Blade area calls back in.
+func _walk_pb2(take_pad: bool, shots: int, extra: int) -> void:
+	_walk_them(take_pad, shots, extra)
+
+
+## $91B5 -- and where a Solbrain stage does, with the wait a satellite leaves
+## behind it ($91AC).
+func _walk_sol(hold: int) -> void:
+	_walk_them(false, 0, 0, hold)
+	# $91C0 -- and the stage's own hero into the table, where the order has it,
+	# before the pools go in.  A guest is drawn by his own game and not here.
+	if host >= 0:
+		var h: SolPlayer = sol[host]
+		SolSprites.hero(h, (h.x - sol_eye.x) & 0xFFFF,
+				(h.y - sol_eye.y) & 0xFFFF, host_table)
+
+
+## Everyone in the room said in the numbers the level's own game keeps a hero
+## in: the one at $0400 (or $80) by his own game's mirroring, and the rest as
+## guests of it (Э5.4).
+##
+## It is done at the end of the picture and not at the start of the next one
+## because that is where the cartridge does it ($CF41, after his step), and
+## because what reads it -- the sweep at $B23D, the laying at $CFBA -- runs
+## before the step of the picture after.
+func _mirror_them() -> void:
+	if not flowing:
+		return
+	_harvest()
+	if turn_pb2 != null and host >= 0:
+		turn_pb2._mirror_hero()
 	for i in range(who.size()):
-		if world_of(i).y >= solv.height_tiles * 8:
-			gone[i] = true
+		if i == host:
+			continue
+		if game == PB2:
+			_guest_into_pb2(i)
+		else:
+			_guest_into_sol(i)
+
+
+## Э5.4 -- what the level took off a guest this picture, said back in his own
+## game's numbers.  The level struck the mirror, because the mirror is all the
+## level can see of him; the mirror is written out of his own health every
+## picture, so whatever is missing from it is the blow.
+func _harvest() -> void:
+	for i in range(who.size()):
+		if i == host or gone[i]:
+			continue
+		if game == PB2:
+			var row: PackedByteArray = guest_row[i]
+			if row == null:
+				continue
+			var lost: int = _health_pb2(i) - row[Pb2Objects.F_LIFE]
+			if lost <= 0:
+				continue
+			if who[i] == PB2:
+				var s: PackedByteArray = things[i].slots[0]
+				s[Pb2Objects.F_LIFE] = maxi(0,
+						s[Pb2Objects.F_LIFE] - lost)
+			else:
+				sol[i].suit = maxi(0, sol[i].suit - hurt_to_sol(lost))
+			continue
+		var carrier: SolPlayer = guest_sol[i]
+		if carrier == null:
+			continue
+		var took: int = _health_sol(i) - carrier.suit
+		if took <= 0:
+			continue
+		if who[i] == SOL:
+			sol[i].suit = maxi(0, sol[i].suit - took)
+		else:
+			var s: PackedByteArray = things[i].slots[0]
+			s[Pb2Objects.F_LIFE] = maxi(0, s[Pb2Objects.F_LIFE] - took)
+
+
+## A guest of a Power Blade area: twenty nine bytes of $0400's shape, his feet
+## where the screen has them, and the box his own game gives him.
+func _guest_into_pb2(i: int) -> void:
+	var row: PackedByteArray = guest_row[i]
+	if row == null:
+		return
+	var s: Vector2i = screen_of(i)
+	row[Pb2Objects.F_X] = s.x & 0xFF
+	row[Pb2Objects.F_Y] = s.y & 0xFF
+	row[Pb2Objects.F_XHI] = 0
+	row[Pb2Objects.F_YHI] = 0
+	row[Pb2Objects.F_LIFE] = _health_pb2(i)
+	if gone[i]:
+		row[Pb2Objects.F_LIFE] = 0
+	guest_at[i][1] = _box_pb2(i)
+
+
+## And of a Solbrain stage: the `SolPlayer` the pool reads him through, and the
+## corner and size of his box in the stage's own sixteenths ($88..$8F).
+func _guest_into_sol(i: int) -> void:
+	var carrier: SolPlayer = guest_sol[i]
+	if carrier == null:
+		return
+	carrier.suit = 0 if gone[i] else _health_sol(i)
+	var b: Array = _box_pb2(i) if who[i] == PB2 else _box_own_sol(i)
+	var up: int = int(b[0])
+	var half_w: int = int(b[1])
+	var half_h: int = int(b[2])
+	var f: Vector2i = world_of(i)
+	guest_at[i][1] = [0x01,
+			((f.x - half_w) << 4) & 0xFFFF,
+			((f.y - up - half_h) << 4) & 0xFFFF,
+			(half_w * 2 + 1) << 4, (half_h * 2 + 1) << 4]
+
+
+## His box in whole pixels: how far above his feet the middle of it lies, and
+## its two halves.  A Power Blade hero has his own game's ($B2C1); a Solbrain
+## hero's comes off his picture ($80DE), which only his own game can read, so
+## a pool of his own game is kept beside him to be asked.
+func _box_pb2(i: int) -> Array:
+	if who[i] == PB2:
+		var row := Pb2Objects.empty_row()
+		row[Pb2Objects.F_MARK] = pb2[i].state
+		return Pb2Objects.own_box(row)
+	return _box_own_sol(i)
+
+
+func _box_own_sol(i: int) -> Array:
+	var pool: SolObjects = guest_pool[i]
+	pool.hero = sol[i]
+	pool.hero_box()
+	if pool.hero_box_flags == 0:
+		return [0x0F, 6, 13]
+	var half_w: int = (pool.hero_bw >> 4) / 2
+	var half_h: int = (pool.hero_bh >> 4) / 2
+	# $82:$83 stands sixteen pixels above his feet, and this is how far the
+	# middle of the box stands above them.
+	var dy: int = ((pool.hero_by - sol[i].y + 0x8000) & 0xFFFF) - 0x8000
+	return [16 - (dy >> 4) - half_h, half_w, half_h]
+
+
+## His health, in the numbers of the game the level came from.  A Power Blade
+## area counts sixteen ($049A) and a Solbrain stage eight ($05C5), and Э5.4
+## says how one is said in the other.
+func _health_pb2(i: int) -> int:
+	if who[i] == PB2:
+		return things[i].slots[0][Pb2Objects.F_LIFE]
+	return mini(0x10, hurt_to_pb2(sol[i].suit))
+
+
+func _health_sol(i: int) -> int:
+	if who[i] == SOL:
+		return sol[i].suit
+	return mini(0x10, things[i].slots[0][Pb2Objects.F_LIFE])
 
 
 ## Whether the picture goes on: one of them gone is not the end of it.
