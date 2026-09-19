@@ -97,11 +97,18 @@ def cart_walk(done, presses=(), turn0=None):
         state = P.make_state(os.path.join(d, 'base'))
         tr = os.path.join(d, 't.txt')
         subprocess.run(cmd_base(d, state, RUN, done, presses, turn0)
-                       + ['-watch', '0002-000C', '-trace', tr],
+                       + ['-watch', '0000-000C', '-trace', tr],
                        check=True, capture_output=True)
         # The turns are counted from one, which is what the engine calls the
         # step it takes first: its own count moves on the way in.
         mode, turn, tick = {}, {}, {}
+        # $00 as it stood when each turn began.  It is not $0C: $00 counts
+        # pictures shown and is raised by the NMI, $0C counts turns of the
+        # main loop, and a turn that writes a screen lasts several pictures.
+        # $C72D -- the sprite table put back to empty -- reads $00, so the
+        # engine has to be handed it.
+        shown = {}
+        zero = 0
         clock = 0
         seen = None
         for line in open(tr):
@@ -109,6 +116,9 @@ def cart_walk(done, presses=(), turn0=None):
                 continue
             f, _pc, _bk, ad, v = line.split()[1].split(',')
             f, ad, v = int(f), int(ad, 16), int(v, 16)
+            if ad == 0x00:
+                zero = v
+                continue
             if f < POKE_AT:
                 if ad == 0x0C:
                     seen = v
@@ -119,6 +129,7 @@ def cart_walk(done, presses=(), turn0=None):
                     seen = v
                     turn[clock] = f
                     tick[clock] = v
+                    shown[clock] = zero
             elif ad == 0x02:
                 mode[max(clock, 0)] = v
         out = [(c, mode[c]) for c in sorted(turn) if c in mode]
@@ -126,7 +137,7 @@ def cart_walk(done, presses=(), turn0=None):
         # mode of the chain was written: its own `step` counts one on the way
         # in, so it is handed the one before.
         begin = (tick[out[0][0]] - 1) & 0xFF if out else 0
-        return out, turn, begin
+        return out, turn, begin, shown
     finally:
         P.sweep(d)
 
@@ -146,12 +157,18 @@ def cart_shots(frames, into, done, presses, turn0):
         P.sweep(d)
 
 
-def engine(frames, into, clock, done, presses=()):
+def engine(frames, into, clock, done, presses=(), shown=None, d=None):
     """The engine's own chain, and a picture at each turn asked for.  Its
     `clock` is $0C and the turn numbered N is the step numbered N-1."""
     n = RUN - POKE_AT
     spec = ('%d,set:mode:%d,set:stage:%d,set:clock:%d,set:done:%d'
             % (n, 0x19, STAGE, clock, done))
+    # Turn N of the cartridge is step N-1 of the engine.
+    if shown:
+        path = os.path.join(d, 'ticks.txt')
+        open(path, 'w').write(
+            '\n'.join(str(shown.get(i + 1, 0)) for i in range(n)) + '\n')
+        spec += ',ticks:' + path
     for t, name in presses:
         spec += ',%s:%d' % (name, t - 1)
     shots = {f: os.path.join(into, 'eng_%d.png' % f) for f in frames}
@@ -177,6 +194,14 @@ def engine(frames, into, clock, done, presses=()):
 def one(name, done, presses):
     """One walk of the screen on both sides, compared.  Returns how many of
     the comparisons came out wrong and how many were made."""
+    hand = P.scratch('board_ticks')
+    try:
+        return _one(name, done, presses, hand)
+    finally:
+        P.sweep(hand)
+
+
+def _one(name, done, presses, hand):
     bad = 0
     all = 0
     print('-- %s, $2D = %02X' % (name, done))
@@ -186,9 +211,9 @@ def one(name, done, presses):
     turn0 = None
     if presses:
         turn0 = cart_walk(done)[1]
-    walk, turn, clock = cart_walk(done, presses, turn0)
+    walk, turn, clock, shown = cart_walk(done, presses, turn0)
     cart = B.spans(walk, max(turn) + 1)
-    eng_chain, _ = engine([], '', clock, done, presses)
+    eng_chain, _ = engine([], '', clock, done, presses, shown, hand)
     eng = B.spans(eng_chain, RUN - POKE_AT)
     while cart and cart[0][0] != eng[0][0]:
         cart.pop(0)
@@ -229,7 +254,7 @@ def one(name, done, presses):
         rom = cart_shots(sorted({w[2] for w in want}), d, done,
                          presses, turn0)
         _, pic = engine(sorted({w[3] for w in want}), d, clock, done,
-                        presses)
+                        presses, shown, hand)
         for mode, k, cf, ef in want:
             got = B.differ(rom[cf], pic[ef])
             all += 1

@@ -1518,10 +1518,26 @@ func _run_sol_boot(spec: String) -> void:
 	# Turn -> the dumps asked for at it.  A turn may be asked for both its
 	# board and what the flow is holding, so one key holds a list.
 	var writes := {}
+	# The cartridge's own $00 for each turn, when a stand hands it over.
+	var ticks: Array = []
 	for k in range(1, f.size()):
 		var g := f[k].split(":")
 		if g[0] == "shot":
 			shots[int(g[1])] = g[2]
+			continue
+		# `ticks:PATH` -- the cartridge's own $00 for every turn of the walk,
+		# one number to a line.  $00 is a count of pictures shown and $0C a
+		# count of turns of the main loop, and on a heavy turn -- a screen
+		# being written -- the console shows more than one picture while the
+		# loop goes round once.  The engine has no way to know how many, so a
+		# stand that wants the sprite table's own turn ($6B, which $C72D takes
+		# from $00) right to the picture hands the count over.  Without this
+		# the walk raises its own every turn, which is what both games do
+		# while nothing heavy is happening.
+		if g[0] == "ticks":
+			for row in FileAccess.get_file_as_string(g[1]).split("\n"):
+				if row.strip_edges() != "":
+					ticks.append(int(row))
 			continue
 		if g[0] == "dump":
 			shots[int(g[1])] = "?"
@@ -1599,6 +1615,9 @@ func _run_sol_boot(spec: String) -> void:
 		pads[0].held = held
 		pads[0].pressed = sol_pad_edge
 		sol_walk_turn = i
+		if i < ticks.size():
+			sol_flow.tick_held = true
+			sol_flow.tick = int(ticks[i])
 		sol_flow.step(self)
 		# The picture is drawn every turn in the game, and it is the drawing
 		# that hands a screen its own thirty two ($C6E9 with X = $1F).  A walk

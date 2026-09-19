@@ -182,6 +182,60 @@ def run_engine(cfg, path):
     return out
 
 
+def _map_line(cam, hi, lo):
+    """$F44B..$F495 -- which line of the map a line below the view falls on,
+    reckoned in bytes the way the console reckons it.  Only the high byte
+    matters here: it is the entry of the screen list the cartridge will read,
+    and a level has at most six screens."""
+    cam_hi, cam_lo = (cam >> 8) & 0xFF, cam & 0xFF
+    line = cam_lo + lo
+    carry = 1 if line > 0xFF else 0
+    line &= 0xFF
+    page = (cam_hi + hi + carry) & 0xFF
+    if hi < 0x80:
+        line += (((page - cam_hi) & 0xFF) << 4) & 0xFF
+        page = (page + (1 if line > 0xFF else 0)) & 0xFF
+        line &= 0xFF
+        if line >= 0xF0:
+            page = (page + 1) & 0xFF
+    else:
+        line -= (((cam_hi - page) & 0xFF) << 4) & 0xFF
+        page = (page - (1 if line < 0 else 0)) & 0xFF
+    return page
+
+
+def ceiling_read(area, rows, step, slot, field, mine):
+    """The one difference the engine cannot be asked to follow.
+
+    A throw aimed straight up asks the ground $1D above itself ($A343 hands
+    $C888 an offset of $E3) and starts at the ceiling if it finds one.  Near
+    the top of a level that question lands above the first line of the map,
+    and there the cartridge stops making sense: $F493 mends the line but not
+    the page, so $F497 reads the two hundred and fifty sixth entry of a screen
+    list six entries long, doubles it into a pointer past the end of the
+    screen table and comes out holding an address inside its own sprite
+    buffer.  The answer is then whatever happens to be drawn on the screen
+    that picture -- in area 4:6 it is $80 above one column and $00 above the
+    next.
+
+    The engine answers "nothing there", which is what is above the top of a
+    level, and a difference of this one shape is set apart rather than
+    counted.  See work/re/pb2_object_terrain.md.
+    """
+    if field != 9 or not area.vertical:                  # the low byte of y
+        return False
+    was = rows[step - 1]['whole']
+    now = rows[step]['whole']
+    if not was or not now:
+        return False
+    # Only on the picture a throw is born, and only one aimed straight up.
+    if was[-1][slot][0] or not now[0][slot][0] or now[0][slot][21] != 0x02:
+        return False
+    y = (now[0][slot][8] << 8) | mine
+    return _map_line(rows[step]['cams'][0], (y - 0x1D) >> 8 & 0xFF,
+                     (y - 0x1D) & 0xFF) != 0
+
+
 def show(where, told):
     """One difference, in words."""
     slot, field, mine, theirs = (int(x) for x in told.split(':'))
@@ -190,6 +244,7 @@ def show(where, told):
 
 
 def check(name, script, stage, area, tmp, spot=None, pokes=()):
+    ground = Area(stage, area)
     rows = V.logic_frames(V.ordinary(pb2_trace.trace(
         script, FRAMES, stage=stage, area=area, spot=spot, pokes=pokes)))
     rows = rows[:-1]
@@ -202,13 +257,14 @@ def check(name, script, stage, area, tmp, spot=None, pokes=()):
     if spot is not None:
         rows = rows[V.SETTLE:]
     if len(rows) < 4:
-        return 0, 0, None
+        return 0, 0, None, 0
     got = run_engine(cfg_for(rows), os.path.join(tmp, 'w.json'))
     if got is None:
-        return None, 0, ('the engine said nothing', [])
+        return None, 0, ('the engine said nothing', []), 0
     # How many steps had a throw of his in the air at all: a run of nothing but
     # empty places agrees with the cartridge and proves nothing.
     live = 0
+    spared = 0
     for i, r in enumerate(rows[1:]):
         if i >= len(got):
             break
@@ -218,11 +274,17 @@ def check(name, script, stage, area, tmp, spot=None, pokes=()):
         if charge != r['held_b']:
             return None, live, ("the button's count parted",
                                 ['    step %d  engine %d  cartridge %d'
-                                 % (i + 1, charge, r['held_b'])])
-        if bad:
+                                 % (i + 1, charge, r['held_b'])]), spared
+        # A throw aimed up at the top of a level is answered by the
+        # cartridge's own sprite buffer, not by the map; see `ceiling_read`.
+        kept = [b for b in bad
+                if not ceiling_read(ground, rows, i + 1, *(
+                    int(x) for x in b.split(':')[:3]))]
+        spared += len(bad) - len(kept)
+        if kept:
             return None, live, ('a throw parted from the cartridge',
-                                [show(i + 1, b) for b in bad[:8]])
-    return len(got), live, None
+                                [show(i + 1, b) for b in kept[:8]]), spared
+    return len(got), live, None, spared
 
 
 def main():
@@ -240,7 +302,7 @@ def main():
             targets = [tuple(int(x) for x in p.split(':'))
                        for p in a.split('=')[1].split(',')]
     tmp = pb2_trace.P.scratch('weapons')
-    ran = bad = live = 0
+    ran = bad = live = spared = 0
     for stage, area in targets:
         scripts = list(SCRIPTS) if targets == [(0, 0)] else []
         scripts += random_scripts(n_random, seed + 31 * (stage * 16 + area))
@@ -254,10 +316,11 @@ def main():
         for gear, pokes in (GEAR if targets == [(0, 0)] else GEAR[:1]):
             for name, script in scripts:
                 tag = '%s/%s' % (gear, name)
-                steps, seen, why = check(name, script, stage, area, tmp, spot,
-                                         pokes)
+                steps, seen, why, over = check(name, script, stage, area,
+                                               tmp, spot, pokes)
                 ran += 1
                 live += seen
+                spared += over
                 if why is not None:
                     bad += 1
                     print('%d:%d %-30s FAILED -- %s'
@@ -267,8 +330,9 @@ def main():
                 else:
                     print('%d:%d %-30s ok   %d steps, %d with a throw in the '
                           'air' % (stage, area, tag, steps, seen))
-    print('%d of %d scripts differ; %d steps had a throw in the air'
-          % (bad, ran, live))
+    print('%d of %d scripts differ; %d steps had a throw in the air, %d '
+          'throws up at the top of a level left to the cartridge'
+          % (bad, ran, live, spared))
     return 1 if bad else 0
 
 
