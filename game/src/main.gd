@@ -1197,7 +1197,9 @@ func _run_sol_flow(path: String) -> void:
 	var out := PackedStringArray()
 	for i in range(ticks.size()):
 		# $C72D reads $00, which is not a count the engine keeps; the stand
-		# hands over the cartridge's own for each picture.
+		# hands over the cartridge's own for each picture, and it stands
+		# still while the console is held.
+		f.tick_held = true
 		f.tick = int(ticks[i])
 		f.step(h)
 		out.append("%02X %02X %02X %d %d %d %d %d %d %d %d %d %d %s %d %d %d %d"

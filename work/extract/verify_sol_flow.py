@@ -141,6 +141,9 @@ def main():
                 bad += 1
                 continue
             mem = [m for _fr, m in rows]
+            # $00 as it stood at the top of each picture: that is what
+            # $C72D of that picture writes into $6B, and the record that
+            # shows it is the next one.
             got = engine(seed(mem[0], [m[0x00] for m in mem]), scratch)
             want = [wanted(m) for m in mem[1:]]
             n = min(len(want), len(got))

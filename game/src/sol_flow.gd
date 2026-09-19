@@ -325,6 +325,10 @@ var kept_bank := 0
 ## picture the console is not held on.  BEST 5 counts its waiting by the low
 ## two of it, so it is kept here and raised with $0C.
 var tick := 0
+## A stand that hands the cartridge's own $00 over for every picture sets
+## this, because $00 stands still while the console is held ($6E) and nothing
+## in the engine holds it.
+var tick_held := false
 
 ## $8037 in bank four -- the words of the tale, typed one at a time.  How long
 ## mode $5D stands is how long this takes.
@@ -357,8 +361,9 @@ func step(host) -> void:
 	clock = (clock + 1) & 0xFF
 	# $FADE -- the other count of pictures, raised in the same breath as $0C
 	# and only while $6E is clear.  Nothing in the engine stops the picture,
-	# so it is raised every turn.
-	tick = (tick + 1) & 0xFF
+	# so it is raised every turn unless a stand is handing it over.
+	if not tick_held:
+		tick = (tick + 1) & 0xFF
 	match mode:
 		PLAY:
 			host.flow_play()
@@ -774,7 +779,9 @@ func _screen(name: String, a: int, y: int) -> void:
 ## $CA9A -- the top of a screen's picture: the sprite table put back to empty
 ## and one picture of the walk the colours are on.
 func _ca9a(host) -> void:
-	SolSprites.reset(host.flow_table(), clock)    # $C72D
+	# $C72D reads $00 and not $0C: the two are raised in the same breath but
+	# they are not the same count, and what the table is handed is $00.
+	SolSprites.reset(host.flow_table(), tick)     # $C72D
 	fade.tick()                                   # $F806
 
 
@@ -1825,7 +1832,7 @@ func _end_tail(host) -> void:
 ## across and $80 down, out of whichever picture the mode left on $4F.
 func _end_man(host) -> void:
 	var t = host.flow_table()
-	SolSprites.reset(t, clock)                    # $C72D
+	SolSprites.reset(t, tick)                     # $C72D -- $00
 	t.oam[0] = 0xF7                               # $E4B4
 	t.fwd = 0                                     # $E4BA -- $6C
 	SolSprites.plain((SolEnd.one("walk_page") << 8) | z4f, 0x00,
