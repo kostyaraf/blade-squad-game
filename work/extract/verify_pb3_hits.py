@@ -16,21 +16,31 @@ blow.  `work/re/pb3_hits.md` has the whole of it.
 
 There is no cartridge to compare against -- neither game ever saw the other's
 enemies -- so acceptance is four mechanical questions, and the places they are
-asked at are not guessed.  The thing's box and the hero's box are both worked
-out the way each game works them out, and the hero is put one sixteenth of a
-pixel inside each of the box's four edges and one sixteenth outside each:
+asked at are not guessed.  The reach of a touch is the thing's own box grown by
+the hero's own box, which is the sum both games already do, and the hero is put
+on each of its four edges and one step outside each.  A step is one pixel in a
+Power Blade area and one sixteenth of a pixel in a Solbrain stage, because that
+is the grid each game keeps its places on:
 
   * inside an edge he is hit, every time and on every edge;
   * outside it he is not, every time and on every edge;
   * hit twice running, the second one does not land: the grace each game gives
     him after a blow is his own and stays his own;
   * and no kind of thing is left that the engine could not translate at all --
-    every type of both games has a box and a number of damage.
+    every kind of both games has a box and a number of damage.
+
+A kind is not the same word in the two games.  Power Blade knows a thing by its
+type, and its box, its middle and its damage are all tables by type, so the
+type is the kind.  Solbrain knows it by the picture it is wearing, and the box
+and the meaning both hang off that, so the kind there is a box-and-meaning pair
+and the number printed is which box it is.
 
 What is deliberately *not* asked here is how much it took off him.  The two
 scales differ (sixteen for the Power Blade hero, eight for the Solbrain one)
-and the number between them is a decision, not a reading; it is written down
-in `work/re/pb3_hits.md` and printed here, not judged.
+and the number between them is a decision, not a reading; it is made by
+`Pb3Pair.hurt_to_sol` and `Pb3Pair.hurt_to_pb2`, written down in
+`work/re/pb3_hits.md`, and printed here rather than judged.  What is printed is
+already in the numbers of the hero the blow reached.
 """
 import json
 import os

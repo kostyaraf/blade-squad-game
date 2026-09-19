@@ -541,6 +541,25 @@ func _solid(w: Vector2i) -> bool:
 	return solv.collision_at(w.x, w.y - 8) >= Pb2AsSol.SOLID
 
 
+## Э5.4 -- a blow struck in one game's numbers, said in the other's.
+##
+## Nothing in either cartridge says how: neither ever saw the other's things.
+## The two healths are not even the same size -- the Power Blade hero has
+## sixteen ($049A, put there by $D05D) and the Solbrain hero eight ($05C5,
+## which is his suit as well -- so this is a decision, and it is made the only
+## way that keeps a blow a blow: the share of his health it took, rounded up,
+## and never nought unless it was nought to start with.  A touch that costs
+## the one hero a sixteenth costs the other an eighth and not nothing at all.
+## See `work/re/pb3_hits.md`.
+static func hurt_to_sol(d: int) -> int:
+	return 0 if d <= 0 else maxi(1, (d * 8 + 15) / 16)
+
+
+## And back the other way.
+static func hurt_to_pb2(d: int) -> int:
+	return 0 if d <= 0 else maxi(1, (d * 16 + 7) / 8)
+
+
 static func _signed16(v: int) -> int:
 	v &= 0xFFFF
 	return v - 0x10000 if v >= 0x8000 else v

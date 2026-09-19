@@ -49,6 +49,7 @@ func _ready() -> void:
 	var solrun := ""
 	var pb3floor := ""
 	var pb3pair := ""
+	var pb3hits := ""
 	var solflow := ""
 	var solscript := ""
 	var solscene := ""
@@ -89,6 +90,7 @@ func _ready() -> void:
 		elif a.begins_with("--solrun="): solrun = a.substr(9)
 		elif a.begins_with("--pb3floor="): pb3floor = a.substr(11)
 		elif a.begins_with("--pb3pair="): pb3pair = a.substr(10)
+		elif a.begins_with("--pb3hits="): pb3hits = a.substr(10)
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
 		elif a.begins_with("--solscript="): solscript = a.substr(12)
 		elif a.begins_with("--solscene="): solscene = a.substr(11)
@@ -160,6 +162,8 @@ func _ready() -> void:
 		return
 	if pb3pair != "":
 		_run_pb3_pair(pb3pair)
+	if pb3hits != "":
+		_run_pb3_hits(pb3hits)
 		get_tree().quit()
 		return
 	if sollive != "":
@@ -812,6 +816,222 @@ func _pb3_walk_pair(from: int, stage: int, area: int, kinds: Array,
 			int(pads[0]), int(pads[1]), i, off, maxi(walled[0], walled[1]),
 			drop, apart, left, two.held_in, two.could_not, went, below]
 
+
+
+## Э5.4 -- a foreign enemy against a foreign hero.
+##
+## Neither game ever saw the other's things, so there is nothing to compare
+## against and the stand asks four mechanical questions instead
+## (`work/extract/verify_pb3_hits.py`).  What is put out here is one line per
+## placement: the level, the kind of thing, whose hero was stood in front of
+## it, which of the eight places round its box he stood in, whether a blow had
+## to land there, whether one did, whether a second one straight after did too,
+## and what the first took off him.
+##
+## The eight places are not guessed.  The reach of a touch is the thing's own
+## box grown by the hero's own box, which is the sum each game already does;
+## the hero is put on each of its four edges and one step outside each.  A step
+## is one pixel in a Power Blade area and one sixteenth of a pixel in a
+## Solbrain stage, because that is the grid each game's places are kept on.
+func _run_pb3_hits(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var edges: Array = cfg["edges"]
+	var out := PackedStringArray()
+	for r in cfg["runs"]:
+		if String(r["game"]) == "pb2":
+			_pb3_hits_pb2(int(r["stage"]), int(r["area"]), edges, out)
+		else:
+			_pb3_hits_sol(int(r["stage"]), edges, out)
+	print("\n".join(out))
+
+
+## One line of the stand's own shape.
+func _pb3_hit_line(where: String, t: int, guest: String, edge: String,
+		want: int, hit: int, again: int, dmg: int) -> String:
+	return ("hit %s type %02X guest %s edge %s want %d hit %d again %d dmg %d"
+			% [where, t, guest, edge, want, hit, again, dmg])
+
+
+## The eight places round a reach that runs from `lo` to `hi` both ways, by the
+## names the stand knows them by.
+static func _pb3_edges(xlo: int, xhi: int, ylo: int, yhi: int) -> Dictionary:
+	var cx: int = (xlo + xhi) / 2
+	var cy: int = (ylo + yhi) / 2
+	return {
+		"in_left": [Vector2i(xlo, cy), 1],
+		"in_right": [Vector2i(xhi, cy), 1],
+		"in_top": [Vector2i(cx, ylo), 1],
+		"in_bottom": [Vector2i(cx, yhi), 1],
+		"out_left": [Vector2i(xlo - 1, cy), 0],
+		"out_right": [Vector2i(xhi + 1, cy), 0],
+		"out_top": [Vector2i(cx, ylo - 1), 0],
+		"out_bottom": [Vector2i(cx, yhi + 1), 0],
+	}
+
+
+## A Power Blade area, with the Solbrain hero standing in it.
+##
+## His box is the one his own game builds out of his picture ($80DE), read
+## through Э5.1's window and then said in this game's numbers: whole pixels,
+## two halves, and how far above his feet the middle of it lies.  $82:$83
+## stands sixteen pixels above his feet, which is where that sixteen comes
+## from.
+func _pb3_hits_pb2(stage: int, area: int, edges: Array,
+		out: PackedStringArray) -> void:
+	_load("pb2", stage, area)
+	var where := "p%d.%d" % [stage, area]
+	var lent := Pb2AsSol.new(level_pb2)
+	var him := SolPlayer.new(lent)
+	him.place(0x8000, 0x8000)
+	# $B7F5 -- his box comes off his picture, and his picture off the step of
+	# the animation he is on, so he has to have stood somewhere for a picture
+	# before there is anything to read.
+	for _i in range(4):
+		him.step(0)
+	var borrowed := SolObjects.new(lent)
+	borrowed.hero = him
+	borrowed.hero_box()
+	if borrowed.hero_box_flags == 0:
+		out.append("untranslated sol type 00 why box")
+		return
+	var half_w: int = (borrowed.hero_bw >> 4) / 2
+	var half_h: int = (borrowed.hero_bh >> 4) / 2
+	var dy: int = ((borrowed.hero_by - him.y + 0x8000) & 0xFFFF) - 0x8000
+	var up: int = 16 - (dy >> 4) - half_h
+	var things := Pb2Objects.new(level_pb2)
+	things.playing = 3
+	things.cam = 0
+	things.frame = 1                                # $B23D starts at slot six
+	# Only the guest is in the room: the area's own hero is not here at all,
+	# and a row with no life left is how $B23D is told so.
+	things.slots[0][Pb2Objects.F_LIFE] = 0
+	var guest := Pb2Objects.empty_row()
+	things.guest_row = guest
+	things.guest_box = [up, half_w, half_h]
+	for t in range(things.hurt.size()):
+		if t == 0:
+			continue                    # $B250 -- an empty place in the table
+		if t == 0x0C:
+			continue                    # $B28B -- a breakable block is scenery
+		if things.hurt[t] == 0:
+			continue                                # it does not hurt at all
+		if t >= things.box.size() or things.box[t].is_empty():
+			out.append("untranslated pb2 type %02X why box" % t)
+			continue
+		var b: Array = things.box[t][0]
+		var rw: int = int(b[0]) + half_w
+		var rh: int = int(b[1]) + half_h
+		if rw > 0x60 or rh > 0x60:
+			continue                # bigger than the screen; no room to stand
+		# The thing is put where the middle of it comes out at $80,$80.
+		var s: PackedByteArray = things.slots[6]
+		var place := _pb3_edges(0x80 - rw, 0x80 + rw, 0x80 - rh, 0x80 + rh)
+		for e in edges:
+			var at: Vector2i = place[String(e)][0]
+			var want: int = int(place[String(e)][1])
+			for i in range(s.size()):
+				s[i] = 0
+			s[Pb2Objects.F_TYPE] = t
+			s[Pb2Objects.F_MARK] = 0x01     # $C99F -> $FD76: it simply hurts
+			s[Pb2Objects.F_LIFE] = 0x40
+			s[Pb2Objects.F_X] = 0x80
+			s[Pb2Objects.F_Y] = (0x80 - up + things.middle[t]) & 0xFF
+			for i in range(guest.size()):
+				guest[i] = 0
+			guest[Pb2Objects.F_LIFE] = 0x10
+			guest[Pb2Objects.F_X] = at.x & 0xFF
+			guest[Pb2Objects.F_Y] = at.y & 0xFF
+			things.contact()
+			var hit: int = 1 if guest[Pb2Objects.F_STUN] != 0 else 0
+			# What it cost him is counted in this area's numbers, so it is
+			# said in his own before it is put out: sixteen against eight.
+			var dmg: int = Pb3Pair.hurt_to_sol(0x10 - guest[Pb2Objects.F_LIFE])
+			# And a second blow straight after, which the grace has to refuse.
+			s[Pb2Objects.F_TYPE] = t
+			s[Pb2Objects.F_MARK] = 0x01
+			s[Pb2Objects.F_LIFE] = 0x40
+			var was: int = guest[Pb2Objects.F_LIFE]
+			things.contact()
+			var again: int = 1 if guest[Pb2Objects.F_LIFE] != was else 0
+			out.append(_pb3_hit_line(where, t, "sol", String(e), want, hit,
+					again, dmg))
+
+
+## A Solbrain stage, with the Power Blade hero standing in it.
+##
+## His box is his own game's ($B2C1) -- two halves in whole pixels, and a
+## middle so far above his feet -- said here in sixteenths and as the four
+## numbers $88..$8F hold: a corner and a size.
+func _pb3_hits_sol(stage: int, edges: Array, out: PackedStringArray) -> void:
+	_load("sol", stage, 0)
+	var where := "s%d.0" % stage
+	var mine: Array = Pb2Objects.own_box(Pb2Objects.empty_row())
+	var up: int = int(mine[0])
+	var half_w: int = int(mine[1])
+	var half_h: int = int(mine[2])
+	var bw: int = (half_w * 2 + 1) << 4
+	var bh: int = (half_h * 2 + 1) << 4
+	var pool := SolObjects.new(level_sol)
+	# The stage's own hero is not here: a suit of nought is how $CFDB is told
+	# so, and it stops at him without reaching anything after him.
+	var absent := SolPlayer.new(level_sol)
+	absent.suit = 0
+	pool.hero = absent
+	pool.clock = 0
+	var carrier := SolPlayer.new(level_sol)
+	pool.guest = carrier
+	for k in pool.hit_kinds():
+		var pic: int = int(k[0])
+		var flags: int = int(k[1])
+		var shape: int = int(k[2])
+		var box: Array = k[3]
+		if (flags & 0x80) != 0:
+			continue                            # something to pick up
+		if (flags & 0x40) != 0 and (flags & 0x0F) != 0:
+			continue                            # $824E -- it never touches
+		if (flags & 0x40) == 0 and (flags & 0x0F) == 0:
+			continue                            # and it hurts for nothing
+		pool.id[0] = 1
+		pool.kind[0] = 1
+		pool.mind[0] = 0
+		pool.face[0] = 0
+		pool.x[0] = 0x8000
+		pool.y[0] = 0x8000
+		pool.pic_lo[0] = pic & 0xFF
+		pool.pic_hi[0] = (pic >> 8) & 0xFF
+		if not pool.touch_box(0):
+			continue
+		# $81B7 -- the reach, said in the corner of his own box.  Where the
+		# thing's box landed is asked of $CF96 rather than worked out again:
+		# it chains the carry of the across sum into the down one, so the two
+		# are not two sums but one.
+		var place := _pb3_edges(pool.z61 - bw - 1, pool.z61 + pool.z65,
+				pool.z63 - bh - 1, pool.z63 + pool.z67)
+		for e in edges:
+			var at: Vector2i = place[String(e)][0]
+			var want: int = int(place[String(e)][1])
+			pool.mind[0] = 0
+			pool.cool[0] = 0x40
+			pool.life[0] = 0x40
+			carrier.suit = 0x10
+			carrier.hurt = 0
+			carrier.shield = 0
+			carrier.swim = 0
+			carrier.timer = 0xFF
+			pool.guest_box = [0x01, at.x & 0xFFFF, at.y & 0xFFFF, bw, bh]
+			pool.touch_box(0)
+			pool.touch(0)
+			# $8354 -- a blow that lands puts the count back to nought, and
+			# nothing here ever counts it up again, so the second one is
+			# refused by the grace and not by the boxes.
+			var hit: int = 1 if carrier.timer == 0 else 0
+			var dmg: int = Pb3Pair.hurt_to_pb2(0x10 - carrier.suit)
+			var was: int = carrier.suit
+			pool.touch_box(0)
+			pool.touch(0)
+			var again: int = 1 if carrier.suit != was else 0
+			out.append(_pb3_hit_line(where, shape, "pb2", String(e), want, hit,
+					again, dmg))
 
 func _run_sol_live(spec: String, st: int) -> void:
 	bg.z_index = -1

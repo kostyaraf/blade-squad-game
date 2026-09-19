@@ -725,37 +725,69 @@ func _middle_of(s: PackedByteArray) -> int:
 	return (s[F_Y] - middle[s[F_TYPE]]) & 0xFF
 
 
+## Э5.4 -- a hero of the other game standing in this area.  He is a row of
+## the same twenty nine bytes and nothing else, so the sweep can ask about him
+## exactly as it asks about the row at $0400, and `guest_box` is the box his
+## own game gives him, because his picture means nothing to this game's
+## tables.  Empty means nobody is there, and then everything below is the
+## cartridge unchanged.  See `work/re/pb3_hits.md`.
+var guest_row := PackedByteArray()
+var guest_box: Array = []
+
+
+## $B2C1 -- the hero's own box, by what he is doing: how far above his feet
+## the middle of it lies, and its two halves.
+static func own_box(hero: PackedByteArray) -> Array:
+	if (hero[F_MARK] & 0x08) != 0:
+		return [0x0C, 4, 9]
+	if (hero[F_MARK] & 0x10) != 0:
+		return [0x08, 8, 8]
+	return [0x0F, 6, 13]
+
+
 ## $B23D -- the sweep.
 ##
 ## Half the places in one picture and half in the next: a thing is asked about
 ## only every other frame, and slipping past one at speed without being touched
 ## is something the cartridge lets happen.
+##
+## Э5.4 -- a guest of the other game is asked about the same things in the same
+## order and on the same pictures.  The rhythm belongs to the area and not to
+## the hero: two heroes asked on different pictures would make "slipped past at
+## speed" mean two things at once in one room.  What he throws is his own
+## game's and is not swept here.
 func contact() -> void:
 	if playing != 3:
 		return
 	var hero: PackedByteArray = slots[0]
-	if hero[F_LIFE] == 0:
+	var guest: bool = not guest_row.is_empty() and guest_box.size() == 3
+	if hero[F_LIFE] == 0 and not guest:
 		return
 	# $B248 -- the forty pictures after a blow are counted down here and
 	# nowhere else, and he flashes for as long as they last.  When the harness
 	# hands his row over it has already been counted down on the cartridge.
-	if not hero_told and hero[F_STUN] != 0:
+	if hero[F_LIFE] != 0 and not hero_told and hero[F_STUN] != 0:
 		hero[F_STUN] -= 1
 		hero[F_BITS] ^= 0x80
+	# And the guest's own grace is counted down the same way.  The flashing is
+	# not: how a guest is drawn is his own game's business.
+	if guest and guest_row[F_STUN] != 0:
+		guest_row[F_STUN] -= 1
 	var n: int = 6 if (frame & 1) != 0 else 7
 	while n < SLOTS:
 		var s: PackedByteArray = slots[n]
-		if slots[0][F_LIFE] != 0 and s[F_TYPE] != 0 \
-				and (s[F_XHI] | s[F_YHI]) == 0:
-			_touch(n)
-			_shots(n)
+		if s[F_TYPE] != 0 and (s[F_XHI] | s[F_YHI]) == 0:
+			if slots[0][F_LIFE] != 0:
+				_touch(n, slots[0], own_box(slots[0]))
+				_shots(n)
+			if guest and guest_row[F_LIFE] != 0 and slots[n][F_TYPE] != 0:
+				_touch(n, guest_row, guest_box)
 		n += 2
 
 
 ## $B285 -- is this one asked about at all, and does the hero reach it?
-func _touch(n: int) -> void:
+func _touch(n: int, hero: PackedByteArray, mine: Array) -> void:
 	var s: PackedByteArray = slots[n]
-	var hero: PackedByteArray = slots[0]
 	if s[F_TYPE] == 0x0C:
 		return                                  # a breakable block is scenery
 	if hero[F_LIFE] == 0:
@@ -768,18 +800,10 @@ func _touch(n: int) -> void:
 		hero[F_BITS] &= 0x7F                    # $B29E -- done flashing
 		if (s[F_MARK] & 0x88) != 0:
 			return
-	# His own box depends on what he is doing ($B2C1).
-	var up := 0x0F
-	var half_w := 6
-	var half_h := 13
-	if (hero[F_MARK] & 0x08) != 0:
-		up = 0x0C
-		half_w = 4
-		half_h = 9
-	elif (hero[F_MARK] & 0x10) != 0:
-		up = 0x08
-		half_w = 8
-		half_h = 8
+	# His own box ($B2C1), which for a guest is the one his own game gives him.
+	var up: int = int(mine[0])
+	var half_w: int = int(mine[1])
+	var half_h: int = int(mine[2])
 	var b := _box_of(s)
 	var mid := _middle_of(s)
 	var dx := _apart(hero[F_X], s[F_X])
@@ -794,7 +818,7 @@ func _touch(n: int) -> void:
 	if (s[F_MARK] & 0x10) != 0:
 		_trip(n)                                # $B5A5
 		return
-	_wound_hero(n)                              # $B39E
+	_wound_hero(n, hero)                        # $B39E
 	s = slots[n]
 	if s[F_MARK] == 0x80 or s[F_TYPE] == 0:
 		return                                  # $B33D -- it is already gone
@@ -811,9 +835,8 @@ func _touch(n: int) -> void:
 
 
 ## $B39E -- the suit strikes back, and what is left of the blow reaches him.
-func _wound_hero(n: int) -> void:
+func _wound_hero(n: int, hero: PackedByteArray) -> void:
 	var s: PackedByteArray = slots[n]
-	var hero: PackedByteArray = slots[0]
 	if (hero[F_MARK] & 0x10) != 0 and suit != 0:
 		if (s[F_MARK] & 0x02) != 0:
 			clear(n)

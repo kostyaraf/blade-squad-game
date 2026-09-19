@@ -199,6 +199,14 @@ var hero_bx := 0                    # $88:$89
 var hero_by := 0                    # $8A:$8B
 var hero_bw := 0                    # $8C:$8D
 var hero_bh := 0                    # $8E:$8F
+## Э5.4 -- a hero of the other game standing in this stage.  He is carried in
+## a `SolPlayer` of his own that nothing ever steps: the touch reads a dozen
+## numbers off the hero and writes back three, and this is where they live, so
+## no field of him is named twice.  `guest_box` is the five numbers above,
+## worked out by his own game, because his picture means nothing to $8A19.
+## Nothing there means nobody is there.  See `work/re/pb3_hits.md`.
+var guest: SolPlayer = null
+var guest_box: Array = []
 ## $60..$68 -- and the box of the thing whose turn it is.
 var z60 := 0                        # $60, what touching it means
 var z61 := 0                        # $61:$62
@@ -1277,6 +1285,25 @@ func _hit_of(pic: int) -> Array:
 	return [int(e[0]), _hit_box[int(e[1])]]
 
 
+## Э5.4 -- every shape of thing the sweep can ever be asked about, one for
+## each pair of a box and a meaning that some picture wears: what a stand
+## needs to try them all without guessing which stage puts out which.  Each is
+## a picture that wears the pair, the meaning, which box it is, and the box.
+func hit_kinds() -> Array:
+	var seen := {}
+	var out: Array = []
+	for p in range(_hit_pic.size()):
+		var e: Array = _hit_pic[p]
+		if int(e[0]) == 0:
+			continue
+		var k: int = (int(e[0]) << 8) | int(e[1])
+		if seen.has(k):
+			continue
+		seen[k] = true
+		out.append([p, int(e[0]), int(e[1]), _hit_box[int(e[1])]])
+	return out
+
+
 ## Two bytes added, and the carry the add leaves, because the boxes are built
 ## with the carry chained from one pair to the next the way the cartridge
 ## chains it.
@@ -1352,10 +1379,37 @@ func touch_box(s: int) -> bool:
 ## is only tested on every other picture, and which picture depends on the slot
 ## as well, so the sixteen of them are spread over the two.
 func touch(s: int) -> void:
-	# Three things keep the hero himself from being laid over the thing: a box
-	# of his own that is nought ($CFC5), a behaviour the table marks on the
-	# wrong picture ($CFD6), and no suit left ($CFDB).  None of the three
-	# reaches past $CFE0: what he has already thrown is laid over it anyway.
+	_lay(s)
+	# Э5.4 -- and the other game's hero over the same thing, in the same
+	# picture and in the same order, out of the same six numbers.  His box is
+	# handed over rather than built, because $8A19 has no picture of his.
+	if guest != null and guest_box.size() == 5:
+		var was: SolPlayer = hero
+		var was_box: Array = [hero_box_flags, hero_bx, hero_by,
+				hero_bw, hero_bh]
+		hero = guest
+		hero_box_flags = int(guest_box[0])
+		hero_bx = int(guest_box[1])
+		hero_by = int(guest_box[2])
+		hero_bw = int(guest_box[3])
+		hero_bh = int(guest_box[4])
+		_lay(s)
+		hero = was
+		hero_box_flags = int(was_box[0])
+		hero_bx = int(was_box[1])
+		hero_by = int(was_box[2])
+		hero_bw = int(was_box[3])
+		hero_bh = int(was_box[4])
+	weapons_hit(s)                      # $CFE8
+	hurt_slots(s)                       # $CFEB
+
+
+## $CFBA -- the hero himself laid over the thing.
+func _lay(s: int) -> void:
+	# Three things keep the hero from being laid over the thing: a box of his
+	# own that is nought ($CFC5), a behaviour the table marks on the wrong
+	# picture ($CFD6), and no suit left ($CFDB).  None of the three reaches
+	# past $CFE0: what he has already thrown is laid over it anyway.
 	var lay: bool = hero != null and hero_box_flags != 0
 	if lay and (hero_box_flags & 0x80) == 0 \
 			and _hit_slow[mind[s] & 0x7F] != 0 \
@@ -1365,8 +1419,6 @@ func touch(s: int) -> void:
 		lay = false
 	if lay and hero.suit != 0:
 		_overlap(s)                     # $CFDD
-	weapons_hit(s)                      # $CFE8
-	hurt_slots(s)                       # $CFEB
 
 
 ## $81B7 -- the two boxes laid over one another.  $9C and $9D say which way he
