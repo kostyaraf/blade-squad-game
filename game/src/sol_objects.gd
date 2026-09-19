@@ -137,6 +137,11 @@ var score := 0                      # $05FD..$05FF
 var cam_x := 0                      # $30:$31
 var cam_y := 0                      # $32:$33
 var hero_vx := 0                    # $05B6:$05B7
+# $05B8:$05B9 -- his own falling.  The pool has to hold it because the
+# carrying map's own answer ($D065) takes the ride out of it and puts the
+# sinking back in, and that is a thing the pool does to him, not he to
+# himself.
+var hero_vy := 0
 var hero_face := 0                  # $05B2 -- bit 7 set means he looks left
 var z34 := 0                        # $34 -- how fast a carrying map drags down
 var z7c := 0                        # $7C -- which piece of rubble comes next
@@ -1154,9 +1159,22 @@ func probe_point(px: int, py: int) -> int:
 		var sl: int = _adc((z75 << 4) & 0xFF, cam_y & 0xFF)
 		var sh: int = _adc((z75 >> 4) & 0x0F, (cam_y >> 8) & 0xFF)
 		carry = 1
-		_sbc(py & 0xFF, sl)
+		var dl: int = _sbc(py & 0xFF, sl)
 		var d: int = _sbc((py >> 8) & 0xFF, sh)
 		if carry != 0 and d == 0:
+			# $D065 -- how far into the lift's own line he has come is taken
+			# off his falling, and what the lift sinks by ($72) put back on.
+			carry = 1
+			z9d = dl
+			var lo: int = _sbc(hero_vy & 0xFF, z9d)
+			var hi: int = (hero_vy >> 8) & 0xFF
+			if carry == 0:
+				hi = (hi - 1) & 0xFF        # $D076
+			carry = 0                       # $D079
+			lo = _adc(lo, z72)
+			if carry != 0:
+				hi = (hi + 1) & 0xFF        # $D084
+			hero_vy = (hi << 8) | lo
 			z9d = 0
 			return 0x80
 	z9d = py & 0xFF                     # $D08F

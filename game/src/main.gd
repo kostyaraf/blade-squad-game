@@ -667,6 +667,10 @@ func _run_sol_objects(path: String) -> void:
 			p.gravity = pool.hero_grav
 			p.hold_max = pool.hero_hold_max
 			pool.step(view.x, view.y)                        # $CDDD
+			# $D065 -- the carrying map answers the pool's own looks and
+			# writes his falling while it does, so it comes back out too.
+			p.vy = pool.hero_vy - 0x10000 \
+					if pool.hero_vy >= 0x8000 else pool.hero_vy
 			_sol_tab(pool)                                   # $CDE3
 			# $C3E0 -- the blanking pays off what the stage's own script asked
 			# of the lift's line.  Neither the script nor the blanking is this
@@ -777,6 +781,7 @@ func _hero_into(pool: SolObjects, p: SolPlayer) -> void:
 	pool.hero_x = p.x
 	pool.hero_y = p.y
 	pool.hero_vx = p.vx
+	pool.hero_vy = p.vy & 0xFFFF
 	pool.hero_face = p.face
 	pool.hero_suit = p.suit
 	pool.hero_flags = p.flags
@@ -2065,6 +2070,9 @@ func _step_sol() -> void:
 	p.gravity = pool.hero_grav
 	p.hold_max = pool.hero_hold_max
 	pool.step(sol_view.x, sol_view.y, sol_table)         # $CDDD
+	# $D065 again: the carrying map answers the pool's own looks and writes
+	# his falling while it does, so it comes back out of the pool.
+	p.vy = pool.hero_vy - 0x10000 if pool.hero_vy >= 0x8000 else pool.hero_vy
 	_sol_tab(pool)                                       # $CDE3
 	# $05AF is one byte of memory and not two: a mind that writes it -- $847E,
 	# which is what ends his arriving -- writes what he reads next picture, so
