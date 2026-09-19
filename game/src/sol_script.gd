@@ -107,7 +107,11 @@ func step() -> void:
 		return
 	var which: int = int(rooms[room])
 	var routines: Array = d["routines"]
-	if which >= routines.size():
+	# The table of a dispatcher is short, and past its end an index of one byte
+	# still reaches: what it reads there is the next dispatcher's own code, and
+	# the jump through it lands in work memory.  Only a room the stage never
+	# stands in gets there, so the picture is marked, not followed.
+	if which >= int(d["count"]) or which >= routines.size():
 		wild = true
 		return
 	xr = (which * 2) & 0xFF

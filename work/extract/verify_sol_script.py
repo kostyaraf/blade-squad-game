@@ -272,7 +272,7 @@ def main():
         d = json.load(open(os.path.join(ROOT, 'game', 'data', 'sol',
                                         'script.json')))
         for one in d['dispatch']:
-            known.update('%04X' % a for a in one['routines'])
+            known.update('%04X' % a for a in one['routines'][:one['count']])
         for t in d['tables'].values():
             known.update('%04X' % a for a in t)
         print('%d of %d stages differ, %d pictures compared, '

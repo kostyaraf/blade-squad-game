@@ -109,6 +109,14 @@ def main():
             'at': d,
             'rooms': [rd(a) for a in range(at, at + 256)],
             'routines': [word(ptrs + 2 * k) for k in range(128)],
+            # How many of those hundred and twenty eight are the table's own:
+            # it runs up to the next dispatcher's code.  Past that the reach is
+            # real -- an index of one byte gets there -- but what it reads is
+            # the next dispatcher's instructions, and jumping through that
+            # lands in work memory.  A room the stage never stands in is the
+            # only way to get there, so the port marks the picture instead of
+            # pretending to follow.
+            'count': (stop[d] - ptrs) // 2,
         })
 
     # The second level.  Each of these is walked by a routine that reads $7F
