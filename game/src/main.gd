@@ -50,6 +50,7 @@ func _ready() -> void:
 	var pb3floor := ""
 	var pb3pair := ""
 	var pb3hits := ""
+	var pb3pick := ""
 	var solflow := ""
 	var solscript := ""
 	var solscene := ""
@@ -91,6 +92,7 @@ func _ready() -> void:
 		elif a.begins_with("--pb3floor="): pb3floor = a.substr(11)
 		elif a.begins_with("--pb3pair="): pb3pair = a.substr(10)
 		elif a.begins_with("--pb3hits="): pb3hits = a.substr(10)
+		elif a.begins_with("--pb3pick="): pb3pick = a.substr(10)
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
 		elif a.begins_with("--solscript="): solscript = a.substr(12)
 		elif a.begins_with("--solscene="): solscene = a.substr(11)
@@ -164,6 +166,8 @@ func _ready() -> void:
 		_run_pb3_pair(pb3pair)
 	if pb3hits != "":
 		_run_pb3_hits(pb3hits)
+	if pb3pick != "":
+		_run_pb3_pick(pb3pick)
 		get_tree().quit()
 		return
 	if sollive != "":
@@ -1032,6 +1036,112 @@ func _pb3_hits_sol(stage: int, edges: Array, out: PackedStringArray) -> void:
 			var again: int = 1 if carrier.suit != was else 0
 			out.append(_pb3_hit_line(where, shape, "pb2", String(e), want, hit,
 					again, dmg))
+
+
+## Э5.3 -- the screen the two of them choose on.
+##
+## Four questions, and the first of them the engine has to walk out for itself
+## (`work/extract/verify_pb3_pick.py`).  Nothing here knows which buttons do
+## what: the walk tries every pad the two of them can hold between them and
+## lets the picker say where that put it, so a button the picker stops reading
+## would show as a way that was never found.
+func _run_pb3_pick(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var ways: Array = cfg["ways"]
+	var quiet: int = int(cfg["quiet"])
+	var out := PackedStringArray()
+	# Every pad worth holding: the four ways across and the two buttons, alone
+	# and two at a time, for each of the two of them.
+	var one: Array = [0x00, 0x01, 0x02, 0x40, 0x80]
+	var pads: Array = []
+	for a in one:
+		for b in one:
+			pads.append([a, b])
+	for from in ways:
+		# Shortest first, over everything the picker holds and not only over
+		# what was chosen: a walk that forgot the "ready" of each of them
+		# would call two different places the same one.
+		var seen := {}
+		var reached := {}
+		var settled := {}
+		var start := Pb3Pick.new()
+		start.set_say(String(from))
+		seen[start.where()] = 0
+		reached[start.say()] = 0
+		var edge: Array = [[start.where(), _pb3_pick_keep(start), 0]]
+		while not edge.is_empty():
+			var next: Array = []
+			for e in edge:
+				for p in pads:
+					var w := Pb3Pick.new()
+					_pb3_pick_put(w, e[1])
+					w.step(p)
+					var k: String = w.where()
+					if seen.has(k):
+						continue
+					seen[k] = int(e[2]) + 1
+					if not reached.has(w.say()):
+						reached[w.say()] = int(e[2]) + 1
+					if w.done() and not settled.has(w.say()):
+						settled[w.say()] = int(e[2]) + 1
+					next.append([k, _pb3_pick_keep(w), int(e[2]) + 1])
+			edge = next
+		for to in ways:
+			out.append("reach %s %s steps %d"
+					% [from, to, reached[to] if reached.has(to) else -1])
+			# And reached with both of them saying they are done with it:
+			# an arrangement nobody can settle on is one nobody can play.
+			out.append("settle %s %s steps %d"
+					% [from, to, settled[to] if settled.has(to) else -1])
+		# A pad that presses nothing, held for a second.
+		var still := Pb3Pick.new()
+		still.set_say(String(from))
+		var was: String = still.where()
+		var drawn: PackedByteArray = still.picture()
+		for _i in range(quiet):
+			still.step([0, 0])
+		var changed: int = 0 if still.where() == was \
+				and still.picture() == drawn else 1
+		out.append("quiet %s changed %d" % [from, changed])
+		# The same buttons twice over, and the two pictures compared whole.
+		var script: Array = [[0x01, 0x02], [0x00, 0x00], [0x80, 0x01],
+				[0x00, 0x00], [0x02, 0x80], [0x40, 0x00]]
+		var shots: Array = []
+		for _t in range(2):
+			var w := Pb3Pick.new()
+			w.set_say(String(from))
+			var all := PackedByteArray()
+			for p in script:
+				w.step(p)
+				all.append_array(w.picture())
+			shots.append(all)
+		out.append("picture %s same %d bytes %d"
+				% [from, 1 if shots[0] == shots[1] else 0,
+						(shots[0] as PackedByteArray).size() / script.size()])
+		# And what was chosen, handed to the pair and asked back.
+		var pick := Pb3Pick.new()
+		pick.set_say(String(from))
+		var two := Pb3Pair.new(Pb3Pair.PB2, 0, 0, pick.kinds())
+		var back := PackedStringArray()
+		for k in two.who:
+			back.append("sol" if k == Pb3Pair.SOL else "pb2")
+		out.append("handed %s who %s" % [from, ",".join(back)])
+	print("\n".join(out))
+
+
+## Everything the picker holds, so that a walk can put it back.
+func _pb3_pick_keep(w: Pb3Pick) -> Array:
+	return [w.chose[0], w.chose[1], w.ready[0], w.ready[1],
+			w.last_pad[0], w.last_pad[1]]
+
+
+func _pb3_pick_put(w: Pb3Pick, k: Array) -> void:
+	w.chose[0] = int(k[0])
+	w.chose[1] = int(k[1])
+	w.ready[0] = bool(k[2])
+	w.ready[1] = bool(k[3])
+	w.last_pad[0] = int(k[4])
+	w.last_pad[1] = int(k[5])
 
 func _run_sol_live(spec: String, st: int) -> void:
 	bg.z_index = -1

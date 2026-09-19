@@ -70,6 +70,7 @@ STANDS = [
     ('solrun',     'Э4.6', 'verify_sol_run.py',    []),
     ('pb3floor',   'Э5.1', 'verify_pb3_floor.py',  []),
     ('pb3pair',    'Э5.2', 'verify_pb3_pair.py',   []),
+    ('pb3pick',    'Э5.3', 'verify_pb3_pick.py',   []),
     ('pb3hits',    'Э5.4', 'verify_pb3_hits.py',   []),
 ]
 
