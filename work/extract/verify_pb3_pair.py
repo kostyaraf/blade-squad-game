@@ -5,26 +5,32 @@
 the same level at once -- all four pairings, either game's hero in either
 game's level -- and asks what a shared screen has to do:
 
-  * the view never lets either of them off the side of it;
-  * neither goes down through a floor, and neither is left inside something
-    solid;
-  * one of them falling out of the level does not stop the other.
+  * neither of them is ever off the side of the screen;
+  * neither is left inside something solid;
+  * neither leaps further in one picture than a cell is tall, either way.
+    Upwards is measured on purpose and not out of tidiness: a Power Blade
+    hero's place is one byte of the screen, and a hero who went off the
+    bottom of it and came round the top would show here and nowhere else;
+  * one of them leaving the level does not stop the other.
 
-Nothing is invented to make this work.  Each level is driven by its own game's
-view -- `Pb2Camera` ($D924, $D3B8) for a Power Blade area, `SolCamera`
-($F1EA, $F24B) for a Solbrain stage -- and the only thing either is told that
-the cartridge did not tell it is *which* place to keep in its band: the middle
-of the two instead of the one hero.  Solbrain's view also wants a speed,
-because it follows by his speed and not by the gap; the middle's own speed is
-that number.  See `game/src/pb3_pair.gd`.
+Nothing is invented to make the view work that could be taken from the games.
+Each level is driven by its own game's view -- `Pb2Camera` ($D924, $D3B8) for
+a Power Blade area, `SolCamera` ($F1EA, $F24B) for a Solbrain stage -- inside
+the band that game keeps a hero in.  What is new is only what a view with two
+heroes cannot avoid deciding, and it is three things in order: the middle of
+them is kept in that band; the view is pulled if it has to be so that neither
+is off the screen; and when the two are further apart than a screen, it stands
+halfway between the two places that would each hold one.  See
+`game/src/pb3_pair.gd` and `work/re/pb3_pair.md`.
 
-Again there is no cartridge to compare against, so the three questions above
-are the whole of it, and the places are found by the engine out of the level's
-own answers -- with one more condition than Э5.1 had: the place must be one a
-reachable view can bring to the screen.  A Solbrain stage is sixteen screens
-tall and its own record says how far the view may go; above the first line it
-can reach the game never puts anybody, and there would be no screen to judge
-them against.
+Again there is no cartridge to compare against, so the questions above are the
+whole of it, and the places are found by the engine out of the level's own
+answers -- with two more conditions than Э5.1 had: the place must be one a
+reachable view can bring to the screen, and the cell the second hero stands on
+must have a floor under it as well.  A Solbrain stage is sixteen screens tall
+and its own record says how far the view may go; above the first line it can
+reach the game never puts anybody, and there would be no screen to judge them
+against.
 """
 import json
 import os
@@ -94,13 +100,13 @@ def main():
             sys.stderr.write(r.stdout[-3000:] + r.stderr[-3000:])
             print('the engine walked nobody')
             return 1
-        # The view let somebody off the side of the screen.  A hold it could
-        # not make -- because making it would have put him inside something
-        # solid -- is the same failure by another road, so the two are one
-        # question.
+        # The view let somebody off the screen.  A hold it could not make is
+        # not counted here: being pressed by the edge into something solid is
+        # being crushed, and the engine ends him for it (`work/re/pb3_pair.md`),
+        # which this stand sees as one of the two leaving the level.
         out = [p for p in rows if p['off'] > 0]
         # The same two the floor was asked in Э5.1, and for the same reason:
-        # a cell is sixteen lines tall, so while nobody falls further than
+        # a cell is sixteen lines tall, so while nobody moves further than
         # that in one picture, "never inside" and "never through" agree.
         walled = [p for p in rows if p['walled'] > 2]
         fell = [p for p in rows if p['drop'] >= 16]
@@ -127,15 +133,15 @@ def main():
                      if p['one'] == k[0] and p['two'] == k[1]])
             print('  %s and %s: %d' % (k[0], k[1], n))
         alone = len([p for p in rows if p['left'] == 1])
-        # Downwards there is no edge holding anybody -- a falling hero is held
-        # by floors and killed by the bottom of the level -- so how far the
-        # view ever fell behind a fall is written down rather than judged.
-        print('the furthest anybody ever got above or below the screen while '
-              'the view caught up is %d lines'
-              % max(p['below'] for p in rows))
-        print('%d let somebody off the side, %d stood inside something '
-              'solid, %d fell further in one picture than a cell is tall; '
-              '%d walks had one of the two fall out of the level and %d of '
+        # How far the edge ever had to reach to hold somebody: written down
+        # rather than judged, because at the very top and bottom of a level
+        # the view has nowhere further to go and standing there is not being
+        # lost.
+        print('the furthest the edge ever had to reach to hold somebody on '
+              'the screen is %d lines' % max(p['below'] for p in rows))
+        print('%d let somebody off the screen, %d stood inside something '
+              'solid, %d leapt further in one picture than a cell is tall; '
+              '%d walks had one of the two leave the level and %d of '
               'those stopped early'
               % (len(out), len(walled), len(fell), alone, len(cut)))
         # The house verdict line, in the shape the whole suite reads.
