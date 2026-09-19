@@ -114,6 +114,11 @@ var held := 0
 ## $94 -- how far the view slid this frame, which is taken off him before
 ## anything else ($D34D).
 var shift := 0
+## The other way, which Power Blade 2 never needs: an area of that game slides
+## one way only, so $94 is enough for it.  A Solbrain stage slides both ways at
+## once, and the PB3 mode puts the second slide here.  In both games on their
+## own this stays nought and nothing changes.
+var shift_y := 0
 ## $063C and $0652 -- how far a moving floor is carrying him this frame.
 var push_x := 0
 var push_y := 0
@@ -174,6 +179,8 @@ func step(buttons: int, pressed: int, camera: int,
 		y -= shift << 8
 	else:
 		x -= shift << 8
+	# Nought in both games on their own; see `shift_y`.
+	y -= shift_y << 8
 	cam = camera
 	_terrain()
 	match sub:

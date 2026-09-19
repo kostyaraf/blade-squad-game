@@ -63,6 +63,10 @@ var _data: Dictionary
 func _init(stage_index: int, area_index: int) -> void:
 	stage = stage_index
 	area = area_index
+	# The same door `SolLevel` keeps: a stage below nought loads nothing, and
+	# is how `SolAsPb2` borrows this class.
+	if stage_index < 0:
+		return
 	_data = Nes._load_json("%s/pb2/levels/stage%d.json" % [Nes.DATA, stage])
 	var a: Dictionary = _data["areas"][area]
 	vertical = int(a["vertical"]) != 0

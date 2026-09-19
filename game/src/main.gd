@@ -47,6 +47,7 @@ func _ready() -> void:
 	var soldraw := ""
 	var sollive := ""
 	var solrun := ""
+	var pb3floor := ""
 	var solflow := ""
 	var solscript := ""
 	var solscene := ""
@@ -85,6 +86,7 @@ func _ready() -> void:
 		elif a.begins_with("--soldraw="): soldraw = a.substr(10)
 		elif a.begins_with("--sollive="): sollive = a.substr(10)
 		elif a.begins_with("--solrun="): solrun = a.substr(9)
+		elif a.begins_with("--pb3floor="): pb3floor = a.substr(11)
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
 		elif a.begins_with("--solscript="): solscript = a.substr(12)
 		elif a.begins_with("--solscene="): solscene = a.substr(11)
@@ -148,6 +150,10 @@ func _ready() -> void:
 		return
 	if solrun != "":
 		_run_sol_whole(solrun)
+		get_tree().quit()
+		return
+	if pb3floor != "":
+		_run_pb3_floor(pb3floor)
 		get_tree().quit()
 		return
 	if sollive != "":
@@ -457,6 +463,191 @@ func _run_sol_whole(spec: String) -> void:
 	print(("%d of 20 stages played, %d out through the passage,"
 			+ " %d ended where they stood, %d stuck, %d over, %d deaths")
 			% [seen.size(), doors, forced, stuck, over, deaths])
+
+
+var pb3_loud := false
+
+
+## Э5.1 -- each hero made to walk somebody else's level.
+##
+## The spec names the hero, the level he is put in and how long he walks.  The
+## places are not named: they are found here, out of the level's own answers,
+## so the same code finds them whichever way round the pair is.  A place is a
+## cell with nothing in it, nothing over it, something solid under it, and four
+## clear cells to its right, which is what makes "he did not move" a fair
+## question to ask afterwards.
+func _run_pb3_floor(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	pb3_loud = bool(cfg.get("loud", false))
+	var out := PackedStringArray()
+	for one in cfg["runs"]:
+		var run: Dictionary = one
+		var who := String(run["hero"])
+		var spots := int(run.get("spots", 20))
+		var frames := int(run.get("frames", 180))
+		var pads: Array = run.get("pads", [Pad.RIGHT])
+		var tag := "%d.%d" % [int(run["stage"]), int(run.get("area", 0))]
+		if who == "sol":
+			var src := Pb2Level.new(int(run["stage"]), int(run["area"]))
+			var lvl := Pb2AsSol.new(src)
+			var solid := func(cx: int, cy: int) -> bool:
+				return lvl.collision_at(cx * 16 + 8, cy * 16 + 8) >= Pb2AsSol.SOLID
+			var w: int = lvl.width_tiles / 2
+			var h: int = lvl.height_tiles / 2
+			for at in _pb3_spots(solid, w, h, spots):
+				for pad in pads:
+					var p := SolPlayer.new(lvl)
+					# $82:$83 stands sixteen pixels above his feet, so this is
+					# his feet on the top of the cell below him.
+					p.place(at.x * 256 + 128, at.y * 256)
+					# $948D -- under two and thirty the pad does not reach him
+					# at all ($94A5); he is meant to be already standing here,
+					# not just arrived.
+					p.timer = 0xFF
+					out.append(_pb3_walk_sol(p, lvl, int(pad), frames, at, tag))
+		else:
+			var src := SolLevel.new(int(run["stage"]))
+			var lvl := SolAsPb2.new(src)
+			var solid := func(cx: int, cy: int) -> bool:
+				return lvl.class_byte(cx * 16 + 8, cy * 16 + 8) == 0x80
+			var w: int = lvl.width_tiles / 2
+			var h: int = lvl.height_tiles / 2
+			for at in _pb3_spots(solid, w, h, spots):
+				for pad in pads:
+					out.append(_pb3_walk_pb2(lvl, int(pad), frames, at, tag))
+	print("\n".join(out))
+
+
+## Places worth standing in, found out of the level's own answers.
+func _pb3_spots(solid: Callable, w: int, h: int, want: int) -> Array:
+	var found: Array = []
+	var step: int = maxi(1, w / (want * 2))
+	var cx := 1
+	while cx < w - 5 and found.size() < want:
+		for cy in range(1, h - 1):
+			if solid.call(cx, cy) or solid.call(cx, cy - 1):
+				continue
+			if not solid.call(cx, cy + 1):
+				continue
+			var clear := true
+			for k in range(1, 5):
+				if solid.call(cx + k, cy) or solid.call(cx + k, cy - 1) \
+						or solid.call(cx + k, cy - 2):
+					clear = false
+					break
+			if not clear:
+				continue
+			found.append(Vector2i(cx, cy))
+			break
+		cx += step
+	return found
+
+
+## One walk of the Solbrain hero, and what came of it.
+##
+## Walking off the end of a ledge is not a fault -- it is what a ledge is for,
+## and the level has an end below.  The fault is the floor not holding him:
+## ending a picture inside something solid.  That one test is enough to catch
+## going through a floor as well, and here is why: a cell is sixteen lines
+## tall, his own place is read at the middle of him, and the biggest he ever
+## falls in one picture is reported alongside.  While that stays under sixteen
+## he cannot step over a floor without being inside it for at least one
+## picture, so "never inside" and "never through" are the same answer.
+func _pb3_walk_sol(p: SolPlayer, lvl: Pb2AsSol, pad: int, frames: int,
+		at: Vector2i, tag: String) -> String:
+	var floor_px: int = lvl.height_tiles * 8
+	var stuck := 0
+	var worst := 0
+	var drop := 0
+	var left := 0
+	var was: int = (p.y >> 4) & 0xFFFF
+	for i in range(frames):
+		p.step(pad)
+		var px: int = (p.x >> 4) & 0xFFFF
+		var py: int = (p.y >> 4) & 0xFFFF
+		if pb3_loud:
+			print("    %3d x %5d y %5d st %02X sp %4d vx %6d gnd %02X seen %02X"
+					% [i, px, py, p.state, p.speed, p.vx, p.ground, p.seen])
+		if py > was and py - was > drop and py < floor_px:
+			drop = py - was
+		was = py
+		if py >= floor_px:
+			left = 1
+			break
+		if lvl.collision_at(px, py) >= Pb2AsSol.SOLID:
+			stuck += 1
+			worst = maxi(worst, stuck)
+		else:
+			stuck = 0
+	# Standing still is only a fault where there was somewhere to go, so what
+	# is in front of him at the end is part of the answer.
+	var ex: int = (p.x >> 4) & 0xFFFF
+	var ey: int = (p.y >> 4) & 0xFFFF
+	var front: int = 1 if lvl.collision_at(ex + 12, ey) >= Pb2AsSol.SOLID \
+			or lvl.collision_at(ex + 12, ey + 8) >= Pb2AsSol.SOLID else 0
+	return ("sol %-6s %3d %3d pad %02X x0 %5d x1 %5d y1 %5d walled %3d"
+			+ " drop %3d left %d front %d") % [
+			tag, at.x, at.y, pad, at.x * 16 + 8, ex, ey, worst, drop, left,
+			front]
+
+
+## And one walk of the Power Blade hero, whose own place is on the screen and
+## not in the level: the view is what says where in the level the screen is.
+## The same question is asked of him, and answered the same way -- by where he
+## ends each picture, with the biggest fall of one picture reported beside it.
+## His own place is at his feet, so what he is inside is read eight lines up.
+func _pb3_walk_pb2(lvl: SolAsPb2, pad: int, frames: int, at: Vector2i,
+		tag: String) -> String:
+	var top: int = 16
+	var world_x: int = at.x * 16 + 8
+	var world_y: int = at.y * 16 + 8
+	var eye := Pb2Camera.new(lvl)
+	# The view is put so that he stands in the middle of it, and the level's
+	# own far end is not walked past.
+	var want: int = clampi(world_x - 0x80, 0, maxi(0, lvl.width_tiles * 8 - 0x100))
+	eye.place(want >> 8, want & 0xFF, 0, 0)
+	# And the window downwards, which his own game never has to say: he is put
+	# in the middle of one screen's worth of the stage.
+	lvl.cam_y = clampi(world_y - 0x70, 0, maxi(0, lvl.height_tiles * 8 - 0xE0))
+	var things := Pb2Objects.new(lvl)
+	var p := Pb2Player.new(lvl)
+	p.world = things
+	p.place(world_x - eye.pos, world_y - lvl.cam_y + top, eye.pos)
+	var stuck := 0
+	var worst := 0
+	var drop := 0
+	var left := 0
+	var was: int = world_y - lvl.cam_y
+	for i in range(frames):
+		eye.drive()
+		things.cam = eye.pos
+		p.shift = eye.shift
+		p.step(pad, pad if i == 0 else 0, eye.pos, 0, 0)
+		eye.decide(((p.y if lvl.vertical else p.x) >> 8) & 0xFF)
+		var px: int = eye.pos + ((p.x >> 8) & 0xFF)
+		var py: int = ((p.y >> 8) & 0xFF) - top
+		if pb3_loud:
+			print("    %3d x %5d y %5d st %02X vy %6d gnd %02X cam %5d"
+					% [i, px, py + lvl.cam_y, p.state, p.vy, p.floor_kind, eye.pos])
+		if py > was and py - was > drop and py < 0xE0:
+			drop = py - was
+		was = py
+		if py >= 0xE0 or py < -0x40:
+			left = 1
+			break
+		if lvl.class_byte(px, py - 8) == 0x80:
+			stuck += 1
+			worst = maxi(worst, stuck)
+		else:
+			stuck = 0
+	var ex: int = eye.pos + ((p.x >> 8) & 0xFF)
+	var ey: int = ((p.y >> 8) & 0xFF) - top
+	var front: int = 1 if lvl.class_byte(ex + 12, ey - 8) == 0x80 \
+			or lvl.class_byte(ex + 12, ey - 1) == 0x80 else 0
+	return ("pb2 %-6s %3d %3d pad %02X x0 %5d x1 %5d y1 %5d walled %3d"
+			+ " drop %3d left %d front %d") % [
+			tag, at.x, at.y, pad, world_x, ex, ey + lvl.cam_y, worst, drop,
+			left, front]
 
 
 func _run_sol_live(spec: String, st: int) -> void:

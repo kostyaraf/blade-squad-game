@@ -40,6 +40,10 @@ var _data: Dictionary
 
 func _init(stage_index: int) -> void:
 	stage = stage_index
+	# A stage below nought is no stage at all: it is how a view of somebody
+	# else's level (`Pb2AsSol`) borrows this class without a file to load.
+	if stage_index < 0:
+		return
 	_data = Nes._load_json("%s/sol/levels/stage%d.json" % [Nes.DATA, stage])
 	palette = PackedByteArray(_data["palette"])
 	var c: Array = _data["chr"]
