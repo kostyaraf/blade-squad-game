@@ -75,6 +75,25 @@ const SOUND_WAIT := 0x34    # $D8E4 -- and walked
 ## $CA7D..$CA91 and $D930 -- a stage named and asked for, and nothing else.
 const STAGE_STUB := [0x30, 0x41, 0x42, 0x48, 0x49, 0x4A, 0x4B]
 const RIDE := 0x2C          # $E9D2 -- the view lifted before he arrives
+# $CAA0 -- the way out of one stage into the next inside the same area.  The
+# five run into one another: the record of the stage $55 names is read in, the
+# view is pushed along and ridden back ($36 is the same $E9D2 as $2C), the
+# hero walks in while it does, and the colours are taken down and brought back.
+const DOOR := 0x35
+const DOOR_RIDE := 0x36     # $E9D2 again
+const DOOR_WALK := 0x37     # $CAC6
+const DOOR_OUT := 0x38      # $CB78
+const DOOR_END := 0x39      # $CB85
+## $CB62, $CB68 and $CB6E -- how long each of the six steps of the walk in
+## lasts, and the picture it is drawn with, whole and hurt.
+const DOOR_WAIT := [0x06, 0x05, 0x08, 0x06, 0x05, 0x08]
+const DOOR_PICS := [0xA0, 0xA2, 0xA4, 0xA8, 0xAA, 0xA6]
+const DOOR_HURT := [0xDE, 0xE0, 0xE2, 0xE6, 0xE8, 0xE4]
+## $CB03 and $CAFF -- and the one he stands in once he is where he was.
+const DOOR_STILL := 0x64
+const DOOR_STILL_HURT := 0xDA
+## $CB0A -- how far he walks in a picture, in sixteenths.
+const DOOR_STEP := 0x18
 const RIDING := 0x2D        # $E9E3 -- and the wait while it settles
 ## $CC33 -- the sixteen the sprites are drawn in while he arrives.  They are
 ## not the stage's: $CB96 writes them over the sprite half of the table itself
@@ -321,6 +340,14 @@ var wiped := false
 
 ## True once a mode this does not port is reached, with its number in `stuck`.
 var stuck := -1
+## $0720, $0730 and $0740 -- where the walk in is going, which of its six
+## steps is up and how long that step has left.  The cartridge keeps them in
+## weapon slot nought's own x and y: nothing walks the weapons while the
+## passage runs, so it borrows them, and the same three bytes stand for the
+## bands of the beam in the modes that type a name.
+var door_to := 0
+var door_step := 0
+var door_left := 0
 
 
 ## One picture: $C9B4.  `host` is what holds the stage itself and must answer
@@ -365,8 +392,16 @@ func step(host) -> void:
 			_into(host)
 		RAISE:
 			_raise(host)
-		RIDE:
+		RIDE, DOOR_RIDE:
 			_ride(host)
+		DOOR:
+			_door(host)
+		DOOR_WALK:
+			_door_walk(host)
+		DOOR_OUT:
+			_door_out(host)
+		DOOR_END:
+			_door_end(host)
 		RIDING:
 			_riding(host)
 		BORN:
@@ -774,6 +809,101 @@ func _raise(host) -> void:
 	# for it again.
 	z2e = host.flow_tune()
 	mode = BORN
+
+
+## $CAA0, mode $35 -- the way out of a stage into the next one of the same
+## area.  The stage's own script writes it -- $9398 is one of the six that do
+## -- after putting the stage it wants into $55.
+##
+## The record of that stage is read in ($E69B), and only that: the screen is
+## not wiped and he is not put together out of four pieces, because he is
+## already standing.  What is done to him is that he is pushed back to the
+## nearest sixteen pixels along, and the four modes that follow walk him the
+## rest of the way in while the view rides.
+func _door(host) -> void:
+	_ca9a(host)                                   # $CAA0
+	if fade.kind != 0:                            # $CAA3 -- $26
+		return
+	# $55 is the stage the script asked for, and the pool is where the engine
+	# keeps it.
+	var pool = host.flow_pool()
+	if pool != null:
+		stage = pool.stage
+	host.flow_door(stage)                         # $CAA7 -- $E69B
+	mode = DOOR_RIDE                              # $CAAA -- INC $02
+	var h = host.flow_hero()
+	door_to = (h.x >> 8) & 0xFF                   # $CAAC
+	h.x = h.x & 0xF0FF                            # $CAB3 -- $81 &= $F0
+	# $CAB5 -- bank $0C and $8019, which is $934C: the hero's own slot of the
+	# pool wiped.
+	var np = host.flow_pool()
+	if np != null:
+		np.sat_clear()
+	door_left = 0x01                              # $CABF
+	door_step = 0x01
+
+
+## $CADF -- one picture of the walk in.  He is drawn where he stands, with the
+## high nibble of each half of the place dropped, and walks a step and a half
+## a picture until the sixteen he was pushed back by are made up.
+func _door_draw(host) -> void:
+	_ca9a(host)                                   # $CADF
+	var h = host.flow_hero()
+	var t = host.flow_table()
+	var pool = host.flow_pool()
+	if h == null:
+		return
+	if h.shield != 0:                             # $CAE2 -- $05C8
+		var c: int = int(SolSprites.shine[(clock >> 1) & 0x03])
+		fade.out[0x12] = c                        # $CAF0
+		if pool != null:
+			pool.z0112 = c
+	var pic: int
+	if ((h.x >> 8) & 0xFF) == door_to:            # $CAF3 -- he is back
+		pic = DOOR_STILL_HURT if h.hurt != 0 else DOOR_STILL
+	else:
+		h.x = (h.x + DOOR_STEP) & 0xFFFF          # $CB07
+		door_left = (door_left - 1) & 0xFF        # $CB12
+		if door_left == 0:
+			door_step = (door_step + 1) & 0x07    # $CB18
+			if door_step == 0x06:
+				door_step = 0
+			door_left = int(DOOR_WAIT[door_step]) # $CB29
+		pic = int(DOOR_HURT[door_step] if h.hurt != 0
+				else DOOR_PICS[door_step])
+	# $CB43 -- the place with the high nibble of each half dropped, which is
+	# what the view has already been walked to.
+	SolSprites.picture(pic, 0x00, h.x & 0x0FFF, h.y & 0x0FFF, t)
+
+
+## $CAC6, mode $37 -- the ride back, with the walk in drawn over it.  $E9E3
+## ends by putting nought on the mode; here that is not the stage being played
+## but the colours being taken down.
+func _door_walk(host) -> void:
+	_door_draw(host)                              # $CAC6
+	_riding(host)                                 # $CAC9 -- $E9E3
+	if mode != PLAY:                              # $CACC
+		return
+	fade.ask(0x05, 0xFF)                          # $CAD4 -- $F86D
+	fade.at_pace(8)                               # $CAD7 -- $F861
+	mode = DOOR_OUT                               # $CADA
+
+
+## $CB78, mode $38 -- and once they are down, brought back at four.
+func _door_out(host) -> void:
+	_door_draw(host)                              # $CB78
+	if fade.kind != 0:                            # $CB7B
+		return
+	fade.at_pace(4)                               # $CB7F -- $F865
+	mode = DOOR_END                               # $CB82
+
+
+## $CB85, mode $39 -- nothing is drawn any more; when the colours have come
+## back the stage is played.
+func _door_end(_host) -> void:
+	fade.tick()                                   # $CB85 -- $F806
+	if fade.kind == 0:                            # $CB88
+		mode = PLAY                               # $CB8C
 
 
 ## $E9D2, mode $2C -- the view is pushed two pages along and $41 pictures are

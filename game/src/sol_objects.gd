@@ -247,6 +247,24 @@ var z56 := 0
 var skipped := {}                   # which behaviours have not been read yet
 
 
+## $934C, which $8019 of the twelfth bank is the door to -- the hero's own
+## slot of the pool, number twelve, wiped.  The way out of a stage calls it
+## once, so that nothing the stage just left is still standing in him.
+func sat_clear() -> void:
+	cool[0x0C] = 0xFF                   # $934C -- $06EC
+	id[0x0C] = id[0x0C] & 0x7F          # $9351 -- $065C
+	a[0x0C] = 0                         # $9359 -- $062C
+	b[0x0C] = 0                         # $063C
+	c[0x0C] = 0                         # $064C
+	kind[0x0C] = 0                      # $069C
+	left[0x0C] = 0                      # $06CC
+	frame[0x0C] = 0                     # $06DC
+	anim_a[0x0C] = 0                    # $06AC
+	anim_b[0x0C] = 0                    # $06BC
+	pic_lo[0x0C] = 0                    # $066C
+	pic_hi[0x0C] = 0                    # $067C
+
+
 ## $96A7 -- what the shimmer writes, kept both places at once.
 func shine_to(v: int) -> void:
 	z0112 = v

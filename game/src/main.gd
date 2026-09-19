@@ -46,6 +46,7 @@ func _ready() -> void:
 	var solobj := ""
 	var soldraw := ""
 	var sollive := ""
+	var solrun := ""
 	var solflow := ""
 	var solscript := ""
 	var solscene := ""
@@ -83,6 +84,7 @@ func _ready() -> void:
 		elif a.begins_with("--solobj="): solobj = a.substr(9)
 		elif a.begins_with("--soldraw="): soldraw = a.substr(10)
 		elif a.begins_with("--sollive="): sollive = a.substr(10)
+		elif a.begins_with("--solrun="): solrun = a.substr(9)
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
 		elif a.begins_with("--solscript="): solscript = a.substr(12)
 		elif a.begins_with("--solscene="): solscene = a.substr(11)
@@ -142,6 +144,10 @@ func _ready() -> void:
 		return
 	if solplay != "":
 		_run_sol_play(solplay)
+		get_tree().quit()
+		return
+	if solrun != "":
+		_run_sol_whole(solrun)
 		get_tree().quit()
 		return
 	if sollive != "":
@@ -298,6 +304,161 @@ static func _sol_strip(suit: int, clock: int, bonus: int,
 ## many shots and how many things the satellite has thrown, and how many
 ## sprites the table came out holding.  It is a smoke test, not a stand: the
 ## stands compare against the cartridge, this only says the parts are wired.
+## Э4.6 acceptance, the whole of Solbrain run by the engine alone:
+## --solrun=STEPS,LIMIT.  Every other stand holds the engine against the
+## cartridge on a short stretch and hands it what it cannot work out itself.
+## This one hands it nothing: it is stood at the raising of the first stage
+## and left to run -- its own hero, its own view, its own pool, its own minds,
+## its own script, its own clearing and its own picking of what comes next.
+##
+## A pilot holds him towards the far edge and taps the two buttons.  The pilot
+## is not on trial and cannot play the game: where a stage is not played out
+## inside STEPS pictures it is ended where it stands, the same $1B the stage's
+## own script writes at $9398, and that is counted and put out.
+##
+## What is on trial is the run: every stage must raise, put him together, run
+## its minds and its script for hundreds of pictures without the engine
+## falling over, and hand on to the stage the picking names.  A stage the run
+## cannot get out of is a failure, and so is a run that comes round to a stage
+## it has already played.
+func _run_sol_whole(spec: String) -> void:
+	var f := spec.split(",")
+	var steps: int = int(f[0])
+	var limit: int = int(f[1])
+	# A third field asks for every change of mode to be put out as it happens.
+	var loud: bool = f.size() > 2 and f[2] != ""
+	pads = [Pad.player_one(), Pad.player_two()]
+	sol_flow = SolFlow.new()
+	sol_flow.stage = 0
+	# Nine tries, so a pilot that cannot fight does not end the run by dying.
+	sol_flow.lives = 0x09
+	sol_flow.mode = SolFlow.RAISE
+	var order := PackedStringArray()
+	var seen := {}
+	var at := -1
+	var spent := 0
+	var forced := 0
+	var doors := 0
+	var stuck := 0
+	var over := 0
+	var deaths := 0
+	var last := false
+	var i := 0
+	# The whole run is given an end: a flow that sits in one mode for ever
+	# would otherwise never come back.
+	while i < steps * limit + 0x8000:
+		i += 1
+		# The pilot.  Right is held all the way; the two buttons are let go
+		# every eighth picture, or nothing would ever be fired twice.
+		var want: int = Pad.RIGHT
+		if (i & 0x1F) < 0x0C:
+			want |= Pad.A
+		if (i & 0x07) < 0x04:
+			want |= Pad.B
+		# Where a screen waits on a button, START is what walks it on.  On
+		# STAGE SELECT that is not enough: $DC1B says START on a stage
+		# already done with does nothing at all, so the pointer is walked
+		# round the five until it stands on one that is left.
+		if sol_flow.mode != SolFlow.PLAY:
+			want = Pad.START if (i & 0x0F) < 0x08 else 0
+			if sol_flow.mode == SolFlow.CHOSEN \
+					and ((sol_flow.z2d >> sol_flow.z4c) & 1) != 0:
+				want = Pad.RIGHT if (i & 0x0F) < 0x08 else 0
+		pads[0].held = want
+		sol_pad_edge = want & ~sol_flow_was
+		sol_flow_was = want
+		var was: int = sol_flow.mode
+		sol_flow.step(self)
+		if loud and sol_flow.mode != was:
+			print("  %d  %02X -> %02X  stage %d"
+					% [i, was, sol_flow.mode, sol_flow.stage])
+		if sol_flow.stuck >= 0:
+			order.append("%d stage %d stopped at mode %02X on picture %d"
+					% [order.size(), sol_flow.stage, sol_flow.stuck, i])
+			stuck += 1
+			break
+		if sol_flow.mode == SolFlow.PLAY:
+			if at != sol_flow.stage:
+				at = sol_flow.stage
+				spent = 0
+				if seen.has(at):
+					# $DBE3 -- once every area is done with, the board picks
+					# for itself, and what it picks is the last stage.  That
+					# is not a loop: it is the way to the end of the game.
+					if (sol_flow.z2d & 0x1F) == 0x1F and not last:
+						last = true
+					else:
+						order.append("%d stage %d played a second time"
+								% [order.size(), at])
+						stuck += 1
+						break
+				seen[at] = true
+			spent += 1
+			# $978A -- he is dying, and $97A7 spends the try and raises the
+			# stage again.  The pilot cannot fight, so this is counted and
+			# the stage keeps its budget.
+			if sol_hero != null and sol_hero.state == 0x0C:
+				deaths += 1
+			if spent > steps and last:
+				# $E33A -- what the last stage's own script writes once the
+				# last of them is down ($02 = $4C).
+				sol_flow.mode = SolFlow.END_PAY
+				order.append("%d the last stage ended where it stood after %d"
+						% [order.size(), spent])
+				at = -1
+				continue
+			if spent > steps:
+				# The pilot cannot play the game, so the stage is ended
+				# where it stands, the two ways the stage's own script ends
+				# one: a stage with another of its own area left goes out
+				# through the passage ($55 and $02 = $35, which is what
+				# $A89A and its five like write), and the last of an area
+				# through the clearing ($02 = $1B, $9398).
+				var nxt := -1
+				for k in range(20):
+					if not seen.has(k) \
+							and SolOver.area_of(k) == SolOver.area_of(at):
+						nxt = k
+						break
+				if nxt >= 0:
+					if sol_pool != null:
+						sol_pool.stage = nxt          # $55
+					sol_flow.mode = SolFlow.DOOR
+					doors += 1
+					order.append("%d stage %d out to %d after %d"
+							% [order.size(), at, nxt, spent])
+				else:
+					sol_flow.mode = SolFlow.CLEAR
+					forced += 1
+					order.append("%d stage %d ended where it stood after %d"
+							% [order.size(), at, spent])
+				at = -1
+				continue
+		elif was == SolFlow.PLAY and sol_flow.mode == SolFlow.CLEAR:
+			order.append("%d stage %d played out in %d" % [order.size(), at, spent])
+			at = -1
+		if sol_flow.mode == SolFlow.OVER or sol_flow.mode == SolFlow.OVER_WAIT:
+			over += 1
+			break
+		# $D4AD -- the ending has run out into the asking about the five
+		# best, which is where the game goes when it is won.  The run is
+		# home: everything the game has was walked to get here, and the
+		# typing of a name is its own stand (verify_sol_name.py).
+		if sol_flow.mode == SolFlow.TOP_ASK_END \
+				or sol_flow.mode == SolFlow.NAME_SLIDE_END \
+				or sol_flow.mode == SolFlow.CHOOSE \
+				or sol_flow.mode == SolFlow.TITLE:
+			order.append("%d the game is out" % order.size())
+			break
+		if order.size() >= limit:
+			break
+	for l in order:
+		print(l)
+	print(("%d of 20 stages played, %d out through the passage,"
+			+ " %d ended where they stood, %d stuck, %d over, %d deaths")
+			% [seen.size(), doors, forced, stuck, over, deaths])
+
+
 func _run_sol_live(spec: String, st: int) -> void:
 	bg.z_index = -1
 	var f := spec.split(",")
@@ -970,6 +1131,9 @@ class FlowStand:
 
 	func flow_raise(st: int) -> void:
 		asked = "raise %d" % st
+
+	func flow_door(st: int) -> void:
+		asked = "door %d" % st
 
 	func flow_tune() -> int:
 		return 0
@@ -1767,6 +1931,13 @@ func flow_raise(st: int) -> void:
 	_start_sol()
 	sol_pool.w_x[0x0C] = (sol_pool.w_x[0x0C] & 0xFF00) | (sol_flow.lives & 0xFF)
 	sol_pool.flow = sol_flow
+
+
+## $E69B alone -- the record of the stage, and nothing round it.  The way out
+## of a stage into the next one of the same area reads it while the hero is
+## still standing, so neither the screen nor the colours are touched here.
+func flow_door(st: int) -> void:
+	flow_raise(st)
 
 
 func flow_play() -> void:
