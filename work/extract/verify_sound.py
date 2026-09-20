@@ -3,7 +3,7 @@
 
 Power Blade 2 and Solbrain each carry a sound driver: a short interpreter that
 walks data in its own bank and writes the five channels of the APU.  Neither
-is big -- 390 bytes of code in one and about 2200 in the other -- and both are
+is big -- a little over two kilobytes of code each -- and both are
 what makes the noise: everything a player hears is decided by what those
 bytes put into $4000..$4017.
 

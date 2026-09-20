@@ -60,6 +60,7 @@ func _ready() -> void:
 	var solscene := ""
 	var solboot := false
 	var solwalk := ""
+	var sound := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -106,6 +107,7 @@ func _ready() -> void:
 		elif a.begins_with("--solscene="): solscene = a.substr(11)
 		elif a == "--solboot": solboot = true
 		elif a.begins_with("--solwalk="): solwalk = a.substr(10)
+		elif a.begins_with("--sound="): sound = a.substr(8)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -120,6 +122,10 @@ func _ready() -> void:
 		return
 	if solscript != "":
 		_run_sol_script(solscript)
+		get_tree().quit()
+		return
+	if sound != "":
+		_run_sound(sound)
 		get_tree().quit()
 		return
 	if solwalk != "":
@@ -5233,3 +5239,58 @@ func _types() -> String:
 			out.append("%02X.%d" % [s[Pb2Objects.F_TYPE],
 					s[Pb2Objects.F_STATE]])
 	return " ".join(out)
+
+
+## Э6.1 -- the two ported sound drivers on the same bare stand the cartridge
+## is booted into.
+##
+## `work/tools/sndprobe.py` runs the cartridge's driver with nothing else
+## running at all: the two banks it reads mapped, the page cleared, and one
+## turn of a small loop a picture.  On each turn the loop first hands in
+## whatever the table of requests says for that picture and then calls the
+## driver's per-picture entry, so a request always comes before the tick it
+## belongs to.  This is the same loop, with the ported driver in place of the
+## cartridge's, and what comes out is the same tape: every write to
+## $4000..$4017, in order, one line a picture.
+##
+## `work/extract/verify_sound.py` lays the two tapes side by side.
+func _run_sound(path: String) -> void:
+	var f := FileAccess.open(path, FileAccess.READ)
+	var cfg: Dictionary = JSON.parse_string(f.get_as_text())
+	var runs: Array = cfg["runs"]
+	for i in range(runs.size()):
+		var r: Dictionary = runs[i]
+		var apu := SndApu.new()
+		var pb2: Pb2Sound = null
+		var sol: SolSound = null
+		if r["game"] == "pb2":
+			pb2 = Pb2Sound.new(apu)
+			pb2.boot()
+		else:
+			sol = SolSound.new(apu)
+			sol.boot()
+		# The stand's own table of requests: at most four, walked in order,
+		# each waiting for its picture.  $10 is how far down the table the
+		# loop has got and $11:$12 is the picture.
+		var script: Array = r["script"]
+		var slot := 0
+		for p in range(int(r["pictures"])):
+			apu.clear()
+			if slot < script.size() and int(script[slot][0]) == p:
+				var kind := int(script[slot][1])
+				var num := int(script[slot][2])
+				slot += 1
+				if pb2 != null:
+					pb2.ask(num)
+				elif kind == 0:
+					sol.ask_tune(num)
+				else:
+					sol.ask_sound(num)
+			if pb2 != null:
+				pb2.tick()
+			else:
+				sol.tick()
+			var line := "snd %d %d" % [i, p]
+			for w in apu.writes:
+				line += " %04X=%02X" % [w[0], w[1]]
+			print(line)
