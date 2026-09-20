@@ -95,29 +95,33 @@ CACHE = os.path.join(P.SCRATCH, 'soundtape.json')
 
 def cartridge(rs, scratch):
     """The tape of each run, off the cartridge."""
-    key = json.dumps([rs, [os.path.getmtime(SP.ROM[g]) for g in ('pb2', 'sol')],
-                      os.path.getmtime(SP.__file__)], sort_keys=True)
+    stamp = str([os.path.getmtime(SP.ROM[g]) for g in ('pb2', 'sol')]
+                + [os.path.getmtime(SP.__file__)])
+    held = {}
     try:
-        held = json.load(open(CACHE))
-        if held['key'] == key:
-            return [[[tuple(w) for w in p] for p in t] for t in held['tape']]
+        was = json.load(open(CACHE))
+        if was['stamp'] == stamp:
+            held = was['tape']
     except Exception:
         pass
-    built = {}
-    for game in ('pb2', 'sol'):
-        rom = os.path.join(scratch, '%s_stand.nes' % game)
-        built[game] = (rom,) + SP.build(game, rom)
-    out = []
-    for r in rs:
-        rom, off, loop = built[r['game']]
-        out.append(SP.tape(rom, off, loop, r['script'], r['pictures'],
-                           scratch))
-    try:
-        os.makedirs(P.SCRATCH, exist_ok=True)
-        json.dump({'key': key, 'tape': out}, open(CACHE, 'w'))
-    except Exception:
-        pass
-    return out
+    # Each run is kept under its own name, so that asking for one run while a
+    # driver is being ported does not throw the other two hundred away.
+    want = [r for r in rs if r['say'] not in held]
+    if want:
+        built = {}
+        for r in want:
+            if r['game'] not in built:
+                rom = os.path.join(scratch, '%s_stand.nes' % r['game'])
+                built[r['game']] = (rom,) + SP.build(r['game'], rom)
+            rom, off, loop = built[r['game']]
+            held[r['say']] = SP.tape(rom, off, loop, r['script'],
+                                     r['pictures'], scratch)
+        try:
+            os.makedirs(P.SCRATCH, exist_ok=True)
+            json.dump({'stamp': stamp, 'tape': held}, open(CACHE, 'w'))
+        except Exception:
+            pass
+    return [[[tuple(w) for w in p] for p in held[r['say']]] for r in rs]
 
 
 def engine(rs, scratch):
@@ -152,6 +156,13 @@ def main():
     scratch = P.scratch('sound')
     try:
         rs = runs()
+        # While a driver is being ported it is worth asking one run at a
+        # time; a word on the command line keeps the runs whose name has it.
+        if len(sys.argv) > 1:
+            rs = [r for r in rs if all(w in r['say'] for w in sys.argv[1:])]
+            if not rs:
+                print('no run is named that')
+                return 1
         want = cartridge(rs, scratch)
         got = engine(rs, scratch)
         bad = 0
