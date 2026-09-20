@@ -211,6 +211,14 @@ var guest_box: Array = []
 ## of a pair's two heroes came from the game the stage did.  The one named
 ## above stays what it is: it is what Э5.4's stand hands over.
 var more_guests: Array = []
+## Э5.8 -- and what a guest of this stage is carrying.  One entry a guest,
+## `[arms, spend]`: `arms` is what of his is in the air, each one
+## `[x, y, reach, power]` in this stage's own sixteenths, and
+## `spend.call(j, cost)` tells his own game what the thing cost arm `j` --
+## the same number $8731 takes off $0770 for a gun of this stage's own.
+## Stepping them is not this pool's: they are his, and they are stepped where
+## he is.  See `work/re/pb3_arms.md`.
+var guest_arms: Array = []
 ## $60..$68 -- and the box of the thing whose turn it is.
 var z60 := 0                        # $60, what touching it means
 var z61 := 0                        # $61:$62
@@ -1293,6 +1301,13 @@ func _hit_of(pic: int) -> Array:
 ## each pair of a box and a meaning that some picture wears: what a stand
 ## needs to try them all without guessing which stage puts out which.  Each is
 ## a picture that wears the pair, the meaning, which box it is, and the box.
+## $8A19's first byte of a picture's pair: what touching that picture means.
+## Э5.8 asks it of a guest's own pool, because that is where his satellite's
+## and his punch's pictures live.
+func meaning_of(pic: int) -> int:
+	return int(_hit_of(pic)[0])
+
+
 func hit_kinds() -> Array:
 	var seen := {}
 	var out: Array = []
@@ -1412,6 +1427,10 @@ func touch(s: int) -> void:
 		hero_bw = int(was_box[3])
 		hero_bh = int(was_box[4])
 	weapons_hit(s)                      # $CFE8
+	# Э5.8 -- and what the guests are carrying, over the same thing and beside
+	# this stage's own guns, because that is what they are.  It has to be here
+	# and not below: $84B0 grows the thing's box in place and leaves it grown.
+	arms_hit(s)
 	hurt_slots(s)                       # $CFEB
 
 
@@ -1733,6 +1752,57 @@ func weapons_hit(s: int) -> void:
 			order = [7, 6, 3, 2] if c != 0 else [5, 4, 1, 7, 6, 3, 2]
 	for i in order:
 		c = _weapon_slot(s, int(i), c)
+
+
+## Э5.8 -- a guest's weapons laid over the same thing.  $869C's own three
+## gates, $876D's box and $87BC's wear; what differs is only that the place,
+## the reach and the strength come as numbers, because a guest's weapon has no
+## picture this stage can read.
+##
+## The carry is not threaded through it.  There is no cartridge that ever did
+## this, so there is nothing to be faithful to, and the stage's own guns keep
+## their exact road untouched.
+func arms_hit(s: int) -> void:
+	if guest_arms.is_empty():
+		return
+	if (z60 & 0x80) != 0 or (z60 & 0x3F) == 0:
+		return                          # $869C -- picked up, or hurts for none
+	if (z60 & 0x20) != 0:
+		return                          # $86A0
+	if (mind[s] & 0x80) != 0:
+		return                          # $86A4 -- it is already finished
+	var n: int = z60 & 0x0F
+	for g in guest_arms:
+		var arms: Array = g[0]
+		var spend: Callable = g[1]
+		for j in range(arms.size()):
+			var a: Array = arms[j]
+			if a.size() != 4:
+				continue
+			if not _arm_on_thing(s, int(a[0]), int(a[1]), int(a[2])):
+				continue
+			# $87BA -- a thing hit in the last nine pictures is touched but
+			# not hurt, and the shot is spent on it all the same.
+			if cool[s] >= 0x09:
+				_wear(s, int(a[3]))     # $87BC, which is $83BC written out
+			if spend.is_valid():
+				spend.call(j, n)
+			if (mind[s] & 0x80) != 0:
+				return
+
+
+## $876D with the shot's numbers handed in: the shot is a point, grown by what
+## it reaches, and the thing is the box.
+func _arm_on_thing(s: int, ax: int, ay: int, reach: int) -> bool:
+	var lo_x: int = (z61 - reach) & 0xFFFF
+	var lo_y: int = (z63 - reach) & 0xFFFF
+	var w: int = z65 + reach * 2
+	var h: int = z67 + reach * 2
+	if ((ax - lo_x) & 0xFFFF) > w:
+		return false
+	if ((ay - lo_y) & 0xFFFF) > h:
+		return false
+	return true
 
 
 ## $8726 -- one weapon slot laid over the thing, and what the touch costs the

@@ -54,6 +54,7 @@ func _ready() -> void:
 	var pb3gear := ""
 	var pb3list := ""
 	var pb3run := ""
+	var pb3arms := ""
 	var solflow := ""
 	var solscript := ""
 	var solscene := ""
@@ -99,6 +100,7 @@ func _ready() -> void:
 		elif a.begins_with("--pb3gear="): pb3gear = a.substr(10)
 		elif a.begins_with("--pb3list="): pb3list = a.substr(10)
 		elif a.begins_with("--pb3run="): pb3run = a.substr(9)
+		elif a.begins_with("--pb3arms="): pb3arms = a.substr(10)
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
 		elif a.begins_with("--solscript="): solscript = a.substr(12)
 		elif a.begins_with("--solscene="): solscene = a.substr(11)
@@ -190,6 +192,10 @@ func _ready() -> void:
 		return
 	if pb3list != "":
 		_run_pb3_list(pb3list)
+		get_tree().quit()
+		return
+	if pb3arms != "":
+		_run_pb3_arms(pb3arms)
 		get_tree().quit()
 		return
 	if sollive != "":
@@ -1039,6 +1045,279 @@ func _pb3_hits_sol(stage: int, edges: Array, out: PackedStringArray) -> void:
 			var again: int = 1 if carrier.suit != was else 0
 			out.append(_pb3_hit_line(where, shape, "pb2", String(e), want, hit,
 					again, dmg))
+
+
+## Э5.8 -- a foreign weapon against a foreign thing, which is Э5.4 the other
+## way about.
+##
+## Nothing to compare against here either, so the questions are mechanical
+## (`work/extract/verify_pb3_arms.py`).  One line a placement: the level, the
+## kind of thing, which sort of weapon was laid over it, which of the eight
+## places round its reach the weapon stood in, whether a blow had to land,
+## whether one did, whether a second straight after did too, what it took off
+## the thing, and what the thing said it cost the weapon.
+##
+## The eight places are the ones Э5.4 uses, for the same reason: the reach is
+## the thing's own box grown by what the weapon reaches, which is the sum both
+## games already do, and the weapon is put on each of its four edges and one
+## step outside each.
+func _run_pb3_arms(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var edges: Array = cfg["edges"]
+	var out := PackedStringArray()
+	for r in cfg["runs"]:
+		if String(r["game"]) == "pb2":
+			_pb3_arms_pb2(int(r["stage"]), int(r["area"]), edges, out)
+		else:
+			_pb3_arms_sol(int(r["stage"]), edges, out)
+	# And the second leg: the same weapons in a level that is really running,
+	# to say that a guest ever has anything in the air at all.
+	if cfg.has("live"):
+		_pb3_arms_live(cfg["live"], out)
+	print("\n".join(out))
+
+
+## Э5.8, the second leg -- a guest firing in a live level.
+##
+## The first leg says the seam is right; this says it is used.  The whole list
+## is walked in each pairing, as Э5.7 walks it, with every hero armed -- a
+## Power Blade one has his blade from the first picture, and a Solbrain one is
+## handed one of the eight satellites by Э5.5's own door (`Pb3Gear.arm`), which
+## is the only way either game ever gives him one.  What is counted is how many
+## pictures a guest had anything of his own in the air and how many of those
+## reached a thing of the level.
+func _pb3_arms_live(cfg: Dictionary, out: PackedStringArray) -> void:
+	var frames: int = int(cfg["frames"])
+	for kinds in cfg["kinds"]:
+		var lst := Pb3List.new(kinds)
+		var recs: Array = Pb3List.records()
+		for n in range(recs.size()):
+			lst.at = 0
+			lst.last_pad = 0
+			for _s in range(n):
+				lst.step(Pb3List.RIGHT)
+				lst.step(0)
+			var where: String = Pb3List.say(recs[n])
+			if not lst.enter(true):
+				continue
+			out.append(_pb3_arms_one(lst, where, kinds, frames))
+			lst.leave()
+
+
+## One record, played out with both of them armed.
+func _pb3_arms_one(lst: Pb3List, where: String, kinds: Array,
+		frames: int) -> String:
+	var two: Pb3Pair = lst.two
+	# $92CD -- the satellite a finished combination gives him, and the one
+	# place in the engine that hands one over.
+	var gear := Pb3Gear.new(kinds)
+	for i in range(two.who.size()):
+		if two.who[i] != Pb3Pair.SOL:
+			continue
+		if i == two.host:
+			gear.arm(two.host_sol, i)
+		else:
+			gear.arm(two.guest_pool[i], i)
+	var down: bool = two.game == Pb3Pair.PB2 \
+			and (two.pb2v as Pb2Level).vertical
+	var along: int = Pad.RIGHT
+	var still := 0
+	var furthest := 0
+	var began: Array[Vector2i] = []
+	for i in range(two.who.size()):
+		began.append(two.world_of(i))
+	var went: Array[int] = [0, 0]
+	var ran := 0
+	for f in range(frames):
+		var way: int = along | (Pad.DOWN if down else 0)
+		var pads_now: Array = [way, way]
+		for i in range(2):
+			if f % 24 == 8:
+				pads_now[i] |= Pad.A
+			# Э5.8 -- and they do not throw in step.  Э5.7's pilot held one pad
+			# and handed it to both, which in a Power Blade area makes two
+			# heroes standing in the same place throw the same blade at the
+			# same thing on the same picture; the first of the two ends it
+			# ($B698) or sets it ringing ($B5D8), and the second finds nothing
+			# left to reach.  Half a throw apart and each has things of his own
+			# to hit.
+			if (f + i * 4) % 8 < 2:
+				pads_now[i] |= Pad.B
+		_pb3_keep_alive(two)
+		two.step(pads_now)
+		ran += 1
+		for i in range(two.who.size()):
+			if two.gone[i]:
+				continue
+			went[i] = maxi(went[i], absi(two.world_of(i).x - began[i].x))
+		var far: int = maxi(went[0], went[1])
+		if far > furthest:
+			furthest = far
+			still = 0
+		else:
+			still += 1
+			if still >= 120:
+				still = 0
+				along = Pad.LEFT if along == Pad.RIGHT else Pad.RIGHT
+	return ("live %s %s %s ran %d flying %d landed %d"
+			% [where, kinds[0], kinds[1], ran, two.arms_flying,
+			two.arms_landed])
+
+
+## One line of the stand's own shape.
+func _pb3_arm_line(where: String, t: int, arm: String, edge: String,
+		want: int, hit: int, again: int, took: int, cost: int,
+		owed: int, power: int) -> String:
+	return ("arm %s kind %02X sort %s edge %s want %d hit %d again %d took %d "
+			+ "cost %d owed %d power %d") % [where, t, arm, edge, want, hit,
+			again, took, cost, owed, power]
+
+
+## The sorts of weapon a guest can be carrying, `[name, reach, power]` in whole
+## pixels.  Not guessed: the four of Power Blade come out of its own two tables
+## ($A84D by type), and the three of Solbrain out of its own code -- $87BC
+## takes one off a thing and the shot is a point, while $84B0 grows the thing's
+## box by eight pixels before his own four are asked and by eight again before
+## the last two of them.
+func _pb3_arm_kinds(w: Pb2Objects) -> Array:
+	var out: Array = []
+	for t in range(1, w.shot_size.size()):
+		out.append(["blade%d" % t, int(w.shot_size[t]), int(w.shot_power[t])])
+	out.append(["gun", 0, 1])
+	out.append(["sat", 8, 1])
+	out.append(["swing", 16, 2])
+	return out
+
+
+## A Power Blade area, with a guest's weapons flying in it.
+func _pb3_arms_pb2(stage: int, area: int, edges: Array,
+		out: PackedStringArray) -> void:
+	_load("pb2", stage, area)
+	var where := "p%d.%d" % [stage, area]
+	var things := Pb2Objects.new(level_pb2)
+	things.playing = 3
+	things.cam = 0
+	things.frame = 1                                # $B23D starts at slot six
+	# Nobody of this area's own game is in the room, which a row with no life
+	# left is how $B23D is told; what is here is only what a guest threw.
+	things.slots[0][Pb2Objects.F_LIFE] = 0
+	var arms: Array = []
+	var cost: Array = [-1]
+	things.guest_arms = [[arms,
+			func(_j: int, c: int) -> void: cost[0] = c]]
+	for kind in _pb3_arm_kinds(things):
+		var sort: String = String(kind[0])
+		var reach: int = int(kind[1])
+		var power: int = int(kind[2])
+		for t in range(things.hurt.size()):
+			if t == 0:
+				continue                # $B250 -- an empty place in the table
+			if t >= things.box.size() or things.box[t].is_empty():
+				out.append("unreached pb2 type %02X why box" % t)
+				continue
+			var b: Array = things.box[t][0]
+			var rw: int = int(b[0]) + reach
+			var rh: int = int(b[1]) + reach
+			if rw > 0x60 or rh > 0x60:
+				continue            # bigger than the screen; no room to stand
+			var s: PackedByteArray = things.slots[6]
+			var place := _pb3_edges(0x80 - rw, 0x80 + rw, 0x80 - rh, 0x80 + rh)
+			for e in edges:
+				var at: Vector2i = place[String(e)][0]
+				var want: int = int(place[String(e)][1])
+				for i in range(s.size()):
+					s[i] = 0
+				s[Pb2Objects.F_TYPE] = t
+				s[Pb2Objects.F_MARK] = 0x01     # $C99F: it simply hurts
+				s[Pb2Objects.F_LIFE] = 0x40
+				s[Pb2Objects.F_X] = 0x80
+				s[Pb2Objects.F_Y] = (0x80 + things.middle[t]) & 0xFF
+				arms.clear()
+				arms.append([at.x, at.y, reach, power])
+				cost[0] = -1
+				# Whether the blow landed is whether the row changed at all,
+				# and not whether its health went down: a breakable block has
+				# no health to take off and $B688 simply ends it.
+				var before: PackedByteArray = s.duplicate()
+				things.contact()
+				var hit: int = 1 if s != before else 0
+				var took: int = (0x40 - s[Pb2Objects.F_LIFE]) & 0xFF
+				var said: int = cost[0]
+				# And a second blow straight after, which the ringing has to
+				# refuse ($B5D8).
+				var was: PackedByteArray = s.duplicate()
+				things.contact()
+				var again: int = 1 if s != was else 0
+				out.append(_pb3_arm_line(where, t, sort, String(e), want, hit,
+						again, took, said, things.hurt[t], power))
+
+
+## And a Solbrain stage, with a guest's weapons flying in it.
+func _pb3_arms_sol(stage: int, edges: Array, out: PackedStringArray) -> void:
+	_load("sol", stage, 0)
+	var where := "s%d.0" % stage
+	var lent := SolAsPb2.new(level_sol)
+	var tables := Pb2Objects.new(lent)
+	var pool := SolObjects.new(level_sol)
+	# The stage's own hero is not here: a suit of nought is how $CFDB is told
+	# so, and it stops at him without reaching anything after him.
+	var absent := SolPlayer.new(level_sol)
+	absent.suit = 0
+	pool.hero = absent
+	pool.clock = 0
+	var arms: Array = []
+	var cost: Array = [-1]
+	pool.guest_arms = [[arms,
+			func(_j: int, c: int) -> void: cost[0] = c]]
+	for kind in _pb3_arm_kinds(tables):
+		var sort: String = String(kind[0])
+		var reach: int = int(kind[1]) << 4
+		var power: int = int(kind[2])
+		for k in pool.hit_kinds():
+			var pic: int = int(k[0])
+			var flags: int = int(k[1])
+			var shape: int = int(k[2])
+			if (flags & 0x80) != 0:
+				continue                    # $869C -- something to pick up
+			if (flags & 0x3F) == 0:
+				continue                    # and it hurts for nothing
+			if (flags & 0x20) != 0:
+				continue                    # $86A0 -- no gun ever reaches it
+			pool.id[0] = 1
+			pool.kind[0] = 1
+			pool.mind[0] = 0
+			pool.face[0] = 0
+			pool.x[0] = 0x8000
+			pool.y[0] = 0x8000
+			pool.pic_lo[0] = pic & 0xFF
+			pool.pic_hi[0] = (pic >> 8) & 0xFF
+			if not pool.touch_box(0):
+				continue
+			var place := _pb3_edges(pool.z61 - reach,
+					pool.z61 + pool.z65 + reach,
+					pool.z63 - reach, pool.z63 + pool.z67 + reach)
+			for e in edges:
+				var at: Vector2i = place[String(e)][0]
+				var want: int = int(place[String(e)][1])
+				pool.mind[0] = 0
+				pool.cool[0] = 0x40
+				pool.life[0] = 0x40
+				arms.clear()
+				arms.append([at.x & 0xFFFF, at.y & 0xFFFF, reach, power])
+				cost[0] = -1
+				pool.touch_box(0)
+				pool.touch(0)
+				var hit: int = 1 if pool.life[0] != 0x40 else 0
+				var took: int = 0x40 - pool.life[0]
+				var said: int = cost[0]
+				# $87BA -- the nine pictures of rest the last blow left have
+				# to refuse the second.
+				var was: int = pool.life[0]
+				pool.touch_box(0)
+				pool.touch(0)
+				var again: int = 1 if pool.life[0] != was else 0
+				out.append(_pb3_arm_line(where, shape, sort, String(e), want,
+						hit, again, took, said, flags & 0x0F, power))
 
 
 ## Э5.3 -- the screen the two of them choose on.

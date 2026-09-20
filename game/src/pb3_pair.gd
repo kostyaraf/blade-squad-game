@@ -145,9 +145,23 @@ var spare_sol: SolPlayer = null
 var guest_row: Array = []
 var guest_sol: Array = []
 var guest_at: Array = []
-## A pool of his own game, borrowed, only to work out the box his own game
-## gives him -- his picture means nothing to the other game's tables.
+## A pool of his own game, borrowed.  Э5.7 wanted it only to work out the box
+## his own game gives him -- his picture means nothing to the other game's
+## tables -- and Э5.8 keeps his weapons in it as well.
 var guest_pool: Array = []
+## Э5.8 -- what each of them is carrying, said in the level's own numbers.  One
+## list a hero, the same list all the way through so that the pool it is handed
+## to keeps looking at the live one; each entry `[x, y, reach, power]`.
+var arms: Array = []
+## And where each of those came from in his own pool, so that what the level
+## says a thing cost it can be taken off the right thing: `[which pool, slot]`,
+## where the pool is nought for what he throws and one for his own four.
+var arms_from: Array = []
+## How many pictures a guest had anything of his own in the air, and how many
+## times one of those reached a thing of the level.  Nothing in the pair reads
+## them; they are what a stand counts by.
+var arms_flying := 0
+var arms_landed := 0
 ## What the last picture ended as, in `Pb2Turn`'s words.
 var ended := 0
 ## The pads of the picture being played, because the order calls back into
@@ -178,6 +192,8 @@ func _init(from: int, st: int, ar: int, kinds: Array) -> void:
 				else PB2)
 		who.append(k)
 		last_pad.append(0)
+		arms.append([])
+		arms_from.append([])
 		shoved.append(Vector2i.ZERO)
 		was_at.append(Vector2i.ZERO)
 		gone.append(false)
@@ -482,6 +498,7 @@ func _raise_flow() -> void:
 			guest_row[i] = row
 			guest_at[i] = [row, [0x0F, 6, 13]]
 			host_pb2.more_guests.append(guest_at[i])
+			host_pb2.guest_arms.append([arms[i], _arm_spent.bind(i)])
 		else:
 			var carrier := SolPlayer.new(solv)
 			carrier.suit = _health_sol(i)
@@ -489,6 +506,7 @@ func _raise_flow() -> void:
 			guest_sol[i] = carrier
 			guest_at[i] = [carrier, [0x01, 0, 0, 0x10, 0x10]]
 			host_sol.more_guests.append(guest_at[i])
+			host_sol.guest_arms.append([arms[i], _arm_spent.bind(i)])
 	_mirror_them()
 
 
@@ -587,10 +605,21 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 				sol[i].skip(int(pads[i]))
 			else:
 				sol[i].step(int(pads[i]))
+			# Э5.8 -- and then his own weapons, because that is the order his
+			# own game keeps them in: he moves at $91B5, what he threw at
+			# $B168, and his own four at $9156.
+			if flowing and i != host:
+				_arms_turn_sol(i, int(pads[i]))
 			continue
 		var q: Pb2Player = pb2[i]
 		var v: Pb2Objects = things[i]
 		v.cam = eye.pos
+		# Э5.8 -- and his, in his own game's order the other way about: what
+		# is already in the air moves first ($8E26) and he moves after it
+		# ($8E2C).  The area's own hero has had both done for him by the
+		# order itself.
+		if flowing and i != host:
+			_arms_turn_pb2(i)
 		if game == PB2 and pb2v.vertical:
 			q.shift = slid.y
 			q.shift_y = 0
@@ -610,6 +639,10 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 			q.step(held, hit, eye.pos, shots, extra)
 		else:
 			q.step(held, hit, eye.pos, 0, 0)
+			# $CF41 -- and his numbers into his own pool, where a blade of his
+			# looks for him when it turns round ($A764).
+			if flowing:
+				Pb2Turn.mirror(v, q)
 	_drive_view()
 	_hold_them_in()
 	_mirror_them()
@@ -653,6 +686,8 @@ func _mirror_them() -> void:
 			_guest_into_pb2(i)
 		else:
 			_guest_into_sol(i)
+		# Э5.8 -- and what he is carrying, beside what he is.
+		_arms_of(i)
 
 
 ## Э5.4 -- what the level took off a guest this picture, said back in his own
@@ -749,6 +784,182 @@ func _box_own_sol(i: int) -> Array:
 	# middle of the box stands above them.
 	var dy: int = ((pool.hero_by - sol[i].y + 0x8000) & 0xFFFF) - 0x8000
 	return [16 - (dy >> 4) - half_h, half_w, half_h]
+
+
+# ---- Э5.8: what a guest is carrying ---------------------------------------
+
+## One picture of a Power Blade guest's own weapons, in his own pool.
+##
+## $8E26 -- what is already in the air moves before he does, and $CF00 counts
+## how long the button has been held before either.  The area's own hero gets
+## both from the order itself ($CEF0); a guest has no order of his own, so the
+## two lines of it he needs are here.
+func _arms_turn_pb2(i: int) -> void:
+	var w: Pb2Objects = things[i]
+	w.frame = (w.frame + 1) & 0xFF
+	pb2[i].step_charge(w.frame)
+	w.shots_turn()
+
+
+## And one picture of a Solbrain guest's, in the pool Э5.7 already keeps beside
+## him.  The stage's own hero has this done for him at $B168 and $9156; a guest
+## has the same three lines here, with the numbers those three read handed over
+## first ($CDB3's own head).
+##
+## The mirror is one way only.  What his weapons would say back to him -- the
+## wire winding him in, the ride his satellite paces -- is his own game telling
+## him something, and a guest of another level is not told it.
+func _arms_turn_sol(i: int, pad: int) -> void:
+	var pool: SolObjects = guest_pool[i]
+	if pool == null:
+		return
+	var h: SolPlayer = sol[i]
+	pool.clock = (pool.clock + 1) & 0xFF
+	pool.noise = (pool.noise * 5 + 0x3D) & 0xFF
+	pool.six = pad
+	pool.pad_new = pad & ~last_pad[i]
+	last_pad[i] = pad
+	if game == SOL:
+		pool.cam_x = sol_eye.x
+		pool.cam_y = sol_eye.y
+		pool.map_kind = sol_eye.map_kind
+	else:
+		var w: Vector2i = world_of(i)
+		pool.cam_x = (w.x - 0x80) << 4
+		pool.cam_y = (w.y - 0x78) << 4
+	SolTurn.hero_into(pool, h)
+	# $B862 -- one step of a handful of his animations strikes, and what it
+	# strikes with goes into slot fifteen.
+	if h.punch >= 0:
+		SolSat.strike(pool, h.punch, h.punch_x, h.punch_y)
+		h.punch = -1
+	SolSat.letters(pool)                # $923B
+	SolWeapon.step(pool)                # $B168
+	SolSat.step(pool)                   # $9156
+
+
+## What he is carrying, written out fresh into the list the level's pool is
+## holding.  Done where his body's mirror is done and for the same reason: the
+## sweep of the next picture reads it before anybody has moved again.
+func _arms_of(i: int) -> void:
+	var out: Array = arms[i]
+	var from: Array = arms_from[i]
+	out.clear()
+	from.clear()
+	if gone[i]:
+		return
+	if who[i] == PB2:
+		_arms_of_pb2(i, out, from)
+	else:
+		_arms_of_sol(i, out, from)
+	if not out.is_empty():
+		arms_flying += 1
+
+
+## His blades and beams: places one to five of his own pool, said as this level
+## counts places.  One off the screen is not asked about, which is $B5EA's own
+## rule for the area's own.
+func _arms_of_pb2(i: int, out: Array, from: Array) -> void:
+	var w: Pb2Objects = things[i]
+	for k in range(1, Pb2Objects.FIRST_LIVE):
+		var s: PackedByteArray = w.slots[k]
+		var t: int = s[Pb2Objects.F_TYPE]
+		if t == 0 or t >= w.shot_size.size():
+			continue
+		if (s[Pb2Objects.F_XHI] | s[Pb2Objects.F_YHI]) != 0:
+			continue
+		out.append(_arm_from_pb2(s[Pb2Objects.F_X], s[Pb2Objects.F_Y],
+				w.shot_size[t], w.shot_power[t]))
+		from.append([0, k])
+
+
+## His gun and his own four.  The eight at $0700 are points that take one off a
+## thing ($87BC); the four at $0C..$0F reach eight pixels further than the
+## thing's own box because $84B0 grows it by that much before they are asked --
+## and twice that for the two that are asked after the second growth -- and
+## take off what their own picture means ($8567).
+func _arms_of_sol(i: int, out: Array, from: Array) -> void:
+	var pool: SolObjects = guest_pool[i]
+	if pool == null:
+		return
+	for k in range(SolObjects.WALKED):
+		if (pool.w_kind[k] & 0x80) == 0:
+			continue                    # $8729 -- nothing flying there
+		out.append(_arm_from_sol(pool.w_x[k], pool.w_y[k], 0, 1))
+		from.append([0, k])
+	var h: SolPlayer = sol[i]
+	for k in range(SolSat.FIRST, SolSat.LAST + 1):
+		if pool.id[k] == 0 or (pool.id[k] & 0x80) != 0:
+			continue                    # $83F7 -- nothing in the slot
+		if pool.cool[k] < 0x0C:
+			continue                    # left alone twelve pictures, or not
+		if k != 0x0F and h.hurt != 0:
+			continue                    # $8408 -- his only while he stands
+		var n: int = pool.meaning_of(pool.pic_lo[k] | pool.pic_hi[k] << 8)
+		if n == 0:
+			continue                    # $8586 -- a picture meaning nothing
+		if k == 0x0F and h.shield != 0 and h.hurt == 0:
+			n = (n << 1) & 0xFF         # $8598 -- the punch counts double
+		var reach: int = 0x100 if (k == 0x0D or k == 0x0E) else 0x80
+		out.append(_arm_from_sol(pool.x[k], pool.y[k], reach, n))
+		from.append([1, k])
+
+
+## A place of a Power Blade pool -- the screen, in whole pixels -- said in the
+## numbers of whichever level is running.
+func _arm_from_pb2(sx: int, sy: int, reach: int, power: int) -> Array:
+	if game == PB2:
+		return [sx, sy, reach, power]
+	return [(view_x() + sx) << 4, line_at(sy) << 4, reach << 4, power]
+
+
+## And a place of a Solbrain pool -- the level, in sixteenths -- the same way.
+func _arm_from_sol(wx: int, wy: int, reach: int, power: int) -> Array:
+	if game == SOL:
+		return [wx, wy, reach, power]
+	return [((wx >> 4) & 0xFFFF) - view_x(),
+			screen_line((wy >> 4) & 0xFFFF), reach >> 4, power]
+
+
+## Э5.8 -- the level says what that thing cost arm `j` of his, and his own game
+## is what takes it off.  $8731 for the eight he throws into and $844E for his
+## own four; a Power Blade blade is spent on nothing at all, which is why
+## nothing here touches one.
+func _arm_spent(j: int, cost: int, i: int) -> void:
+	arms_landed += 1
+	if who[i] == PB2:
+		return
+	var pool: SolObjects = guest_pool[i]
+	if pool == null or j >= arms_from[i].size():
+		return
+	var src: Array = arms_from[i][j]
+	var k: int = int(src[1])
+	if int(src[0]) == 0:
+		# $8731 -- it goes through as much as $0770 says and no further.
+		var left: int = pool.w_pen[k] - cost
+		if left <= 0:
+			pool.w_kind[k] = pool.w_kind[k] & 0x7F
+			pool.w_vx[k] = 0
+			pool.w_pen[k] = 0
+		else:
+			pool.w_pen[k] = left
+		return
+	# $844E -- and one of his own four pays out of its own life, with anything
+	# from eight up costing one and no more.
+	if cost == 0:
+		return
+	pool.cool[k] = 0
+	var n: int = 0x01 if cost >= 0x08 else cost
+	var leftv: int = pool.life[k] - n
+	if leftv > 0:
+		pool.life[k] = leftv
+		return
+	pool.a[k] = 0
+	if k == SolObjects.SAT:
+		pool.b[k] = 0x20
+		pool.id[k] = 0xFF
+	else:
+		pool.id[k] = 0
 
 
 ## His health, in the numbers of the game the level came from.  A Power Blade

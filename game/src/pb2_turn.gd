@@ -185,6 +185,13 @@ func shots_out() -> int:
 
 
 func _mirror_hero() -> void:
+	mirror(world, hero)
+
+
+## $CF41 -- his numbers into the pool his own throws live in.  Э5.8 asks it of
+## a guest's own pool as well: a blade of his looks for him there ($A764), and
+## a throw takes its place off the same row ($A4FD).
+static func mirror(world: Pb2Objects, hero: Pb2Player) -> void:
 	var s: PackedByteArray = world.slots[0]
 	s[Pb2Objects.F_KIND] = hero.pose
 	s[Pb2Objects.F_BITS] = (s[Pb2Objects.F_BITS] & ~0x40) \

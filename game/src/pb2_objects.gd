@@ -745,6 +745,16 @@ var guest_box: Array = []
 ## because it is what Э5.4's stand hands over.
 var more_guests: Array = []
 
+## Э5.8 -- and what a guest of this area is carrying.  One entry a guest,
+## `[arms, spend]`: `arms` is what of his is in the air, each one
+## `[x, y, reach, power]` in this area's own screen pixels, and
+## `spend.call(j, cost)` tells his own game what the thing cost arm `j`.
+## What that game makes of it is its own business -- a Solbrain gun takes it
+## off $0770 and stops flying at nought, a Power Blade blade spends itself on
+## nothing and flies on.  Stepping them is not this pool's: they are his, and
+## they are stepped where he is.  See `work/re/pb3_arms.md`.
+var guest_arms: Array = []
+
 
 ## Everyone in the room who is not the row at $0400, as `[row, box]`.
 func guest_list() -> Array:
@@ -782,7 +792,9 @@ func contact() -> void:
 		return
 	var hero: PackedByteArray = slots[0]
 	var guests: Array = guest_list()
-	if hero[F_LIFE] == 0 and guests.is_empty():
+	# Э5.8 -- and a guest's weapons are reason enough on their own: what he
+	# threw can be in the air with him nowhere near it.
+	if hero[F_LIFE] == 0 and guests.is_empty() and guest_arms.is_empty():
 		return
 	# $B248 -- the forty pictures after a blow are counted down here and
 	# nowhere else, and he flashes for as long as they last.  When the harness
@@ -803,6 +815,11 @@ func contact() -> void:
 			if slots[0][F_LIFE] != 0:
 				_touch(n, slots[0], own_box(slots[0]))
 				_shots(n)
+			# Э5.8 -- and what the guests are carrying, over the same thing
+			# and in the same order.  Their own hero need not be here at all
+			# for what he threw to be in the air.
+			if not guest_arms.is_empty():
+				_guest_shots(n)
 			for g in guests:
 				var row: PackedByteArray = g[0]
 				if row[F_LIFE] != 0 and slots[n][F_TYPE] != 0:
@@ -968,6 +985,66 @@ func _hit(n: int, y: int, size: int) -> void:
 		s[F_MARK] = 0x80
 		return
 	_wound(n, shot_power[slots[y][F_TYPE]])
+
+
+## Э5.8 -- a guest's weapons against this one thing.  The same walk as $B5D5,
+## and the same gates below it; what differs is only that the place, the reach
+## and the strength come as numbers instead of out of this game's tables by
+## type, because a guest's weapon has no type here.
+func _guest_shots(n: int) -> void:
+	var s: PackedByteArray = slots[n]
+	# $B5D8 and $B5E1 -- a thing still ringing from the last blow, or one
+	# already on its way out, is not asked about at all.
+	if s[F_STUN] != 0:
+		return
+	if (s[F_BITS] & 0x80) != 0:
+		return
+	for g in guest_arms:
+		var arms: Array = g[0]
+		var spend: Callable = g[1]
+		for j in range(arms.size()):
+			var a: Array = arms[j]
+			if a.size() != 4:
+				continue
+			var cost: int = _guest_hit(n, a)
+			if cost >= 0 and spend.is_valid():
+				spend.call(j, cost)
+
+
+## $B606 with the shot's numbers handed in.  It answers what the thing cost
+## the shot -- which in this game is how much that thing hurts, the very
+## number $8731 takes off $0770 in the other one -- or minus one for a miss.
+func _guest_hit(n: int, a: Array) -> int:
+	var s: PackedByteArray = slots[n]
+	if s[F_TYPE] == 0:
+		return -1
+	if s[F_LIFE] == 0xFF:
+		return -1                               # nothing can break it
+	if s[F_STUN] != 0:
+		return -1
+	if (s[F_MARK] & 0xDA) != 0:
+		return -1
+	if (s[F_BITS] & 0x80) != 0:
+		return -1
+	var b := _box_of(s)
+	var mid := _middle_of(s)
+	var reach: int = int(a[2])
+	var dx := _apart(int(a[0]) & 0xFF, s[F_X])
+	var dy := _apart(int(a[1]) & 0xFF, mid)
+	if ((int(b[0]) + reach) & 0xFF) < dx:
+		return -1
+	if ((int(b[1]) + reach) & 0xFF) < dy:
+		return -1
+	if (s[F_MARK] & 0x20) != 0:
+		s[F_STUN] = 0x08                        # armour: it only rings
+		return hurt[s[F_TYPE]]
+	# $B688 -- a breakable block has no health to take off: one hit does it.
+	if s[F_TYPE] == 0x0C:
+		s[F_STATE] = 0x02
+		s[F_MARK] = 0x80
+		return hurt[s[F_TYPE]]
+	_wound(n, int(a[3]))
+	return hurt[s[F_TYPE]]
 
 
 ## $B698 -- health off a thing, and what is left of it when there is none.
