@@ -65,7 +65,7 @@ stage16.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
 stage17.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
 stage18.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
 stage19.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
-::res://src/::1789940019
+::res://src/::1789940042
 clock.gd::GDScript::2216181933474047874::1787438544::0::1::::Clock<>RefCounted<><>0<>0<><>::
 main.gd::GDScript::1218616883181121138::1789940039::0::1::::<>Node2D<><>0<>0<><>::
 main.tscn::PackedScene::-1::1787438203::0::1::::<><><>0<>0<><>::res://src/main.gd<>res://src/nes_bg.gdshader
@@ -80,7 +80,7 @@ pb2_level.gd::GDScript::389559947152639130::1789796281::0::1::::Pb2Level<>RefCou
 pb2_objects.gd::GDScript::4640950097199176057::1789936420::0::1::::Pb2Objects<>RefCounted<><>0<>0<><>::
 pb2_player.gd::GDScript::3533764488342760044::1789802239::0::1::::Pb2Player<>RefCounted<><>0<>0<><>::
 pb2_select.gd::GDScript::600590007125347186::1789095979::0::1::::Pb2Select<>RefCounted<><>0<>0<><>::
-pb2_sound.gd::GDScript::6890738509748869779::1789940019::0::1::::Pb2Sound<>RefCounted<><>0<>0<><>::
+pb2_sound.gd::GDScript::6890738509748869779::1789940741::0::1::::Pb2Sound<>RefCounted<><>0<>0<><>::
 pb2_sprites.gd::GDScript::2148773555688016034::1787918431::0::1::::Pb2Sprites<>RefCounted<><>0<>0<><>::
 pb2_status.gd::GDScript::7877088053072491319::1789096345::0::1::::Pb2Status<>RefCounted<><>0<>0<><>::
 pb2_turn.gd::GDScript::2275000604369634798::1789935207::0::1::::Pb2Turn<>RefCounted<><>0<>0<><>::
