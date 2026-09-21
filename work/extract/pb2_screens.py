@@ -43,6 +43,17 @@ STAGE_TBL, STAGE_N = 0x89FA, 5
 # which is colours only and opens the fifth stage.
 STAMP_TILE_AT, STAMP_ATTR_AT = 0x8ADA, 0x8AE2
 STAMP_TILES, STAMP_ATTR, STAMP_LAST = 0x8AEC, 0x8B6C, 0x8B74
+# $CD28 -- the other table of streams, and the other way of playing one.  A
+# screen is played straight into $2006/$2007 out of $CB41; these are queued
+# into $0300 by $CCBC for the next blank to push out, a few tiles at a time,
+# so that a screen already standing can have a word of it changed.  The number
+# here is *not* doubled: $CCC7 doubles it itself.
+#
+# The format is its own: two bytes of address, low first, then tiles, then
+# $FD for another address and more tiles, or $FE for the end of the stream.
+QUEUE_TBL = 0xCD28
+QUEUE_N = 10
+QUEUE_END, QUEUE_NEXT = 0xFE, 0xFD
 
 
 def stream(img14, img89, at):
@@ -78,6 +89,36 @@ def stream(img14, img89, at):
         out.append(dict(addr=addr, tiles=tiles))
         if c == 0xFF:
             return out
+
+
+def queued(b14):
+    """The streams $CCBC queues, in the order the table lists them.
+
+    Each one comes back as the writes it makes -- the same shape `stream`
+    gives back -- so that whatever plays one has the one thing to read.
+    """
+    def by(a):
+        return b14[a - 0xC000]
+
+    out = []
+    for i in range(QUEUE_N):
+        at = by(QUEUE_TBL + i * 2) | (by(QUEUE_TBL + i * 2 + 1) << 8)
+        p, blocks = at, []
+        while True:
+            addr = by(p) | (by(p + 1) << 8)
+            p += 2
+            tiles = []
+            while True:
+                v = by(p)
+                p += 1
+                if v in (QUEUE_END, QUEUE_NEXT):
+                    break
+                tiles.append(v)
+            blocks.append(dict(addr=addr, tiles=tiles))
+            if v == QUEUE_END:
+                break
+        out.append(dict(at=at, blocks=blocks))
+    return out
 
 
 def palettes(img0):
@@ -131,12 +172,16 @@ def export():
     d = outdir('pb2')
     size = write_json(os.path.join(d, 'screens.json'),
                       dict(screens=screens, palettes=palettes(img0),
-                           stage_records=stages(img0), stamp=stamp(img0)))
+                           stage_records=stages(img0), stamp=stamp(img0),
+                           queued=queued(b14)))
     for s in screens:
         wrote = sum(len(b['tiles']) for b in s['blocks'])
         print('screen $%02X  $%04X  %d blocks  %4d tiles  %s'
               % (s['x'], s['at'], len(s['blocks']), wrote,
                  ' '.join('$%04X' % b['addr'] for b in s['blocks'])))
+    for i, q in enumerate(queued(b14)):
+        print('queued %2d  $%04X  %s' % (i, q['at'], '  '.join(
+            '$%04X:%d' % (b['addr'], len(b['tiles'])) for b in q['blocks'])))
     print('%d bytes' % size)
 
 

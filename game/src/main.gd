@@ -52,6 +52,7 @@ func _ready() -> void:
 	var flow := ""
 	var menuwalk := ""
 	var keepwalk := ""
+	var titlewalk := ""
 	var choose := ""
 	var play := ""
 	var run := ""
@@ -106,6 +107,7 @@ func _ready() -> void:
 		elif a.begins_with("--flow="): flow = a.substr(7)
 		elif a.begins_with("--menu="): menuwalk = a.substr(7)
 		elif a.begins_with("--keep="): keepwalk = a.substr(7)
+		elif a.begins_with("--title="): titlewalk = a.substr(8)
 		elif a.begins_with("--choose="): choose = a.substr(9)
 		elif a.begins_with("--play="): play = a.substr(7)
 		elif a.begins_with("--run="): run = a.substr(6)
@@ -143,6 +145,10 @@ func _ready() -> void:
 		return
 	if menuwalk != "":
 		_run_menu(menuwalk)
+		get_tree().quit()
+		return
+	if titlewalk != "":
+		await _run_title(titlewalk)
 		get_tree().quit()
 		return
 	if choose != "":
@@ -3409,7 +3415,11 @@ func _apply() -> void:
 	var img: Image
 	var size: Vector2
 	var banks: Array
-	if select != null:
+	if title != null:
+		img = title.page_image
+		size = Vector2(Pb2Title.WIDTH, Pb2Title.HEIGHT)
+		banks = title.banks + title.spr_banks
+	elif select != null:
 		# The screen a stage is picked on owns the whole of the picture: no
 		# bar under it and no level behind it.
 		img = select.map_image
@@ -3491,6 +3501,10 @@ func _process(dt: float) -> void:
 		_sol_screen_frame()
 		queue_redraw()
 		return
+	if title != null:
+		_title_show()
+		queue_redraw()
+		return
 	_bar_show(bg.material)
 	if select != null:
 		_choice_show()
@@ -3540,20 +3554,69 @@ func _start_menu() -> void:
 	add_child(menu)
 
 
-## And what he settled on is started, as the command line would have started
-## it: the first area of the first stage, or the screen the other game comes up
-## on.
+## And what he settled on is started: Power Blade 2 on its own title screen,
+## which is where its cartridge starts, and Solbrain the way the command line
+## starts it.
 func _menu_took(which: String) -> void:
 	menu.queue_free()
 	menu = null
 	game = which
 	keeping = true
 	if which == "pb2":
-		_start_play(0, 0)
-	else:
-		_start_sol_boot()
+		# $ED7B -- Power Blade 2 opens on its own screen, and what it kept is
+		# read once the screen has been settled and there is a game to put it
+		# into.
+		_start_title()
+		return
+	_start_sol_boot()
 	_progress_read()
 	_apply()
+
+
+## $ED7B -- the title screen up, and the whole of the picture its own: no bar
+## under it and no level behind it.
+func _start_title() -> void:
+	title = Pb2Title.new()
+	pal_tex = Nes.palette_texture(title.palette)
+	origin = Vector2i.ZERO
+	view_h = 240
+	bar = null
+	oam = PackedByteArray()
+	oam.resize(Pb2Sprites.OAM)
+	oam.fill(Pb2Sprites.HIDDEN)
+	var img := Image.create(Pb2Sprites.SPRITES, 1, false, Image.FORMAT_RGBA8)
+	oam_tex = ImageTexture.create_from_image(img)
+	bg.material.set_shader_parameter("oam", oam_tex)
+	oam = Pb2Sprites.build(title.slots, rot, oam)
+	rot = (rot + Pb2Sprites.ROTATE) & 0xFF
+	_apply()
+
+
+## $ED7B -- one picture of the title screen, and what it settled for.
+func _title_step() -> void:
+	var p: Pad = pads[0]
+	# $48 and $4B -- the first player's newly pressed and the second player's
+	# held, both of which this screen reads: the way out through the code
+	# wants three buttons held on the other pad.
+	var took: int = title.step(p.pressed, pads[1].held)
+	oam = Pb2Sprites.build(title.slots, rot, oam)
+	rot = (rot + Pb2Sprites.ROTATE) & 0xFF
+	if took < 0:
+		return
+	title = null
+	if took == Pb2Title.GOES_TO[0]:
+		# $8009 = $859D -- the screen a stage is picked on.  This port cannot
+		# open that one without a level standing behind it (Э3.10b), so what
+		# START opens is the first area, the way the command line opens it.
+		_start_play(0, 0)
+		_progress_read()
+		_apply()
+		return
+	# The two other ways out are screens this port does not have: $9672, where
+	# a password is typed, is Э7.6, and $EE31, the game showing itself off, is
+	# nobody's yet.  Neither is quietly pretended at -- the asking screen
+	# comes back up instead.
+	_start_menu()
 
 
 ## Э7.3 -- what was kept, put back where the game carries it.
@@ -3607,6 +3670,57 @@ func _progress_watch() -> void:
 	var kept: Dictionary = Pb3Save.whole(Pb3Save.read())
 	kept[game] = now
 	Pb3Save.write(kept)
+
+
+## Э7.4's harness -- the screen Power Blade 2 opens on, walked by a script of
+## pad words, one line to a picture.
+##
+## `Pb2Title` is the whole of the screen -- its four steps as well as its
+## picture -- so all the harness does is hand it the pad and say what came out:
+## the step, the row the caret stands on, the count left in the wait, the three
+## fields of the caret's own place, and what was asked of the driver.
+##
+## The screen is raised and shown the way the game raises and shows it, so a
+## picture asked for here is the port's own picture and not the harness's; the
+## pad is all that is handed over, because a stand has no keys.
+func _run_title(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	Pb2Sound.forget()
+	game = "pb2"
+	var shots: Dictionary = cfg.get("shots", {})
+	_start_title()
+	var t: Pb2Title = title
+	var out := PackedStringArray()
+	out.append(_title_line(t, -1))
+	var n := 0
+	for f in cfg["frames"]:
+		# $48 is the first pad's edge and $4B the second pad's held; a
+		# harness has no keys, so both are handed over.
+		var took: int = t.step(int(f.get("hit", 0)), int(f.get("held", 0)))
+		# $8038 -- and the sprite table written round and round from wherever
+		# the last picture left off, which is what `_title_step` does too.
+		oam = Pb2Sprites.build(t.slots, rot, oam)
+		rot = (rot + Pb2Sprites.ROTATE) & 0xFF
+		out.append(_title_line(t, took))
+		if shots.has(str(n)):
+			_title_show()
+			await RenderingServer.frame_post_draw
+			get_viewport().get_texture().get_image().save_png(shots[str(n)])
+		n += 1
+	print("\n".join(out))
+
+
+func _title_line(t: Pb2Title, took: int) -> String:
+	var say := PackedStringArray()
+	for n in Pb2Sound.asked:
+		say.append("%02X" % int(n))
+	Pb2Sound.forget()
+	var one: PackedByteArray = t.slots[Pb2Title.CARET_SLOT]
+	return "%d %d %d %02X %02X %02X %d |%s" % [
+			t.step_no, t.row, t.high * 0x100 + t.low,
+			one[Pb2Objects.F_Y], one[Pb2Objects.F_X],
+			one[Pb2Objects.F_KIND], took,
+			" ".join(say) if say.size() else "-"]
 
 
 ## Э7.3's harness -- the port's own remembering, one picture at a time.
@@ -3693,6 +3807,9 @@ func _step_game() -> void:
 		p.poll()
 	if menu != null:
 		menu.step(pads[0])
+		return
+	if title != null:
+		_title_step()
 		return
 	if choosing:
 		_choice_step()
@@ -5026,6 +5143,25 @@ func _show() -> void:
 	oam_tex.update(img)
 
 
+## The title screen's own picture: one page standing still, and the caret over
+## it.  The page goes over again every picture, because the going out changes a
+## word of it ($CCBC) and the change has to reach the screen.
+func _title_show() -> void:
+	var m: ShaderMaterial = bg.material
+	m.set_shader_parameter("scroll", Vector2.ZERO)
+	m.set_shader_parameter("split_at", 1000.0)
+	m.set_shader_parameter("clip_left", 0.0)
+	m.set_shader_parameter("banks",
+			PackedInt32Array(title.banks + title.spr_banks))
+	m.set_shader_parameter("sprites_on", true)
+	map_tex.update(title.page_image)
+	var img := Image.create(Pb2Sprites.SPRITES, 1, false, Image.FORMAT_RGBA8)
+	for i in range(Pb2Sprites.SPRITES):
+		img.set_pixel(i, 0, Color8(oam[i * 4], oam[i * 4 + 1],
+				oam[i * 4 + 2], oam[i * 4 + 3]))
+	oam_tex.update(img)
+
+
 ## The picking screen's own picture: the ground where the ride has left it and
 ## the two sprites -- the man and the sign over the stage he is standing at.
 func _choice_show() -> void:
@@ -5647,6 +5783,8 @@ var choosing := false
 var choice := 0                                     ## $22
 ## Э3.10b -- the screen itself, while it is up.
 var select: Pb2Select = null
+## Э7.4 -- $ED7B, the screen the cartridge opens on, while it is up.
+var title: Pb2Title = null
 
 
 ## $88F0 -> $18 := 5 -> the map -> $18/$19 := 3/20.  The stage the choice opens
