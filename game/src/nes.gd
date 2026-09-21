@@ -32,8 +32,19 @@ static func load_palette_table() -> void:
 static func sheet(game: String) -> ImageTexture:
 	if _sheets.has(game):
 		return _sheets[game]
-	var img := Image.load_from_file(DATA + "/" + game + "/tiles.png")
-	assert(img != null, "no tile sheet for " + game)
+	# The sheet travels into a build as the file it is -- `importer="keep"` in
+	# `tiles.png.import` -- so it is read as bytes and not as a resource.
+	# `Image.load_from_file` would do the same, but it warns that it will not
+	# work on export, and about the ordinary case it is right.
+	#
+	# The reading is done before the judging and not inside it: a release
+	# build drops every `assert` and everything written inside one with it,
+	# and the sheet would then never be read at all.  Nothing running out of
+	# `game/` can see that -- which is what Э7.1's own stand is for.
+	var img := Image.new()
+	var raw := FileAccess.get_file_as_bytes(DATA + "/" + game + "/tiles.png")
+	var err := img.load_png_from_buffer(raw)
+	assert(err == OK, "no tile sheet for " + game)
 	# The sheet is one byte per pixel; keep it that way so the shader can read
 	# the colour index back out without a conversion losing it.
 	img.convert(Image.FORMAT_R8)

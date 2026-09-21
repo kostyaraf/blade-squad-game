@@ -1,5 +1,6 @@
-63f7b34db8d8cdea90c76aacccf841ec
-::res://::1787523284
+72322a848ab928aa5c89f0cb78209805
+::res://::1790021675
+export_presets.cfg::TextFile::-1::1790021675::0::1::::<><><>0<>0<><>::
 ::res://data/::1787437420
 nes_palette.json::JSON::-1::1787437420::0::1::::<><><>0<>0<><>::
 ::res://data/pb2/::1789939936
@@ -12,7 +13,7 @@ screens.json::JSON::-1::1789090690::0::1::::<><><>0<>0<><>::
 sound.json::JSON::-1::1789942492::0::1::::<><><>0<>0<><>::
 sprites.json::JSON::-1::1787918387::0::1::::<><><>0<>0<><>::
 status.json::JSON::-1::1789096259::0::1::::<><><>0<>0<><>::
-tiles.png::CompressedTexture2D::6767466221105871537::1787437420::1787438218::1::::<><><>0<>0<>ad7bf4f5adc2553acfbf4e20683f025f<>res://.godot/imported/tiles.png-7578adbe5d41d196e59aa88a5e44d0ff.ctex::
+tiles.png::::6767466221105871537::1787437420::1790021675::0::::<><><>0<>0<>23d99136d27eb1129c1c2e825ac0ce4e<>::
 weapons.json::JSON::-1::1787518378::0::1::::<><><>0<>0<><>::
 ::res://data/pb2/levels/::1788592780
 index.json::JSON::-1::1788603940::0::1::::<><><>0<>0<><>::
@@ -41,7 +42,7 @@ script.json::JSON::-1::1789783094::0::1::::<><><>0<>0<><>::
 sound.json::JSON::-1::1789942492::0::1::::<><><>0<>0<><>::
 tale.json::JSON::-1::1789230047::0::1::::<><><>0<>0<><>::
 test.json::JSON::-1::1789246910::0::1::::<><><>0<>0<><>::
-tiles.png::CompressedTexture2D::5349212436270235725::1787437420::1787438218::1::::<><><>0<>0<>f0527bf5561f7e38b9912f43aab162cb<>res://.godot/imported/tiles.png-6ca025d2ba4f65a8083b4d20abe4fdf3.ctex::
+tiles.png::::5349212436270235725::1787437420::1790021675::0::::<><><>0<>0<>14d88f327cbc1afc273865a0e566a755<>::
 weapon.json::JSON::-1::1789180926::0::1::::<><><>0<>0<><>::
 ::res://data/sol/levels/::1787437732
 index.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
@@ -69,7 +70,7 @@ stage19.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
 clock.gd::GDScript::2216181933474047874::1787438544::0::1::::Clock<>RefCounted<><>0<>0<><>::
 main.gd::GDScript::1218616883181121138::1790006668::0::1::::<>Node2D<><>0<>0<><>::
 main.tscn::PackedScene::-1::1787438203::0::1::::<><><>0<>0<><>::res://src/main.gd<>res://src/nes_bg.gdshader
-nes.gd::GDScript::2050658942601880072::1788783741::0::1::::Nes<>Node<><>0<>0<><>::
+nes.gd::GDScript::2050658942601880072::1790021675::0::1::::Nes<>Node<><>0<>0<><>::
 nes_bg.gdshader::Shader::4407094755704472713::1789229633::0::1::::<><><>0<>0<><>::
 pad.gd::GDScript::791787335458079663::1787438544::0::1::::Pad<>RefCounted<><>0<>0<><>::
 pb2_as_sol.gd::GDScript::8706518822866089808::1789785280::0::1::::Pb2AsSol<>SolLevel<><>0<>0<><>::
@@ -80,12 +81,12 @@ pb2_hud.gd::GDScript::1802820628275490813::1788802479::0::1::::Pb2Hud<>RefCounte
 pb2_level.gd::GDScript::389559947152639130::1789796281::0::1::::Pb2Level<>RefCounted<><>0<>0<><>::
 pb2_objects.gd::GDScript::4640950097199176057::1790004712::0::1::::Pb2Objects<>RefCounted<><>0<>0<><>::
 pb2_player.gd::GDScript::3533764488342760044::1789998407::0::1::::Pb2Player<>RefCounted<><>0<>0<><>::
-pb2_select.gd::GDScript::600590007125347186::1790006668::0::1::::Pb2Select<>RefCounted<><>0<>0<><>::
+pb2_select.gd::GDScript::600590007125347186::1790006907::0::1::::Pb2Select<>RefCounted<><>0<>0<><>::
 pb2_sound.gd::GDScript::6890738509748869779::1789973689::0::1::::Pb2Sound<>RefCounted<><>0<>0<><>::
 pb2_sprites.gd::GDScript::2148773555688016034::1787918431::0::1::::Pb2Sprites<>RefCounted<><>0<>0<><>::
 pb2_status.gd::GDScript::7877088053072491319::1790001330::0::1::::Pb2Status<>RefCounted<><>0<>0<><>::
 pb2_turn.gd::GDScript::2275000604369634798::1789935207::0::1::::Pb2Turn<>RefCounted<><>0<>0<><>::
-pb3_gear.gd::GDScript::9052348880231036392::1789824413::0::1::::Pb3Gear<>RefCounted<><>0<>0<><>::
+pb3_gear.gd::GDScript::9052348880231036392::1790021643::0::1::::Pb3Gear<>RefCounted<><>0<>0<><>::
 pb3_list.gd::GDScript::3634073308043296398::1789824413::0::1::::Pb3List<>RefCounted<><>0<>0<><>::
 pb3_pair.gd::GDScript::3124040861488315118::1789935789::0::1::::Pb3Pair<>RefCounted<><>0<>0<><>::
 pb3_pick.gd::GDScript::4047639535520912948::1789824413::0::1::::Pb3Pick<>RefCounted<><>0<>0<><>::

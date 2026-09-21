@@ -22,11 +22,8 @@ window/size/window_width_override=1024
 window/size/window_height_override=960
 window/stretch/mode="viewport"
 
-[dotnet]
-
-project/assembly_name="PB3"
-
 [rendering]
 
 textures/canvas_textures/default_texture_filter=0
+textures/vram_compression/import_etc2_astc=true
 renderer/rendering_method="gl_compatibility"

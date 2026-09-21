@@ -20,3 +20,6 @@ work/tools/nesemu
 work/tools/db.pkl
 *.o
 work/tools/e0_ramemu
+
+# what an export leaves behind in the project: build output, not sources
+game/.godot/exported/
