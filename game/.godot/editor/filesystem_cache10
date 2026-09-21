@@ -67,7 +67,7 @@ stage18.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
 stage19.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
 ::res://src/::1790002352
 clock.gd::GDScript::2216181933474047874::1787438544::0::1::::Clock<>RefCounted<><>0<>0<><>::
-main.gd::GDScript::1218616883181121138::1790002978::0::1::::<>Node2D<><>0<>0<><>::
+main.gd::GDScript::1218616883181121138::1790006668::0::1::::<>Node2D<><>0<>0<><>::
 main.tscn::PackedScene::-1::1787438203::0::1::::<><><>0<>0<><>::res://src/main.gd<>res://src/nes_bg.gdshader
 nes.gd::GDScript::2050658942601880072::1788783741::0::1::::Nes<>Node<><>0<>0<><>::
 nes_bg.gdshader::Shader::4407094755704472713::1789229633::0::1::::<><><>0<>0<><>::
@@ -78,9 +78,9 @@ pb2_camera.gd::GDScript::4984305006521351138::1788596346::0::1::::Pb2Camera<>Ref
 pb2_flow.gd::GDScript::8061205715971851753::1790002702::0::1::::Pb2Flow<>RefCounted<><>0<>0<><>::
 pb2_hud.gd::GDScript::1802820628275490813::1788802479::0::1::::Pb2Hud<>RefCounted<><>0<>0<><>::
 pb2_level.gd::GDScript::389559947152639130::1789796281::0::1::::Pb2Level<>RefCounted<><>0<>0<><>::
-pb2_objects.gd::GDScript::4640950097199176057::1789998725::0::1::::Pb2Objects<>RefCounted<><>0<>0<><>::
+pb2_objects.gd::GDScript::4640950097199176057::1790004712::0::1::::Pb2Objects<>RefCounted<><>0<>0<><>::
 pb2_player.gd::GDScript::3533764488342760044::1789998407::0::1::::Pb2Player<>RefCounted<><>0<>0<><>::
-pb2_select.gd::GDScript::600590007125347186::1789095979::0::1::::Pb2Select<>RefCounted<><>0<>0<><>::
+pb2_select.gd::GDScript::600590007125347186::1790006668::0::1::::Pb2Select<>RefCounted<><>0<>0<><>::
 pb2_sound.gd::GDScript::6890738509748869779::1789973689::0::1::::Pb2Sound<>RefCounted<><>0<>0<><>::
 pb2_sprites.gd::GDScript::2148773555688016034::1787918431::0::1::::Pb2Sprites<>RefCounted<><>0<>0<><>::
 pb2_status.gd::GDScript::7877088053072491319::1790001330::0::1::::Pb2Status<>RefCounted<><>0<>0<><>::

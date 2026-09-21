@@ -41,6 +41,7 @@ func _ready() -> void:
 	var timing := ""
 	var bar := ""
 	var flow := ""
+	var choose := ""
 	var play := ""
 	var run := ""
 	var give := ""
@@ -92,6 +93,7 @@ func _ready() -> void:
 		elif a.begins_with("--time="): timing = a.substr(7)
 		elif a.begins_with("--bar="): bar = a.substr(6)
 		elif a.begins_with("--flow="): flow = a.substr(7)
+		elif a.begins_with("--choose="): choose = a.substr(9)
 		elif a.begins_with("--play="): play = a.substr(7)
 		elif a.begins_with("--run="): run = a.substr(6)
 		elif a.begins_with("--give="): give = a.substr(7)
@@ -124,6 +126,10 @@ func _ready() -> void:
 		elif a.begins_with("--sndplay="): sndplay = a.substr(10)
 	if flow != "":
 		_run_flow(flow)
+		get_tree().quit()
+		return
+	if choose != "":
+		_run_choose(choose)
 		get_tree().quit()
 		return
 	if replay != "":
@@ -4982,6 +4988,38 @@ func _run_bar(path: String) -> void:
 				" ".join(say) if say.size() else "-"])
 		Pb2Sound.forget()
 	print("\n".join(out))
+
+
+## What the screen a stage is picked on asks for, picture by picture.
+##
+## `Pb2Select` is the whole of the screen -- its steps as well as its picture
+## -- so there is no level here: the class is made, which is what the cartridge
+## does in steps twenty and twenty-one ($8838 and $8881), and then it is handed
+## the pad a picture at a time.  Line nought is the making.
+func _run_choose(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	Pb2Sound.forget()
+	# $46 and $47 are the last area's, and the picture is not on trial here.
+	var sel := Pb2Select.new(int(cfg.get("stage", 0)),
+			int(cfg.get("cleared", 0)), int(cfg.get("owned", 0)), [0, 0])
+	var out := PackedStringArray()
+	out.append(_choose_line(sel, -1))
+	for f in cfg["frames"]:
+		var took: int = sel.step(int(f.get("hit", 0)))
+		out.append(_choose_line(sel, took))
+	print("\n".join(out))
+
+
+## $19, $22, $042C and what was asked for, and then the asking is forgotten so
+## that the next picture starts empty.
+func _choose_line(sel: Pb2Select, took: int) -> String:
+	var say := PackedStringArray()
+	for n in Pb2Sound.asked:
+		say.append("%02X" % int(n))
+	Pb2Sound.forget()
+	return "%d %d %d %d |%s" % [sel.step_no, sel.choice,
+			1 if sel.facing_left else 0, took,
+			" ".join(say) if say.size() else "-"]
 
 
 ## The tunes of the level's own flow, asked for one step at a time.

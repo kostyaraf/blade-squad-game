@@ -88,6 +88,13 @@ const DUST_HOLD := 5
 ## $8874 -- and the middle he walks back to.
 const MIDDLE := 0x80
 
+## $8884 and $86DB -- the tune the map is laid out to.
+const MAP_TUNE := 0x44
+## $8785 and $89B1 -- he turns round, on the spot or mid-ride.
+const TURN_SOUND := 0x36
+## $8741 -- START was taken and the stage is his.
+const PICKED_SOUND := 0x29
+
 ## $48 -- the pad as the cartridge orders it.
 const START := 0x10
 const RIGHT := 0x01
@@ -134,6 +141,8 @@ func _init(stage: int, cleared_: int, owned_: int, spare: Array) -> void:
 			laid += 1
 	if laid > STAMPS_AT_ONCE:
 		step_no = LAYING
+	else:
+		_map_laid()
 
 
 ## $88CE and $8A13 -- the picture, once.
@@ -246,11 +255,26 @@ func may_pick(n: int) -> bool:
 	return (cleared & bit) == 0 or (owned & bit) == 0
 
 
+## $8881 -- the last picture of step twenty-one, and the map's own tune: it is
+## asked for once, whatever way the screen was entered, and step ten ($86D8)
+## asks for the same number the same way.
+##
+## Three stamps and more make the step run a second picture, and the request
+## stands on the one it ends on, not on the one it starts on.  Everything else
+## step twenty-one does is folded into the making of this class, so with two
+## stamps or fewer the request is made there.
+func _map_laid() -> void:
+	Pb2Sound.hush()                                    # $8881
+	Pb2Sound.want(MAP_TUNE)                            # $8886
+
+
 ## One picture of the screen.  Answers with the stage he settled on, or minus
 ## one while he is still choosing.
 func step(held: int) -> int:
 	match step_no:
-		LAYING: step_no = PICK
+		LAYING:
+			_map_laid()
+			step_no = PICK
 		PICK: _pick(held)
 		RIDE: _ride(held)
 		OVER: step_no = PICK
@@ -276,6 +300,8 @@ func _pick(held: int) -> void:
 		step_no = TAKEN
 		slots[0][Pb2Objects.F_KIND] = PICKED
 		taken = choice
+		Pb2Sound.hush()                                # $873E
+		Pb2Sound.want(PICKED_SOUND)                    # $8741
 		return
 	var last: int = 4 if (cleared & 0x0F) == 0x0F else 3
 	if held & RIGHT:
@@ -297,6 +323,9 @@ func _turn() -> void:
 	slots[0][Pb2Objects.F_KIND] = TURN
 	slots[0][Pb2Objects.F_HOLD] = TURN_HOLD
 	step_no = TURNING
+	# $8785 -- and it is asked for over whatever is playing: $8777 does not
+	# hush first, where the two other places on this screen do.
+	Pb2Sound.want(TURN_SOUND)                          # $8787
 
 
 ## $87A7 -- and when the turn is done he faces the other way and stands again.
@@ -342,6 +371,7 @@ func _changed_mind(held: int) -> bool:
 	dust[Pb2Objects.F_BITS] = hero[Pb2Objects.F_BITS]
 	dust[Pb2Objects.F_SELF] = 0
 	step_no = BACK
+	Pb2Sound.want(TURN_SOUND)                          # $89B3
 	return true
 
 
