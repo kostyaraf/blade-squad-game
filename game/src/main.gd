@@ -61,6 +61,7 @@ func _ready() -> void:
 	var solboot := false
 	var solwalk := ""
 	var sound := ""
+	var apu := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -108,6 +109,7 @@ func _ready() -> void:
 		elif a == "--solboot": solboot = true
 		elif a.begins_with("--solwalk="): solwalk = a.substr(10)
 		elif a.begins_with("--sound="): sound = a.substr(8)
+		elif a.begins_with("--apu="): apu = a.substr(6)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -126,6 +128,10 @@ func _ready() -> void:
 		return
 	if sound != "":
 		_run_sound(sound)
+		get_tree().quit()
+		return
+	if apu != "":
+		_run_apu(apu)
 		get_tree().quit()
 		return
 	if solwalk != "":
@@ -5254,6 +5260,43 @@ func _types() -> String:
 ## $4000..$4017, in order, one line a picture.
 ##
 ## `work/extract/verify_sound.py` lays the two tapes side by side.
+## The chip stand (Э6.2).  `nesemu` runs a cartridge and writes down two
+## things: every write to $4000..$4017 with the cycle it landed on, and the
+## wave it made of them.  Here the same tape is put through the engine's own
+## chip -- the same bytes on the same cycles -- and the wave it makes is
+## written out to be compared sample for sample.
+func _run_apu(path: String) -> void:
+	var f := FileAccess.open(path, FileAccess.READ)
+	var cfg: Dictionary = JSON.parse_string(f.get_as_text())
+	for r: Dictionary in cfg["runs"]:
+		var cycles := int(r["cycles"])
+		var chip := SndChip.new(SndRom.dmc(String(r["game"])))
+		chip.reset()
+		chip.reserve(cycles / SndChip.SND_EVERY + 2)
+		var lf := FileAccess.open(String(r["log"]), FileAccess.READ)
+		assert(lf != null, "no tape at %s" % r["log"])
+		var at := 0
+		while not lf.eof_reached():
+			var ln := lf.get_line().strip_edges()
+			if ln == "":
+				continue
+			var w := ln.split(" ", false)
+			var c := int(w[0])
+			if c > cycles:
+				break
+			if c > at:
+				chip.run(c - at)
+				at = c
+			chip.write(w[1].hex_to_int(), w[2].hex_to_int(), c)
+		lf.close()
+		if cycles > at:
+			chip.run(cycles - at)
+		var of := FileAccess.open(String(r["out"]), FileAccess.WRITE)
+		of.store_buffer(chip.wave())
+		of.close()
+		print("apu %s %d %d" % [r["say"], cycles, chip.out_n / 2])
+
+
 func _run_sound(path: String) -> void:
 	var f := FileAccess.open(path, FileAccess.READ)
 	var cfg: Dictionary = JSON.parse_string(f.get_as_text())

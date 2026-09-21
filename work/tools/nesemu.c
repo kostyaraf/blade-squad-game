@@ -3,7 +3,7 @@
  * build: clang -O2 -Wall -o nesemu nesemu.c -lz
  *
  * Cycle-driven 6502 (all official + common unofficial opcodes), scanline PPU,
- * MMC3 (+ mappers 0/1/2/3), APU frame counter / length counters / $4015,
+ * MMC3 (+ mappers 0/1/2/3), a full APU with the wave written out,
  * two controllers, PNG screenshots, PRG execution coverage, tracing.
  */
 
@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <math.h>
 #include <zlib.h>
 
 /* ------------------------------------------------------------------ */
@@ -81,6 +82,50 @@ static const uint8_t length_tbl[32] = {
     10,254, 20,  2, 40,  4, 80,  6,160,  8, 60, 10, 14, 12, 26, 14,
     12, 16, 24, 18, 48, 20, 96, 22,192, 24, 72, 26, 16, 28, 32, 30
 };
+
+/* apu -- synthesis.  Added for Э6.2: it makes sound and nothing else.  Not
+ * one of these fields is visible to the processor: DMC reads the cartridge
+ * through dbg_read, which steals no cycles, and raises no interrupt, so the
+ * 45 stands that already ride on this emulator cannot move. */
+typedef struct {                  /* one envelope: pulse 1, pulse 2, noise */
+    int start, divider, decay, constant, loop, vol;
+} Env;
+static Env apu_env[4];            /* 0, 1 pulses; 3 noise; 2 unused */
+
+typedef struct {
+    int period, count, seq, duty;
+    int sw_on, sw_period, sw_negate, sw_shift, sw_div, sw_reload;
+} Pulse;
+static Pulse apu_pulse[2];
+
+static int tri_period, tri_count, tri_seq, tri_lin, tri_lin_reload, tri_lin_flag;
+static int noi_period, noi_count, noi_shift = 1, noi_mode;
+static int dmc_rate, dmc_count, dmc_level;
+static int dmc_addr, dmc_len, dmc_cur, dmc_left;
+static int dmc_buf, dmc_buf_full, dmc_sr, dmc_bits, dmc_silence, dmc_loop;
+static int apu_odd;               /* the second half of the apu cycle */
+
+static const uint8_t duty_tbl[4][8] = {
+    { 0,1,0,0,0,0,0,0 }, { 0,1,1,0,0,0,0,0 },
+    { 0,1,1,1,1,0,0,0 }, { 1,0,0,1,1,1,1,1 }
+};
+static const uint8_t tri_tbl[32] = {
+    15,14,13,12,11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
+     0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15
+};
+static const uint16_t noise_tbl[16] = {
+    4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
+};
+static const uint16_t dmc_tbl[16] = {
+    428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54
+};
+
+/* the wave and the tape */
+#define SND_EVERY 40              /* one sample every 40 cpu cycles */
+static FILE *snd_f = NULL;        /* -pcm    : s16le mono */
+static FILE *apulog_f = NULL;     /* -apulog : cycle, address, byte */
+static int   snd_div = SND_EVERY;
+static double pulse_mix[31], tnd_mix[203];
 
 /* mmc3 */
 static uint8_t mmc3_bank_select = 0;
@@ -273,6 +318,8 @@ static const char *opt_png_prefix = NULL;
 static long opt_shots[64]; static int opt_nshots = 0;
 static const char *opt_cov = NULL;
 static const char *opt_trace = NULL;
+static const char *opt_pcm = NULL;
+static const char *opt_apulog = NULL;
 static const char *opt_ramdump = NULL;
 static const char *opt_statedump = NULL;
 static long opt_tracefrom = -1, opt_traceto = -1;
@@ -336,6 +383,7 @@ static InputEnt *inputs = NULL; static int n_inputs = 0, input_idx = 0;
 static void ppu_tick(void);
 static void apu_tick(void);
 static uint8_t bus_read(uint16_t a);
+static uint8_t dbg_read(uint16_t a);
 static void bus_write(uint16_t a, uint8_t v);
 static uint8_t ppu_bus_read(uint16_t a);
 static int mapper_prg_wrap(int bank);
@@ -920,12 +968,109 @@ static void ppu_reg_write(uint16_t a, uint8_t v)
 /* apu                                                                 */
 /* ------------------------------------------------------------------ */
 
+static void env_clock(Env *e)
+{
+    if (e->start) { e->start = 0; e->decay = 15; e->divider = e->vol; }
+    else if (e->divider == 0) {
+        e->divider = e->vol;
+        if (e->decay) e->decay--;
+        else if (e->loop) e->decay = 15;
+    } else e->divider--;
+}
+
+/* where the sweep would put the period: pulse 1 negates with the extra one */
+static int sweep_target(int i)
+{
+    Pulse *p = &apu_pulse[i];
+    int c = p->period >> p->sw_shift;
+    return p->sw_negate ? p->period - c - (i == 0 ? 1 : 0) : p->period + c;
+}
+
+static void sweep_clock(int i)
+{
+    Pulse *p = &apu_pulse[i];
+    int t = sweep_target(i);
+    if (p->sw_div == 0 && p->sw_on && p->sw_shift && p->period >= 8 && t <= 0x7FF)
+        p->period = t < 0 ? 0 : t;
+    if (p->sw_div == 0 || p->sw_reload) { p->sw_div = p->sw_period; p->sw_reload = 0; }
+    else p->sw_div--;
+}
+
 static void apu_half_frame(void)
 {
     for (int i = 0; i < 4; i++)
         if (!apu_halt[i] && apu_len[i]) apu_len[i]--;
+    sweep_clock(0);
+    sweep_clock(1);
 }
-static void apu_quarter_frame(void) { /* envelopes: not needed headless */ }
+
+static void apu_quarter_frame(void)
+{
+    env_clock(&apu_env[0]);
+    env_clock(&apu_env[1]);
+    env_clock(&apu_env[3]);
+    if (tri_lin_flag) tri_lin = tri_lin_reload;
+    else if (tri_lin) tri_lin--;
+    if (!apu_halt[2]) tri_lin_flag = 0;
+}
+
+static int pulse_out(int i)
+{
+    Pulse *p = &apu_pulse[i];
+    if (!apu_len[i] || p->period < 8 || sweep_target(i) > 0x7FF) return 0;
+    if (!duty_tbl[p->duty][p->seq]) return 0;
+    return apu_env[i].constant ? apu_env[i].vol : apu_env[i].decay;
+}
+
+static int noise_out(void)
+{
+    if (!apu_len[3] || (noi_shift & 1)) return 0;
+    return apu_env[3].constant ? apu_env[3].vol : apu_env[3].decay;
+}
+
+static void mix_init(void)
+{
+    pulse_mix[0] = 0.0;
+    for (int i = 1; i < 31; i++) pulse_mix[i] = 95.52 / (8128.0 / i + 100.0);
+    tnd_mix[0] = 0.0;
+    for (int i = 1; i < 203; i++) tnd_mix[i] = 163.67 / (24329.0 / i + 100.0);
+}
+
+static void snd_sample(void)
+{
+    double v = pulse_mix[pulse_out(0) + pulse_out(1)]
+             + tnd_mix[3 * tri_tbl[tri_seq] + 2 * noise_out() + dmc_level];
+    long s = lround(v * 32767.0);
+    if (s >  32767) s =  32767;
+    if (s < -32768) s = -32768;
+    uint8_t b[2] = { (uint8_t)(s & 0xFF), (uint8_t)((s >> 8) & 0xFF) };
+    fwrite(b, 1, 2, snd_f);
+}
+
+/* the sample reader.  It goes through dbg_read, so it costs the processor
+ * nothing, and it raises no interrupt: both would move what is accepted. */
+static void dmc_step(void)
+{
+    if (dmc_count == 0) {
+        dmc_count = dmc_rate;
+        if (!dmc_silence) {
+            if (dmc_sr & 1) { if (dmc_level <= 125) dmc_level += 2; }
+            else            { if (dmc_level >= 2)   dmc_level -= 2; }
+        }
+        dmc_sr >>= 1;
+        if (--dmc_bits == 0) {
+            dmc_bits = 8;
+            if (dmc_buf_full) { dmc_silence = 0; dmc_sr = dmc_buf; dmc_buf_full = 0; }
+            else dmc_silence = 1;
+        }
+    } else dmc_count--;
+    if (!dmc_buf_full && dmc_left) {
+        dmc_buf = dbg_read((uint16_t)dmc_cur);
+        dmc_buf_full = 1;
+        dmc_cur = (dmc_cur == 0xFFFF) ? 0x8000 : dmc_cur + 1;
+        if (--dmc_left == 0 && dmc_loop) { dmc_cur = dmc_addr; dmc_left = dmc_len; }
+    }
+}
 
 static void apu_tick(void)
 {
@@ -955,6 +1100,32 @@ static void apu_tick(void)
         case 37282: apu_ctr = 0; break;
         }
     }
+
+    /* triangle, noise and dmc count the processor's own cycles */
+    if (tri_count == 0) {
+        tri_count = tri_period;
+        if (tri_lin && apu_len[2]) tri_seq = (tri_seq + 1) & 31;
+    } else tri_count--;
+
+    if (noi_count == 0) {
+        noi_count = noi_period;
+        int b = (noi_shift ^ (noi_mode ? (noi_shift >> 6) : (noi_shift >> 1))) & 1;
+        noi_shift = (noi_shift >> 1) | (b << 14);
+    } else noi_count--;
+
+    dmc_step();
+
+    /* the two squares count every second one */
+    apu_odd ^= 1;
+    if (!apu_odd) {
+        for (int i = 0; i < 2; i++) {
+            Pulse *p = &apu_pulse[i];
+            if (p->count == 0) { p->count = p->period; p->seq = (p->seq + 1) & 7; }
+            else p->count--;
+        }
+    }
+
+    if (snd_f && --snd_div == 0) { snd_div = SND_EVERY; snd_sample(); }
 }
 
 static uint8_t apu_read_status(void)
@@ -970,20 +1141,79 @@ static uint8_t apu_read_status(void)
 static void apu_write(uint16_t a, uint8_t v)
 {
     if (a >= 0x4000 && a <= 0x4017) apu_regs[a - 0x4000] = v;
+    if (apulog_f && a >= 0x4000 && a <= 0x4017 && a != 0x4014 && a != 0x4016)
+        fprintf(apulog_f, "%llu %04X %02X\n",
+                (unsigned long long)cpu_cycle, a, v);
     switch (a) {
-    case 0x4000: apu_halt[0] = (v & 0x20) ? 1 : 0; break;
-    case 0x4004: apu_halt[1] = (v & 0x20) ? 1 : 0; break;
-    case 0x4008: apu_halt[2] = (v & 0x80) ? 1 : 0; break;
-    case 0x400C: apu_halt[3] = (v & 0x20) ? 1 : 0; break;
-    case 0x4003: if (apu_enable & 0x01) apu_len[0] = length_tbl[v >> 3]; break;
-    case 0x4007: if (apu_enable & 0x02) apu_len[1] = length_tbl[v >> 3]; break;
-    case 0x400B: if (apu_enable & 0x04) apu_len[2] = length_tbl[v >> 3]; break;
-    case 0x400F: if (apu_enable & 0x08) apu_len[3] = length_tbl[v >> 3]; break;
-    case 0x4010: if (!(v & 0x80)) apu_dmc_irq = 0; break;
+    case 0x4000: case 0x4004: {
+        int i = (a == 0x4000) ? 0 : 1;
+        apu_halt[i] = (v & 0x20) ? 1 : 0;
+        apu_pulse[i].duty = v >> 6;
+        apu_env[i].loop = apu_halt[i];
+        apu_env[i].constant = (v & 0x10) ? 1 : 0;
+        apu_env[i].vol = v & 0x0F;
+        break;
+    }
+    case 0x4001: case 0x4005: {
+        Pulse *p = &apu_pulse[(a == 0x4001) ? 0 : 1];
+        p->sw_on = (v & 0x80) ? 1 : 0;
+        p->sw_period = (v >> 4) & 7;
+        p->sw_negate = (v & 0x08) ? 1 : 0;
+        p->sw_shift = v & 7;
+        p->sw_reload = 1;
+        break;
+    }
+    case 0x4002: case 0x4006: {
+        Pulse *p = &apu_pulse[(a == 0x4002) ? 0 : 1];
+        p->period = (p->period & 0x700) | v;
+        break;
+    }
+    case 0x4003: case 0x4007: {
+        int i = (a == 0x4003) ? 0 : 1;
+        apu_pulse[i].period = (apu_pulse[i].period & 0xFF) | ((v & 7) << 8);
+        apu_pulse[i].seq = 0;
+        apu_env[i].start = 1;
+        if (apu_enable & (1 << i)) apu_len[i] = length_tbl[v >> 3];
+        break;
+    }
+    case 0x4008:
+        apu_halt[2] = (v & 0x80) ? 1 : 0;
+        tri_lin_reload = v & 0x7F;
+        break;
+    case 0x400A: tri_period = (tri_period & 0x700) | v; break;
+    case 0x400B:
+        tri_period = (tri_period & 0xFF) | ((v & 7) << 8);
+        tri_lin_flag = 1;
+        if (apu_enable & 0x04) apu_len[2] = length_tbl[v >> 3];
+        break;
+    case 0x400C:
+        apu_halt[3] = (v & 0x20) ? 1 : 0;
+        apu_env[3].loop = apu_halt[3];
+        apu_env[3].constant = (v & 0x10) ? 1 : 0;
+        apu_env[3].vol = v & 0x0F;
+        break;
+    case 0x400E:
+        noi_mode = (v & 0x80) ? 1 : 0;
+        noi_period = noise_tbl[v & 0x0F] - 1;
+        break;
+    case 0x400F:
+        apu_env[3].start = 1;
+        if (apu_enable & 0x08) apu_len[3] = length_tbl[v >> 3];
+        break;
+    case 0x4010:
+        if (!(v & 0x80)) apu_dmc_irq = 0;
+        dmc_loop = (v & 0x40) ? 1 : 0;
+        dmc_rate = dmc_tbl[v & 0x0F] - 1;
+        break;
+    case 0x4011: dmc_level = v & 0x7F; break;
+    case 0x4012: dmc_addr = 0xC000 + v * 64; break;
+    case 0x4013: dmc_len = v * 16 + 1; break;
     case 0x4015:
         apu_enable = v & 0x1F;
         for (int i = 0; i < 4; i++) if (!(v & (1 << i))) apu_len[i] = 0;
         if (!(v & 0x10)) apu_dmc_irq = 0;
+        if (v & 0x10) { if (!dmc_left) { dmc_cur = dmc_addr; dmc_left = dmc_len; } }
+        else dmc_left = 0;
         break;
     case 0x4017:
         apu_mode = (v & 0x80) ? 1 : 0;
@@ -1836,7 +2066,7 @@ static int write_png(const char *path)
  * of every supported mapper, the frame counter and the framebuffer.
  */
 #define SS_MAGIC   "NESEMUST"
-#define SS_VERSION 1u
+#define SS_VERSION 2u
 
 static int ss_err;
 static void io_raw(FILE *f, int w, void *p, size_t n)
@@ -1865,6 +2095,14 @@ static int state_io(FILE *f, int w)
     IOA(apu_len); IOA(apu_halt); IO(apu_enable); IO(apu_mode);
     IO(apu_irq_inhibit); IO(apu_frame_irq); IO(apu_dmc_irq);
     IO(apu_ctr); IO(apu_reset_delay); IOA(apu_regs);
+    IOA(apu_env); IOA(apu_pulse);
+    IO(tri_period); IO(tri_count); IO(tri_seq);
+    IO(tri_lin); IO(tri_lin_reload); IO(tri_lin_flag);
+    IO(noi_period); IO(noi_count); IO(noi_shift); IO(noi_mode);
+    IO(dmc_rate); IO(dmc_count); IO(dmc_level);
+    IO(dmc_addr); IO(dmc_len); IO(dmc_cur); IO(dmc_left);
+    IO(dmc_buf); IO(dmc_buf_full); IO(dmc_sr); IO(dmc_bits);
+    IO(dmc_silence); IO(dmc_loop); IO(apu_odd); IO(snd_div);
     /* controllers */
     IOA(pad_state); IOA(pad_shift); IO(pad_strobe);
     /* mapper: mirroring + live bank maps + every mapper's registers */
@@ -2257,6 +2495,14 @@ static void reset_machine(void)
     apu_ctr = 0; apu_mode = 0; apu_irq_inhibit = 0; apu_frame_irq = 0;
     memset(apu_len, 0, sizeof apu_len);
     memset(apu_halt, 0, sizeof apu_halt);
+    memset(apu_env, 0, sizeof apu_env);
+    memset(apu_pulse, 0, sizeof apu_pulse);
+    tri_period = tri_count = tri_seq = tri_lin = tri_lin_reload = tri_lin_flag = 0;
+    noi_period = noi_count = 0; noi_shift = 1; noi_mode = 0;
+    dmc_rate = dmc_count = dmc_level = 0;
+    dmc_addr = 0xC000; dmc_len = 1; dmc_cur = 0xC000; dmc_left = 0;
+    dmc_buf = dmc_buf_full = dmc_sr = 0; dmc_bits = 8; dmc_silence = 1; dmc_loop = 0;
+    apu_odd = 0; snd_div = SND_EVERY;
 }
 
 static void usage(void)
@@ -2269,6 +2515,8 @@ static void usage(void)
         "  -shot N[,N...]    frames to screenshot\n"
         "  -cov FILE         PRG coverage bitmap (+ FILE.txt summary)\n"
         "  -trace FILE       instruction trace\n"
+        "  -pcm FILE         the wave, s16le mono, one sample every 40 cycles\n"
+        "  -apulog FILE      every write to $4000..$4017 as cycle, addr, byte\n"
         "  -tracefrom N -traceto M\n"
         "  -tracepc LO-HI    hex PC range\n"
         "  -watch ADDR[-ADDR]\n"
@@ -2311,6 +2559,8 @@ int main(int argc, char **argv)
         else if (!strcmp(o, "-readfrom"))  { NEED(o); opt_readfrom = atol(argv[++i]); }
         else if (!strcmp(o, "-readto"))    { NEED(o); opt_readto = atol(argv[++i]); }
         else if (!strcmp(o, "-trace"))     { NEED(o); opt_trace = argv[++i]; }
+        else if (!strcmp(o, "-pcm"))       { NEED(o); opt_pcm = argv[++i]; }
+        else if (!strcmp(o, "-apulog"))    { NEED(o); opt_apulog = argv[++i]; }
         else if (!strcmp(o, "-tracefrom")) { NEED(o); opt_tracefrom = strtol(argv[++i], NULL, 0); }
         else if (!strcmp(o, "-traceto"))   { NEED(o); opt_traceto = strtol(argv[++i], NULL, 0); }
         else if (!strcmp(o, "-tracepc"))   {
@@ -2448,6 +2698,15 @@ int main(int argc, char **argv)
     if (opt_cov) cov_bits = calloc(1, (size_t)((prg_size + 7) / 8));
     if (opt_prgread) rd_bits = calloc(1, (size_t)((prg_size + 7) / 8));
     if (n_vramreqs) chr_scan_arm = 1;
+    mix_init();
+    if (opt_pcm) {
+        snd_f = fopen(opt_pcm, "wb");
+        if (!snd_f) { fprintf(stderr, "cannot write %s\n", opt_pcm); return 1; }
+    }
+    if (opt_apulog) {
+        apulog_f = fopen(opt_apulog, "w");
+        if (!apulog_f) { fprintf(stderr, "cannot write %s\n", opt_apulog); return 1; }
+    }
     if (opt_trace) {
         trace_fp = fopen(opt_trace, "w");
         if (!trace_fp) { fprintf(stderr, "cannot write %s\n", opt_trace); return 1; }
@@ -2524,6 +2783,10 @@ int main(int argc, char **argv)
         }
     }
 
+    if (snd_f) { fclose(snd_f); snd_f = NULL;
+                 fprintf(stderr, "wrote %s\n", opt_pcm); }
+    if (apulog_f) { fclose(apulog_f); apulog_f = NULL;
+                    fprintf(stderr, "wrote %s\n", opt_apulog); }
     if (opt_cov) write_coverage(opt_cov);
     if (opt_prgread) {
         FILE *f = fopen(opt_prgread, "wb");

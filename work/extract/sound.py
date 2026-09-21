@@ -15,9 +15,12 @@ the port is `$8AE9,Y` in the cartridge -- so no table is ever copied out by
 hand and no constant is written down twice.  Whatever the driver reads, it
 reads here.
 
-Samples are not in this file.  A DMC sample lives in the fixed banks and is
-named by $4012 and $4013, which the tape carries as plain writes; nothing
-plays it until there is something to play it with (Э6.3).
+Samples are in this file too, since Э6.2.  A DMC sample is named by $4012
+and $4013, which the tape carries as plain writes, and the bytes themselves
+sit in the bank the mapper fixes at $C000 -- the second-to-last.  Power Blade
+2 keeps two drums there ($C000, 497 bytes and $C200, 193 bytes); Solbrain
+does not touch DMC at all, and the bank is exported for it all the same so
+the two games are read the same way.
 """
 import os
 import sys
@@ -40,15 +43,24 @@ def main():
         prg, _ = rombuild.load(ROM[game])
         lo = DRIVER[game] * BANK
         window = prg[lo:lo + 2 * BANK]
+        # The bank the mapper fixes at $C000, which is where a DMC sample is
+        # fetched from: the second-to-last of the cartridge.
+        nbanks = len(prg) // BANK
+        dmc_bank = nbanks - 2
+        dmc = prg[dmc_bank * BANK:(dmc_bank + 1) * BANK]
         path = os.path.join(C.outdir(game), 'sound.json')
         n = C.write_json(path, {
             'base': 0x8000,
             'banks': [DRIVER[game], DRIVER[game] + 1],
             'rom': list(window),
+            'dmc_base': 0xC000,
+            'dmc_bank': dmc_bank,
+            'dmc': list(dmc),
         })
-        print('%s: banks %d and %d, %d bytes at $%04X -> %s (%d bytes)'
+        print('%s: banks %d and %d, %d bytes at $%04X, DMC bank %d at $C000'
+              ' -> %s (%d bytes)'
               % (game, DRIVER[game], DRIVER[game] + 1, len(window), 0x8000,
-                 os.path.relpath(path, C.ROOT), n))
+                 dmc_bank, os.path.relpath(path, C.ROOT), n))
     return 0
 
 

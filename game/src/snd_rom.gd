@@ -18,6 +18,7 @@ const BASE := 0x8000
 const TOP := 0xC000
 
 static var _rom := {}
+static var _dmc := {}
 
 
 ## The window of `game`, read once and kept.
@@ -33,4 +34,18 @@ static func window(game: String) -> PackedByteArray:
 	for i in range(rom.size()):
 		out[i] = int(rom[i])
 	_rom[game] = out
+	var dmc := PackedByteArray()
+	var raw: Array = d.get("dmc", [])
+	dmc.resize(raw.size())
+	for i in range(raw.size()):
+		dmc[i] = int(raw[i])
+	_dmc[game] = dmc
 	return out
+
+
+## The bank the mapper fixes at $C000, which is where a DMC sample is fetched
+## from.  Power Blade 2 keeps its two drums here; Solbrain has none.
+static func dmc(game: String) -> PackedByteArray:
+	if not _dmc.has(game):
+		window(game)
+	return _dmc[game]
