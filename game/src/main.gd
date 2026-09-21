@@ -15,6 +15,11 @@ var game := "pb2"
 ## on the command line.  Every harness asks for something, so a stand
 ## never sees it.
 var menu: Pb3Menu = null
+## Э7.3 -- whether this run remembers anything.  Only a run that came through
+## the menu does: a stand is driven by arguments and must never read or write
+## a file that outlives it.
+var keeping := false
+var _kept := ""
 var scroll := Vector2i.ZERO
 var origin := Vector2i.ZERO      # where on the screen the level's top left goes
 var view_h := 240
@@ -46,6 +51,7 @@ func _ready() -> void:
 	var bar := ""
 	var flow := ""
 	var menuwalk := ""
+	var keepwalk := ""
 	var choose := ""
 	var play := ""
 	var run := ""
@@ -99,6 +105,7 @@ func _ready() -> void:
 		elif a.begins_with("--bar="): bar = a.substr(6)
 		elif a.begins_with("--flow="): flow = a.substr(7)
 		elif a.begins_with("--menu="): menuwalk = a.substr(7)
+		elif a.begins_with("--keep="): keepwalk = a.substr(7)
 		elif a.begins_with("--choose="): choose = a.substr(9)
 		elif a.begins_with("--play="): play = a.substr(7)
 		elif a.begins_with("--run="): run = a.substr(6)
@@ -311,6 +318,10 @@ func _ready() -> void:
 	# The bar is drawn by this node itself, and a node draws under its own
 	# children unless it is told otherwise.
 	bg.z_index = -1
+	if keepwalk != "":
+		_run_keep(keepwalk)
+		get_tree().quit()
+		return
 	# Э7.2 -- a build started by hand was asked for nothing, and then the
 	# screen that asks comes first.
 	if OS.get_cmdline_user_args().is_empty():
@@ -3536,11 +3547,135 @@ func _menu_took(which: String) -> void:
 	menu.queue_free()
 	menu = null
 	game = which
+	keeping = true
 	if which == "pb2":
 		_start_play(0, 0)
 	else:
 		_start_sol_boot()
+	_progress_read()
 	_apply()
+
+
+## Э7.3 -- what was kept, put back where the game carries it.
+func _progress_read() -> void:
+	var kept: Dictionary = Pb3Save.read()
+	var mine: Variant = kept.get(game)
+	if not (mine is Dictionary):
+		return
+	if game == "pb2" and status != null:
+		status.cleared = int(mine.get("cleared", status.cleared))
+		status.owned = int(mine.get("owned", status.owned))
+	elif sol_flow != null:
+		sol_flow.z2d = int(mine.get("done", sol_flow.z2d))
+		var sc: Variant = mine.get("scores")
+		var nm: Variant = mine.get("names")
+		if sc is Array and sc.size() == sol_flow.best_scores.size():
+			sol_flow.best_scores = Pb3Save.whole(sc)
+		if nm is Array and nm.size() == sol_flow.best_names.size():
+			sol_flow.best_names = Pb3Save.whole(nm)
+	_kept = JSON.stringify(_progress_now())
+
+
+## What the game carries now.  It is read every picture and written only when
+## it has changed, so the stage that finishes is the picture that writes.
+func _progress_now() -> Dictionary:
+	if game == "pb2":
+		if status == null:
+			return {}
+		return {"cleared": status.cleared, "owned": status.owned}
+	if sol_flow == null:
+		return {}
+	return {"done": sol_flow.z2d,
+			"scores": sol_flow.best_scores.duplicate(),
+			"names": sol_flow.best_names.duplicate()}
+
+
+## Э7.3 -- one picture's look at it.
+func _progress_watch() -> void:
+	if not keeping:
+		return
+	var now: Dictionary = _progress_now()
+	if now.is_empty():
+		return
+	var said := JSON.stringify(now)
+	if said == _kept:
+		return
+	_kept = said
+	# The other game's own entry goes back into the file untouched, and it has
+	# been through JSON on the way, so it is made whole again first: a run of
+	# one game must not leave the other's numbers written down as 7.0.
+	var kept: Dictionary = Pb3Save.whole(Pb3Save.read())
+	kept[game] = now
+	Pb3Save.write(kept)
+
+
+## Э7.3's harness -- the port's own remembering, one picture at a time.
+##
+## Everything here is the way a player goes: the screen goes up, a script of
+## buttons settles it, the game is started by the screen settling, and the
+## looking-over is the game's own `_progress_watch`.  Two things are the
+## harness's: the pad, which it hands over instead of pressing (a stand has no
+## keys), and the counters it pokes, because no stand can play a stage to its
+## end.
+##
+## It is the only argument that touches `user://` on purpose, and it says so on
+## its last line: what the file holds, byte for byte.
+func _run_keep(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if bool(cfg.get("forget", false)):
+		DirAccess.remove_absolute(Pb3Save.PATH)
+	pads = [Pad.player_one(), Pad.player_two()]
+	_start_menu()
+	var hand := Pad.new({}, -1)
+	var keys: Array = cfg.get("keys", [])
+	var pokes: Dictionary = cfg.get("pokes", {})
+	var out := PackedStringArray()
+	for t in range(int(cfg.get("frames", 0))):
+		var said := "-"
+		if menu != null:
+			# What `Pad.poll` works out from the console's two reads, handed
+			# over directly, exactly as Э7.2's harness hands it over.
+			var word: int = int(keys[t]) if t < keys.size() else 0
+			hand.pressed = word & ~hand.held
+			hand.held = word
+			menu.step(hand)
+			# The screen may settle on this very picture, and then it is the
+			# picture it settled on: what it settled on is the next line's.
+			said = "on the screen"
+		else:
+			if pokes.has(str(t)):
+				_poke_progress(pokes[str(t)])
+			_step()
+			said = JSON.stringify(_progress_now())
+		out.append("%d |%s |%s |%s"
+				% [t, "-" if menu != null else game,
+				"keeping" if keeping else "-", said])
+	out.append("file |" + (FileAccess.get_file_as_string(Pb3Save.PATH)
+			if FileAccess.file_exists(Pb3Save.PATH) else "-"))
+	# Where it is on this machine.  A stand has to look at the file without
+	# the engine, to say that a run driven by arguments never made one, and
+	# working the place out for itself would be working out what Godot alone
+	# knows.
+	out.append("path |" + ProjectSettings.globalize_path(Pb3Save.PATH))
+	print("\n".join(out))
+
+
+## The counters a finished stage would have moved, moved by hand.  Only the
+## ones the remembering keeps are here; a stand that pokes anything else would
+## be asking the remembering about something it never promised.
+func _poke_progress(what: Dictionary) -> void:
+	if game == "pb2":
+		if what.has("cleared"):
+			status.cleared = int(what["cleared"])
+		if what.has("owned"):
+			status.owned = int(what["owned"])
+		return
+	if what.has("done"):
+		sol_flow.z2d = int(what["done"])
+	if what.has("scores"):
+		sol_flow.best_scores = Pb3Save.whole(what["scores"])
+	if what.has("names"):
+		sol_flow.best_names = Pb3Save.whole(what["names"])
 
 
 ## One picture.  The game moves first and the driver last, the way the console
@@ -3550,6 +3685,7 @@ func _step() -> void:
 	_step_game()
 	if snd != null:
 		snd.step()
+	_progress_watch()
 
 
 func _step_game() -> void:

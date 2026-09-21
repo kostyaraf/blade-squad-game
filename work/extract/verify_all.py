@@ -90,6 +90,7 @@ STANDS = [
     ('pb2choice',  'Э6.3.9', 'verify_pb2_choice.py', []),
     ('build',      'Э7.1',   'verify_build.py', []),
     ('ask',        'Э7.2',   'verify_menu.py', []),
+    ('keep',       'Э7.3',   'verify_save.py', []),
 ]
 
 # Every stand ends on a line that counts what differs.  Two shapes are in use:
