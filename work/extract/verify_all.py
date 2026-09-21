@@ -89,6 +89,7 @@ STANDS = [
     ('pb2flow',    'Э6.3.8', 'verify_pb2_flow.py', []),
     ('pb2choice',  'Э6.3.9', 'verify_pb2_choice.py', []),
     ('build',      'Э7.1',   'verify_build.py', []),
+    ('ask',        'Э7.2',   'verify_menu.py', []),
 ]
 
 # Every stand ends on a line that counts what differs.  Two shapes are in use:
@@ -96,6 +97,9 @@ STANDS = [
 # "worst frame: N pixels".
 COUNT = re.compile(r'^(\d+) of (\d+) ([^,;]+?) differ')
 WORST = re.compile(r'^worst frame: (\d+) pixels')
+# And a third, for the stands of Э7: what the port promises where the
+# cartridge promised nothing, because it had neither screen nor battery.
+PROMISE = re.compile(r'^(\d+) of (\d+) ([^,;]+?) break the promise')
 NOTHING = re.compile(r'^0 of 0 ')
 
 
@@ -113,6 +117,10 @@ def verdict(text):
             bad, line = int(m.group(1)), row.strip()
             continue
         m = WORST.match(row)
+        if m:
+            bad, line = int(m.group(1)), row.strip()
+            continue
+        m = PROMISE.match(row)
         if m:
             bad, line = int(m.group(1)), row.strip()
     return bad, line

@@ -11,6 +11,10 @@ extends Node2D
 var level_pb2: Pb2Level
 var level_sol: SolLevel
 var game := "pb2"
+## Э7.2 -- the screen the build opens on, when nothing was asked for
+## on the command line.  Every harness asks for something, so a stand
+## never sees it.
+var menu: Pb3Menu = null
 var scroll := Vector2i.ZERO
 var origin := Vector2i.ZERO      # where on the screen the level's top left goes
 var view_h := 240
@@ -41,6 +45,7 @@ func _ready() -> void:
 	var timing := ""
 	var bar := ""
 	var flow := ""
+	var menuwalk := ""
 	var choose := ""
 	var play := ""
 	var run := ""
@@ -93,6 +98,7 @@ func _ready() -> void:
 		elif a.begins_with("--time="): timing = a.substr(7)
 		elif a.begins_with("--bar="): bar = a.substr(6)
 		elif a.begins_with("--flow="): flow = a.substr(7)
+		elif a.begins_with("--menu="): menuwalk = a.substr(7)
 		elif a.begins_with("--choose="): choose = a.substr(9)
 		elif a.begins_with("--play="): play = a.substr(7)
 		elif a.begins_with("--run="): run = a.substr(6)
@@ -126,6 +132,10 @@ func _ready() -> void:
 		elif a.begins_with("--sndplay="): sndplay = a.substr(10)
 	if flow != "":
 		_run_flow(flow)
+		get_tree().quit()
+		return
+	if menuwalk != "":
+		_run_menu(menuwalk)
 		get_tree().quit()
 		return
 	if choose != "":
@@ -301,6 +311,11 @@ func _ready() -> void:
 	# The bar is drawn by this node itself, and a node draws under its own
 	# children unless it is told otherwise.
 	bg.z_index = -1
+	# Э7.2 -- a build started by hand was asked for nothing, and then the
+	# screen that asks comes first.
+	if OS.get_cmdline_user_args().is_empty():
+		_start_menu()
+		return
 	if game == "pb2":
 		_start_play(stage, area)
 	elif solboot:
@@ -3458,6 +3473,9 @@ func _process(dt: float) -> void:
 		_step()
 	if snd != null and snd_out != null:
 		snd.pump(snd_out.get_stream_playback())
+	# The menu is a node and draws itself; there is no level under it to draw.
+	if menu != null:
+		return
 	if sol_flow != null and (sol_flow.screen != "" or level_sol == null):
 		_sol_screen_frame()
 		queue_redraw()
@@ -3476,6 +3494,55 @@ func _process(dt: float) -> void:
 		queue_redraw()
 
 
+## Э7.2's harness -- the screen walked by a script of buttons, one line to a
+## picture: where the caret stands, and what it settled on if it settled.
+##
+## The screen is a node, so it is made and stepped without being shown: it
+## draws itself and nothing here asks it to.
+func _run_menu(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var m := Pb3Menu.new()
+	# A lambda takes a copy of what it captures, so what it is told is put
+	# where both it and this routine can see it.
+	var took := [""]
+	m.picked.connect(func(which: String) -> void: took[0] = which)
+	var pad := Pad.new({}, -1)
+	var out := PackedStringArray()
+	out.append("%d |-" % m.at)
+	for word in cfg["frames"]:
+		# What `Pad.poll` works out from the console's two reads, handed over
+		# directly: a harness has no keys to press.
+		var now: int = int(word)
+		pad.pressed = now & ~pad.held
+		pad.held = now
+		m.step(pad)
+		out.append("%d |%s" % [m.at,
+				str(took[0]) if str(took[0]) != "" else "-"])
+	m.free()
+	print("\n".join(out))
+
+
+## Э7.2 -- the screen goes up and the game waits on it.
+func _start_menu() -> void:
+	menu = Pb3Menu.new()
+	menu.picked.connect(_menu_took)
+	add_child(menu)
+
+
+## And what he settled on is started, as the command line would have started
+## it: the first area of the first stage, or the screen the other game comes up
+## on.
+func _menu_took(which: String) -> void:
+	menu.queue_free()
+	menu = null
+	game = which
+	if which == "pb2":
+		_start_play(0, 0)
+	else:
+		_start_sol_boot()
+	_apply()
+
+
 ## One picture.  The game moves first and the driver last, the way the console
 ## has it: the cartridge's own driver runs out of the interrupt handler, after
 ## the picture the game has just finished asking for.
@@ -3488,6 +3555,9 @@ func _step() -> void:
 func _step_game() -> void:
 	for p in pads:
 		p.poll()
+	if menu != null:
+		menu.step(pads[0])
+		return
 	if choosing:
 		_choice_step()
 		return
