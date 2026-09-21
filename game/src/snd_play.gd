@@ -55,6 +55,8 @@ var cycles := 0                            ## and how many cycles were run
 func _init(g: String) -> void:
 	game = g
 	apu = SndApu.new()
+	Pb2Sound.forget()
+	SolSound.forget()
 	if g == "pb2":
 		pb2 = Pb2Sound.new(apu)
 		pb2.boot()
@@ -85,6 +87,34 @@ func ask_sound(n: int) -> void:
 		sol.ask_sound(n)
 
 
+## The driver's own picture, and nothing else: the requests go in, in the
+## order they were made, and then the driver runs.  What it writes is left
+## standing in `apu` for whoever wants it.
+##
+## Kept apart from `step` because a stand that is judging requests wants the
+## driver and not the chip -- synthesising a wave nobody listens to would cost
+## it seven hundred samples a picture for nothing.
+func drive() -> void:
+	apu.clear()
+	if pb2 != null:
+		# In the order they were asked for, and all of them before the tick:
+		# on the console the game asks from the main loop and the driver runs
+		# from the interrupt handler, which comes after.
+		for n in Pb2Sound.asked:
+			pb2.ask(n)
+		Pb2Sound.asked = []
+		pb2.tick()
+		return
+	# Two cells, so the last word wins and nothing queues -- which is what two
+	# bytes of zero page do.
+	if SolSound.want_tune != 0:
+		sol.ask_tune(SolSound.want_tune)
+	if SolSound.want_noise != 0:
+		sol.ask_sound(SolSound.want_noise)
+	SolSound.forget()
+	sol.tick()
+
+
 ## One picture: the driver runs, and what it wrote goes into the chip at the
 ## head of the picture -- the way the cartridge's own interrupt handler makes
 ## its writes -- and then the chip is run out to the end of the picture.
@@ -93,10 +123,7 @@ func ask_sound(n: int) -> void:
 ## picture and this does not.  A register written a fiftieth of a millisecond
 ## early is not a thing anybody hears; a picture a cycle short is.
 func step() -> void:
-	if pb2 != null:
-		pb2.tick()
-	else:
-		sol.tick()
+	drive()
 	for w in apu.writes:
 		chip.write(int(w[0]), int(w[1]))
 	apu.writes.clear()

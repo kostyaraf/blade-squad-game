@@ -199,7 +199,14 @@ var z2e := 0                # $2E -- the tune the stage is played to
 var z0d := 0                # $0D -- set once CONTINUE has been offered
 var z59 := 0                # $59 -- how many screens have been shown
 var z4c := 0                # $4C -- what is picked on a screen that asks
-var noise := 0              # $F0 -- the noise asked for, kept but not made
+## $F0 -- the tune asked for.  Nothing is kept here: zero page is one cell for
+## the whole cartridge, and the driver takes it once a picture and leaves
+## nought behind, so the screens write straight through to it.
+var noise: int:
+	get:
+		return SolSound.want_tune
+	set(value):
+		SolSound.want_tune = value
 var clock := 0              # $0C -- pictures, which the screens count by
 ## The thirty two colours and the walk they are on ($26, $27, $05BA and the
 ## rest).  Two modes wait for a walk to be over ($3C for the white flash and
@@ -228,9 +235,13 @@ var best_names: Array = SolOver.first_names()
 var z0752 := 0
 var z0753 := 0
 
-## $F1 -- the second noise asked for, the one a screen makes for itself.  Kept
-## like $F0 and not made.
-var noise2 := 0
+## $F1 -- the second noise asked for, the one a screen makes for itself, and
+## the same cell everything else in the cartridge writes into.
+var noise2: int:
+	get:
+		return SolSound.want_noise
+	set(value):
+		SolSound.want_noise = value
 
 ## $0740, $0750 and $0760 -- the eight bands the beam is cut into: how many
 ## lines each is, which page it shows, and how far along it stands.  The engine
@@ -609,7 +620,7 @@ func _tale() -> void:
 	z7d = 0
 	scroll_x = 0
 	scroll_y = 0
-	noise = 0x0C
+	noise = 0x0C                                  # $D28C -- $F0
 
 
 ## $D291, mode $5D -- and told.  What tells it is $8037 in bank four, which
@@ -631,7 +642,7 @@ func _telling(host) -> void:
 func _select() -> void:
 	_screen("select", 0x10, 0x12)                 # $C925 A=$10 Y=$12
 	mode = SELECT_ROLL
-	noise = 0x0A
+	noise = 0x0A                                  # $D2C0 -- $F0
 	pal_direct = false
 	fade.name_table(0x8280)                       # $D2D1 -- $E9B1 A=$80 Y=$82
 	fade.dark()                                   # $D2D8 -- black to begin with
@@ -759,7 +770,7 @@ func _into(host) -> void:
 	_ca9a(host)
 	if fade.kind != 0:
 		return
-	noise = 0x10
+	noise = 0x10                                  # $D46C -- $F0
 	mode = PICK
 	z7d = 0
 	fade.at_pace(4)                               # $D479
@@ -975,6 +986,7 @@ func _born(host) -> void:
 	for i in range(4):                            # $CC0D
 		piece_x[i] = (p.x + PIECE_X0[i]) & 0xFFFF
 		piece_y[i] = (p.y + PIECE_Y0[i]) & 0xFFFF
+	noise2 = 0x06                                 # $CBF4 -- $F1
 	home_x = v.x                                  # $CBF6
 	home_y = v.y
 	_ride(host)                                   # $CC0A -> $E9D2, which
@@ -1058,10 +1070,12 @@ func _pick(host) -> void:
 	z05ab = 0xFE                                  # $DB27 -- $05AB
 	fade.ask(0xFE, 0xFE)                          # $DB2C -- $F849, A still $FE
 	fade.run()
-	# $DB34 -- which of the two noises is asked for turns on $2D, which the
-	# sound code keeps for itself and is not ported; what a stage that is not
-	# the last asks for is $0C.
-	noise = 0x0C
+	# $DB34 -- which of the two is asked for turns on whether every stage is
+	# done with: the last board asks for a noise, any other for a tune.
+	if _all_done():
+		noise2 = 0x16                             # $DB3B -- $F1
+	else:
+		noise = 0x0C                              # $DB41 -- $F0
 	scroll_y = 0xEF                               # $DB43 -- $0B, which $C535 writes
 
 
@@ -1142,7 +1156,8 @@ func _board_run(host) -> void:
 		_board_write(host, z4f, pic)
 		return
 	if not done and z4f == 0x06:                  # $DC52
-		noise = 0x0F                              # $DC62
+		noise2 = 0x03                             # $DC64 -- $F1
+		noise = 0x0F                              # $DC68 -- $F0
 		_board_names()
 		return
 	if z4f == (0x0A if done else 0x20):           # $DC40 and $DC56
@@ -1150,6 +1165,7 @@ func _board_run(host) -> void:
 		fade.ask(0x03, 0x08)                      # $F86D 3/8
 		return
 	if z4f >= (0x0E if done else 0xC0):           # $DC44 and $DC5A
+		noise2 = 0x3D                             # $DC79 -- $F1
 		mode = AREA                               # $DC77
 
 
@@ -1186,6 +1202,7 @@ func _board_wait(host) -> void:
 	else:
 		_board_mark(host)
 		return
+	noise2 = 0x23                                 # $DCAF -- $F1
 	var to: int = (z4e + by) & 0xFF               # $DCB1
 	if to < 0x06:
 		z4e = to
@@ -1480,7 +1497,7 @@ func _pay_bonus(host) -> void:
 	set_owed_of(host, (owed - by) & 0xFFFF)         # $E1A1
 	score = (score + by) & 0xFFFFFF               # $E1AF -- $E3D3 A=by Y=0
 	if (clock & 0x07) == 0:                       # $E1B6
-		noise2 = 0x04
+		noise2 = 0x04                             # $E1BE -- $F1
 
 
 ## $E1C3, step four -- and the suits still on him, one every sixteenth picture
@@ -2244,7 +2261,8 @@ func _over_wait(host) -> void:
 		return
 	if (z4d & 0x01) == 0:                         # $DA7C -- CONTINUE
 		mode = AGAIN                              # $DAA1
-		noise = 0x0F                              # $DAA3
+		noise = 0x0F                              # $DAA3 -- $F0
+		noise2 = 0x03                             # $DAA9 -- $F1
 		z4d = 0x80                                # $DAAB
 		return
 	z2d = 0                                       # $DA83 -- END: the game over

@@ -102,6 +102,7 @@ static func _dying(o: SolObjects, x: int) -> void:
 		if o.b[x] == 0:
 			for i in range(SolObjects.WEAPONS):         # $881A
 				o.w_kind[i] = 0
+			SolSound.want_noise = 0x0A                  # $A4DC -- $F1
 		o.y[x] = (o.y[x] + (hi << 8 | lo)) & 0xFFFF     # $AE7C
 		# $A4E3 -- and while it falls it is only drawn three pictures in four.
 		if (o.clock & 0x02) == 0:
@@ -257,6 +258,8 @@ static func _on_wire(o: SolObjects, x: int) -> void:
 
 ## $A6BA -- the little flash the wire makes, every eighth picture.
 static func _spark(o: SolObjects, x: int) -> void:
+	if (o.clock & 0x07) == 0:
+		SolSound.want_noise = 0x0B                      # $A6C0 -- $F1
 	_bob(o, x, o.clock & 0x03)                          # $A6C9 -> $AE31
 
 
@@ -303,11 +306,19 @@ static func _dispatch(o: SolObjects, x: int) -> void:
 ## second picture of the first step.
 static func _punching(o: SolObjects, x: int) -> void:
 	_reaching(o, x, 0x1A)                               # $A82C
+	# $A82F -- the second picture of the first step, and a hero already hurt
+	# is heard differently for it.
+	if o.frame[x] == 0x01 and o.left[x] == 0x01:
+		SolSound.want_noise = 0x2F if o.hero_hurt != 0 else 0x0D    # $A848 -- $F1
 
 
 ## $A84B -- and the slash of the seventh weapon, in slot fourteen.
 static func _slashing(o: SolObjects, x: int) -> void:
 	_reaching(o, x, 0x1C)                               # $A84D
+	# $A850 -- and the slash is heard on the second picture of a step, unless
+	# the slot has been struck ($87FA reads $06E0 for $FF).
+	if o.frame[x] == 0x01 and o.cool[x] != 0xFF:
+		SolSound.want_noise = 0x0E                      # $A85C -- $F1
 
 
 ## $A861 -- one picture of either of them.  While the hero is being left alone
@@ -404,7 +415,7 @@ static func _break(o: SolObjects, x: int) -> void:
 	o.pic_hi[f] = 0
 	o.a[f] = 0
 	o.kind[f] = 0
-	# $B9B1 -- the sound the punch makes ($F1 = $25) is not modelled.
+	SolSound.want_noise = 0x25          # $B9B1 -- $F1
 	o.hatch_up(o.x[f], o.y[f], 0x24)                    # $B9B7
 	if o.id[0x0F] != 0:                                 # $B9BA
 		o.cool[0x0F] = 0                                # $B9BF
@@ -595,6 +606,7 @@ static func _grenade(o: SolObjects, x: int) -> void:
 	o.anim_first(x, o.anim_a[x], 1)                     # $ACDC
 	if o.frame[x] != 0x02:
 		return                                          # $ACE4
+	SolSound.want_noise = 0x34                          # $ACE6 -- $F1
 	var kind: int = 0x84 if o.anim_a[x] >= 0x06 else 0x89
 	var i: int = SolWeapon.throw(o, kind, x)            # $ACF5
 	if (o.face[x] & 0x80) != 0 and i >= 0:              # $ACFB
@@ -649,6 +661,8 @@ static func _beam_off(o: SolObjects, x: int) -> void:
 	o.d[SolObjects.BLAST] = (o.d[SolObjects.BLAST] - 1) & 0xFF
 	if o.d[SolObjects.BLAST] == 0:
 		o.kind[SolObjects.BLAST] = 0x40                 # $AA2B
+	if (o.clock & 0x03) == 0:
+		SolSound.want_noise = 0x1A                      # $AA36 -- $F1
 	if (o.clock & 0x01) != 0:
 		o.c[SolObjects.BLAST] = 0x60                    # $AA59
 		return
@@ -673,6 +687,7 @@ static func _bouncer(o: SolObjects, x: int) -> void:
 	var i: int = SolWeapon.throw(o, kind, x)            # $AA94
 	if i < 0:
 		return
+	SolSound.want_noise = 0x18                          # $AA99 -- $F1
 	if (o.face[x] & 0x80) != 0:                         # $AAA0
 		o.carry = 1
 		o.w_vx[i] = o._sbc(0x00, o.w_vx[i])
@@ -695,6 +710,8 @@ static func _fan(o: SolObjects, x: int) -> void:
 	_fan_state(o, x)                                    # $AB67
 	if o.kind[x] == 0 or o.kind[x] == 0x04:
 		return                                          # $AB01, $AB05
+	if (o.clock & 0x03) == 0:
+		SolSound.want_noise = 0x19                      # $AB0D -- $F1
 	if (o.clock & 0x01) == 0:
 		o.c[x] = (o.c[x] + 1) & 0xFF                    # $AB16
 	var t: Array = o.sat_table["fan"]
@@ -796,6 +813,7 @@ static func _napalm(o: SolObjects, x: int) -> void:
 	var i: int = SolWeapon.throw(o, 0x85, x)            # $AC32
 	if i < 0:
 		return
+	SolSound.want_noise = 0x18                          # $AC37 -- $F1
 	if (o.face[x] & 0x80) != 0:                         # $AC3E
 		o.carry = 1
 		o.w_vy[i] = o._sbc(0x00, o.w_vy[i])
@@ -809,6 +827,7 @@ static func _flame(o: SolObjects, x: int) -> void:
 		if (o.pad_new & 0x40) == 0:
 			o.anim_second(x, 0x11, 1)                   # $ACA5
 			return
+		SolSound.want_noise = 0x1C                      # $AC8E -- $F1
 		o.anim_first(x, 0x13 if o.hero_state == 0x03 else 0x12, 1)
 		return
 	o.anim_first(x, o.anim_a[x], 1)                     # $AC52
@@ -886,6 +905,8 @@ static func _boomerang(o: SolObjects, x: int) -> void:
 	if o.left[x] != 0x02 or o.frame[x] != 0x02:
 		return                                          # $A8EB, $A8F2
 	var i: int = SolWeapon.throw(o, 0x93, x)            # $A8F6
+	# $A8F9 -- the noise is asked for whether the throw found a slot or not.
+	SolSound.want_noise = 0x34                          # $A8F9 -- $F1
 	if i < 0:
 		return
 	if (o.face[x] & 0x80) != 0:                         # $A900
@@ -920,6 +941,7 @@ static func _slash(o: SolObjects, x: int) -> void:
 		return
 	if o.left[x] != 0x01 or o.frame[x] != 0x01:
 		return                                          # $ACBB, $ACC2
+	SolSound.want_noise = 0x2A                          # $ACC4 -- $F1
 
 
 # ---------------------------------------------------------------------------
@@ -933,7 +955,8 @@ static func _knocked(o: SolObjects, x: int) -> void:
 		_coming_back(o, x)                              # $A779
 		return
 	if (o.id[x] & 0x80) != 0:
-		o.b[x] = 0xFF                                   # $A754
+		SolSound.want_noise = 0x0D                      # $A754 -- $F1
+		o.b[x] = 0xFF                                   # $A758
 		_leaving(o, x)
 		return
 	o.carry = 1                                         # $A742, a 16-bit compare
@@ -1090,11 +1113,13 @@ static func _make(o: SolObjects) -> void:
 	var have: int = o.id[FIRST] & 0x3F                  # $92EB
 	if have != 0 and have == give:
 		o.life[FIRST] = 0x10                            # $92F7
+		SolSound.want_noise = 0x1D                      # $92FC -- $F1
 		o.hero_state = 0x0D                             # $9302
 		o.z5ab = 0x7F                                   # $9307
 		o.letters = 0                                   # $930C
 		return
 	# $9310 -- a new satellite, resting on the side he is looking away from.
+	SolSound.want_noise = 0x1E                          # $9310 -- $F1
 	o.a[FIRST] = 0x2B if (o.hero_face & 0x80) != 0 else 0x35
 	o.mind[FIRST] = at                                  # $9324
 	o.id[FIRST] = give                                  # $9327

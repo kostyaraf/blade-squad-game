@@ -78,6 +78,7 @@ STANDS = [
     ('sound',      'Э6.1', 'verify_sound.py',      []),
     ('apu',        'Э6.2', 'verify_apu.py',        []),
     ('sndplay',    'Э6.3.1', 'verify_snd_play.py', []),
+    ('solnoise',   'Э6.3.2', 'verify_sol_noise.py', []),
 ]
 
 # Every stand ends on a line that counts what differs.  Two shapes are in use:

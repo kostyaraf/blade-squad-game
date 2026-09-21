@@ -289,6 +289,7 @@ static func _pop(o: SolObjects, i: int) -> void:
 ## $B294 -- the bang: slot thirteen of the other pool is made into the blast,
 ## and this slot is given up.
 static func _burst(o: SolObjects, i: int) -> void:
+	SolSound.want_noise = 0x1B              # $B294 -- $F1
 	o.life[SolObjects.BLAST] = 0x7F         # $06FD
 	o.cool[SolObjects.BLAST] = 0x7F         # $06ED
 	o.id[SolObjects.BLAST] = 0x0C           # $060D
@@ -551,6 +552,7 @@ static func _coming_back(o: SolObjects, i: int) -> void:
 	var sy: int = o.y[SolObjects.SAT]       # $CC:$DC
 	if ((sx >> 8) & 0xFF) == ((o.w_x[i] >> 8) & 0xFF) \
 			and ((sy >> 8) & 0xFF) == ((o.w_y[i] >> 8) & 0xFF):
+		SolSound.want_noise = 0x31          # $B64E -- $F1
 		o.kind[SolObjects.SAT] = 0x01       # $069C
 		gone(o, i)                          # $B657
 		return
@@ -591,6 +593,8 @@ static func _coming_back(o: SolObjects, i: int) -> void:
 ## The step down is the cartridge's own slip: $B73D reads $4C:$4D for it, which
 ## is where the step along was put, so the two are always the same.
 static func _orbit(o: SolObjects, i: int) -> void:
+	if (o.clock & 0x07) == 0:
+		SolSound.want_noise = 0x34          # $B6E7 -- $F1
 	o.z90 = 0xE0                            # $B6EB, which ring to read
 	o.carry = 0                             # $B6EF CLC
 	o.kind[SolObjects.SAT] = o._adc(o.kind[SolObjects.SAT], o.d[SolObjects.SAT])

@@ -172,6 +172,29 @@ func boot() -> void:
 	pass
 
 
+## $F0 and $F1 as the console has them.
+##
+## On the cartridge these are two bytes of zero page, and whoever wants a
+## noise writes one of them: a mind three banks away, a shot, the satellite,
+## the screen between stages.  Nothing hands the driver over to any of them
+## and nothing has to -- zero page is where they all already are.
+##
+## Here they are static for the same reason: `SolMinds` holds a pool and
+## nothing else, `SolShots` holds nothing at all, and there is one console.
+## Whoever writes last wins, the way a byte does, and the driver takes them
+## once a picture and leaves nought behind (`SndPlay.step`).
+static var want_tune := 0                   ## $F0
+static var want_noise := 0                  ## $F1
+
+
+## Put both back to nought, which is what a console coming up does.  A stand
+## runs one game after another in the one process, and a noise asked for at
+## the end of the last must not be heard at the start of the next.
+static func forget() -> void:
+	want_tune = 0
+	want_noise = 0
+
+
 ## $F0 -- ask for a tune.
 func ask_tune(n: int) -> void:
 	zp[F0] = n & 0xFF

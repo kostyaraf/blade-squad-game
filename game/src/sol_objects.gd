@@ -238,6 +238,10 @@ var zg9b := 0
 ## that can reach $869C sets it.
 var z_c := 0
 var z9c := 0                        # $9C, which side the overlap came from
+## $A1AD -- the slot's whole turn is over, touching and all.  The cartridge
+## throws away two returns there, and the second of them is $81A8, so $81A9
+## never asks whether the thing has touched anybody.
+var quit_turn := false
 ## $05C3 -- how long until the satellite is born.  A finished combination
 ## sets it to $80; it counts down, the satellite is made at $30, and until
 ## it is under $31 the whole pool stands still.
@@ -326,6 +330,9 @@ var weapon_table: Dictionary
 ## driven by.
 var sat_table: Dictionary
 
+## $880A -- one byte a behaviour, the noise it makes when it is struck.
+var _noise := PackedByteArray()
+
 
 func _init(lvl: SolLevel) -> void:
 	level = lvl
@@ -340,6 +347,7 @@ func _init(lvl: SolLevel) -> void:
 	_hatch2 = PackedByteArray(t["hatch2"])
 	_steps = PackedByteArray(t["steps"])
 	_arctan = PackedByteArray(t["arctan"])
+	_noise = PackedByteArray(t["noise"])
 	var h: Dictionary = Nes._load_json("%s/sol/hits.json" % Nes.DATA)
 	_hit_pic = h["pic"]
 	_hit_box = h["box"]
@@ -1549,6 +1557,7 @@ func blow(dmg: int) -> void:
 		return
 	if hero.shield != 0:
 		hero.shield -= 1                # $8388
+	SolSound.want_noise = 0x0A          # $8394 -- $F1
 	hero.timer = 0
 	# $839D -- anything of eight or more takes one instead and puts him in the
 	# water, which is how the deep places drown him.
@@ -1584,6 +1593,9 @@ func shots_hit_hero() -> void:
 			s_life[i] = 0
 		else:
 			s_life[i] -= 1
+		# $8890 -- and a hero already hurt is heard again for it.
+		if hero.hurt != 0:
+			SolSound.want_noise = 0x33  # $8895 -- $F1
 		return
 
 
@@ -1693,11 +1705,14 @@ func _shot_on_thing(s: int, i: int, bx: int, by: int, c: int) -> Array:
 	if life[s] >= 1:
 		life[s] -= 1                        # $89F6
 		# $89FD -- the satellite is the only one that makes a sound of it.
+		if s == SolSat.FIRST:
+			SolSound.want_noise = 0x33      # $89FD -- $F1
 		return [true if s == SolSat.FIRST else life[s] != 0, r[1]]
 	# $89DC -- it had nothing left, and this is the end of it.
 	a[s] = 0
 	if s == SolSat.FIRST:
 		b[s] = 0x20                         # $89E5
+		SolSound.want_noise = 0x0A          # $89EA -- $F1
 		id[s] = 0xFF                        # $89EE
 	else:
 		id[s] = 0                           # $89F0
@@ -1852,9 +1867,22 @@ func _weapon_on_thing(s: int, i: int, c: int) -> Array:
 		# $87BA -- and the compare that said so is what the carry is left at.
 		return [true, 0]
 	_wear(s, 1)                         # $87BC, which is $83BC written out
-	# $87D9 -- the sound of it, $880A read with the behaviour, is not modelled;
-	# the carry it leaves is thrown away at $8731 either way.
+	_87f2(s)                            # $87D9
+	# The carry $87F2 leaves is thrown away at $8731 either way.
 	return [true, 1]
+
+
+## $87F2 -- the noise a thing makes when it is struck.
+##
+## The behaviour picks the byte out of $880A; nought means it makes none.  A
+## $2E already standing in $F1 is left where it is, so whatever wrote that
+## this picture is not shouted down.
+func _87f2(s: int) -> void:
+	if SolSound.want_noise == 0x2E:         # $87F6
+		return
+	var v: int = _noise[mind[s] & 0x3F]     # $87FA, $8800
+	if v != 0:                              # $8803
+		SolSound.want_noise = v             # $8805
 
 
 ## $83E2 -- the hero's own four slots $0C..$0F laid over the thing.  $CFEB asks
@@ -2039,7 +2067,11 @@ func _slot_blow(s: int, i: int, c: int) -> Array:
 		_done(s)                        # $85B4
 		leftv = 0
 	life[s] = leftv                     # $85B9
-	if i == 0x0F and hero != null and hero.ground == SolPlayer.GROUND_ICE:
+	# $85BC -- every slot but the hero's own goes straight to the noise; his
+	# is shoved first, and is heard only where the shove came out at nought.
+	if i == 0x0F:
+		if hero == null or hero.ground != SolPlayer.GROUND_ICE:
+			return [0xFF, c]            # $85C5
 		# $85C0 -- on ice a punch shoves him, and by twice as much when it is
 		# worth two.  The ASL that asks which way he faces is also the carry
 		# the sum below adds in, so the shove towards the left is one bigger.
@@ -2050,7 +2082,9 @@ func _slot_blow(s: int, i: int, c: int) -> Array:
 			k = 1
 		var v: int = (hero.speed + step + k) & 0xFF
 		hero.speed = v - 0x100 if v >= 0x80 else v
-	# $85E9 -- the sound of it, $87F2, is not modelled.
+		if v != 0:
+			return [0xFF, c]            # $85E7
+	_87f2(s)                            # $85E9
 	return [0xFF, c]
 
 
@@ -2076,7 +2110,10 @@ func _slot_took(s: int, i: int) -> void:
 			_slot_mark(i)
 		return
 	cool[i] = 0                         # $8456
-	# $845D -- $F1 = $33, the sound the satellite makes, is not modelled.
+	# $8459 -- the hero's own slot alone, and only where nothing has asked for
+	# a noise already this picture.
+	if i == 0x0C and SolSound.want_noise == 0:
+		SolSound.want_noise = 0x33      # $8461 -- $F1
 	var n: int = z60 & 0x0F
 	if n >= 0x08:
 		n = 0x01                        # $846D
@@ -2118,7 +2155,7 @@ func _puff(s: int, i: int) -> void:
 	c[j] = 0xB0                         # $8656
 	d[j] = 0xFF
 	b[j] = 0xFF                         # $8660
-	# $8663 -- $F1 = $0D, the sound, is not modelled.
+	SolSound.want_noise = 0x0D          # $8663 -- $F1
 	a[j] = 0x01                         # $8667
 	# $866C -- and where the slot's own picture is worth two or more, the puff
 	# is thrown the other way instead.
@@ -2167,6 +2204,7 @@ func _pick_up(s: int) -> void:
 
 ## $827E and $8299 -- the two that are only worth points.
 func _worth(s: int, n: int) -> void:
+	SolSound.want_noise = 0x0F          # $827E/$8299 -- $F1
 	hero_bonus = (hero_bonus + n) & 0xFFFF
 	mind[s] = mind[s] | 0x80            # $8290
 
@@ -2186,6 +2224,7 @@ func _suit(s: int, one: int, two: int, three: int) -> void:
 			if (letters & 0x30) != 0:
 				id[s] = 0               # $8336
 				return
+	SolSound.want_noise = 0x10          # $82DA/$8318 -- $F1
 	b[s] = letters | bit             # $82DE
 	if which != 2:
 		pass                            # $82EB -- $070C,Y, the weapon's own

@@ -40,6 +40,8 @@ ARCTAN = (12, 0x8ED2)       # bank 12, $8E99 -- two lengths become a heading
 N_ARCTAN = 0x100
 STEPS = (12, 0x9060)        # bank 12, $8FF6 -- how far a heading carries a thing
 N_STEPS = 0x100             # sixteen headings a row, and sixteen rows of speed
+NOISE = (8, 0x880A)         # bank 8, $87F2 -- the noise a behaviour makes when
+N_NOISE = 0x40              # it is hit; nought for one that makes none
 
 # What the nine bytes are, in the order $AF20 writes them.
 FIELDS = ('mind', 'pic_lo', 'pic_hi', 'a', 'b', 'c', 'd', 'kind', 'life')
@@ -137,6 +139,10 @@ def export():
         # $8ED2 -- sixteen by sixteen: how far round a heading lies once the
         # two lengths have been squeezed into a nibble each.
         arctan=[int(v) for v in at(rom, ARCTAN, N_ARCTAN)],
+        # $880A -- one byte a behaviour, the noise it makes when it is struck.
+        # $87F2 reads it with $0650 and will not write over a $2E that is
+        # already standing in $F1.
+        noise=[int(v) for v in at(rom, NOISE, N_NOISE)],
     )
     d = outdir('sol')
     path = os.path.join(d, 'objects.json')

@@ -249,6 +249,7 @@ func _aura() -> void:
 	if hurt == 2:
 		_clear_script()                         # $918F
 		state = 0x0F                            # $9194
+		SolSound.want_noise = 0x24              # $9197 -- $F1
 	if state < 0x11:
 		hurt = (hurt - 1) & 0xFF                # $91A2
 
@@ -486,7 +487,7 @@ func _dry(was: int, now: int) -> void:
 		hold = 0
 	# $9633 -- and the splash, whichever way he was going.  It goes in at his
 	# own place but on the row above him, and $8C6E counts the slots upward.
-	# The noise ($F1 = $09) is not modelled.
+	SolSound.want_noise = 0x09          # $9638 -- $F1
 	if pool != null:
 		pool.hatch_up(x, y & 0xFF00, 0x36)
 
@@ -673,6 +674,7 @@ func _spring_full() -> void:
 ## $9A7C -- letting go of the wire.  The satellite is told to reel itself back
 ## in and he is thrown out the way he is not looking.
 func _let_go() -> void:
+	SolSound.want_noise = 0x0C                  # $9A7C -- $F1
 	if pool == null:
 		return
 	pool.mind[SAT] |= 0x80                      # $9A80
@@ -738,6 +740,7 @@ func _wire_hold(held: int) -> void:
 		return
 	burst = (burst + 1) & 0xFF                  # $9911
 	if fuel < 0x30:
+		SolSound.want_noise = 0x31              # $991B -- $F1
 		state = 0x05                            # $991F
 		return
 	fuel = (fuel - 0x10) & 0xFF                 # $9925
@@ -790,7 +793,9 @@ func _wire_climb(held: int, pressed: int) -> void:
 	if _under() < 0x80:
 		_fall()                                 # $99B2
 		return
-	# $99B5 -- a noise every eighth picture, which is not modelled.
+	# $99B5 -- the wire creaks, but only every eighth picture.
+	if (clock & 0x07) == 0:
+		SolSound.want_noise = 0x0B      # $99BD -- $F1
 	if _sat_gone():
 		_to_crouch()                            # $99EB
 		return
@@ -811,7 +816,9 @@ func _wire_climb(held: int, pressed: int) -> void:
 ## $99FB -- [$07] at the top of the wire, where the view itself carries him.
 ## It is the one wire state with no ground under it: letting go here falls.
 func _wire_ride(held: int, pressed: int) -> void:
-	# $99FB -- a noise every eighth picture, which is not modelled.
+	# $99FB -- and the same creak at the top of it.
+	if (clock & 0x07) == 0:
+		SolSound.want_noise = 0x0B      # $9A03 -- $F1
 	if _sat_gone():
 		_fall()                                 # $9A31
 		return
@@ -851,7 +858,8 @@ func _door(pressed: int) -> void:
 	if (pressed & B) == 0:
 		_pose(0x17)                             # $98BE
 		return
-	_script(0x18)                               # $98C3, and a noise with it
+	SolSound.want_noise = 0x0C                  # $98C3 -- $F1
+	_script(0x18)                               # $98C5
 
 
 ## $9896 -- [$09] coming down into a door.  A pixel a picture until the little
@@ -966,6 +974,8 @@ func _waiting() -> void:
 	if step_i < 0x04:
 		return                                  # $9716
 	# $971A -- a noise on the one picture the step turns over, and nothing else.
+	if step_i == 0x04:
+		SolSound.want_noise = 0x3D              # $971A -- $F1
 	vy = -0x0080                                # $971E
 
 
@@ -1052,6 +1062,8 @@ func _upright(held: int, pressed: int) -> void:
 ## worked: it climbs while he keeps firing and two in a row past the threshold
 ## bring out the long animation instead of the short one.
 func _shoot(long_id: int, short_id: int) -> void:
+	# $9F8A and $9F98 -- both ways round, the shot is heard.
+	SolSound.want_noise = 0x0C      # $9D5B/$9D67, $9F8A/$9F98 -- $F1
 	var long := false
 	if anim >= 0x50:
 		if (anim & 0x03) >= 2:
@@ -1194,7 +1206,7 @@ func _buy_shield(held: int) -> int:
 	_spend(price)                           # $9DCC
 	shield = SolPanels.one("shield_full")
 	held |= SolPanels.one("hold_pad")       # $9DD4 -- $9E48
-	# $9DD7 -- a noise, and noises are not modelled.
+	SolSound.want_noise = 0x1F              # $9DD7 -- $F1
 	_panel_used()                           # $9DDB
 	return held
 
@@ -1218,6 +1230,7 @@ func _buy_suit(held: int) -> int:
 	if suit != full:
 		return held                         # $9E21
 	# $9E23 -- a noise, and then the panel is used up and the price taken.
+	SolSound.want_noise = 0x1F              # $9E23 -- $F1
 	_panel_used()                           # $9E27
 	_spend(price)                           # $9E2A
 	return held
@@ -1233,7 +1246,7 @@ func _buy_try(held: int) -> int:
 	# $9E3D -- $071C, which lives in the low byte of the satellite's own slot.
 	pool.w_x[0x0C] = (pool.w_x[0x0C] & 0xFF00) \
 			| ((pool.w_x[0x0C] + 1) & 0xFF)
-	# $9E40 -- a noise, and noises are not modelled.
+	SolSound.want_noise = 0x11              # $9E40 -- $F1
 	_panel_used()                           # $9E44
 	return held
 
@@ -1287,18 +1300,21 @@ func _air(held: int, pressed: int) -> void:
 		# is inside is asked after.  Two classes are things to take hold of --
 		# $20 and $E0, which is to say bit five set and neither $60 nor $A0 --
 		# and there a press of A takes him out of the air one way ($0B), a
-		# held up the other ($09).  The noise ($F1 = $08) is not modelled.
+		# held up the other ($09), and the first of the two creaks.
 		var cls: int = _a172() & 0xE0
 		if cls != 0x60 and cls != 0xA0 and (cls & 0x20) != 0:
 			if (pressed & A) != 0:          # $A054
 				_settle(held)               # $A058
+				SolSound.want_noise = 0x08  # $A05D -- $F1
 				state = 0x0B                # $A05F
 				return
 			if (held & UP) != 0:            # $A065
 				_settle(held)               # $A06B
+				SolSound.want_noise = 0x08  # $A06E -- $F1
 				state = 0x09                # $A072
 				return
 		if _meet() >= 0x80:
+			SolSound.want_noise = 0x07      # $A07D -- $F1
 			_settle(held)
 			return
 	elif _ceiling() >= 0x80:
@@ -1311,6 +1327,7 @@ func _air(held: int, pressed: int) -> void:
 		_script(scripted if scripted == 0x14 else 0x08)
 		return
 	if (pressed & B) != 0:
+		SolSound.want_noise = 0x0C              # $A0B5 -- $F1
 		_script(0x08)
 		return
 	_pose(0x06 if rise < 0 else 0x07)
@@ -1696,6 +1713,7 @@ func _wound() -> void:
 			return
 		var left := hurt - 8
 		hurt = (left | 7) if left >= 0 else 2
+		SolSound.want_noise = 0x33      # $9FC1 -- $F1
 	else:
 		if timer < 0x70:
 			return
@@ -1708,6 +1726,7 @@ func _wound() -> void:
 			left = 0
 			fuel = 0
 		suit = left
+		SolSound.want_noise = 0x0A      # $9FEE -- $F1
 	timer = 0
 
 

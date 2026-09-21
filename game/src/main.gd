@@ -2247,6 +2247,15 @@ func _run_sol_objects(path: String) -> void:
 		# carries that third from one picture to the next itself, so the
 		# shadow starts as the cartridge's own memory rather than as nought.
 		sol_script.m = PackedByteArray(String(cfg["ram0"]).hex_decode())
+	# Э6.3.2 -- the sound driver, where a stand is judging what the game asks
+	# it for.  Only the driver runs, not the chip: what is compared is the two
+	# requests themselves, picture by picture, and a wave nobody listens to
+	# would cost seven hundred samples a picture for nothing.
+	var want_sound: bool = cfg.has("sound")
+	var snd_drv: SndPlay = null
+	var snd_rows := PackedStringArray()
+	if want_sound:
+		snd_drv = SndPlay.new("sol")
 	var crates := PackedStringArray()
 	var n := 0
 	for f in cfg["pads"]:
@@ -2269,7 +2278,8 @@ func _run_sol_objects(path: String) -> void:
 				else (int(cfg["clock0"]) if cfg.has("clock0") else -1)
 		# A picture the cartridge finished is played; on one it did not the
 		# state is left where it stood and the same row is given again.
-		if int(clocks[n]) != before:
+		var done_pic: bool = int(clocks[n]) != before
+		if done_pic:
 			pool.clock = int(clocks[n])
 			pool.noise = int(noises[n])
 			pool.six = int(sixes[n])
@@ -2423,6 +2433,24 @@ func _run_sol_objects(path: String) -> void:
 					pool.frame[i], pool.cool[i], pool.life[i],
 					pool.pic_lo[i], pool.pic_hi[i]])
 		fulls.append("O " + " ".join(frow))
+		if snd_drv != null:
+			# What the picture asked its driver for, written down before the
+			# driver is let at it -- the driver takes both cells and puts
+			# nought back, the way the cartridge's does, so this is the only
+			# moment the request exists.  It runs where the interrupt handler
+			# ran it: after the picture the game has just finished.  A picture
+			# the cartridge did not finish had no interrupt either.
+			if done_pic:
+				snd_rows.append("Q %02X %02X"
+						% [SolSound.want_tune, SolSound.want_noise])
+				snd_drv.drive()
+			else:
+				snd_rows.append("Q -")
+		elif done_pic:
+			# No driver to run, and the two cells still have to be emptied:
+			# the cartridge's interrupt handler empties them whatever else it
+			# is doing, and the game itself reads them ($87F6, $8459).
+			SolSound.forget()
 		# Э4.14 and Э4.15 -- what the hero writes that lives nowhere else:
 		# what the game is to be put to next ($F8), the colour the shimmer of
 		# the shield walks ($0112), what a panel took and has not been paid
@@ -2446,6 +2474,8 @@ func _run_sol_objects(path: String) -> void:
 	print("\n".join(odds))
 	print("\n".join(views))
 	print("\n".join(fulls))
+	if snd_drv != null:
+		print("\n".join(snd_rows))
 	if not pool.skipped.is_empty():
 		printerr("minds not read yet: ", pool.skipped)
 	if not pool.shots_skipped.is_empty():

@@ -390,8 +390,8 @@ func _xAD94() -> void:
 func _xAB41() -> void:
 	if g(0x05C5) != 0 and _hero_col() == 0xCB and g(0x83) >= 0x79 \
 			and g(0x05A2) == 0 and _xAB6A() != 0:
-		p(0xF0, 0x0F)
-		p(0xF1, 0x05)
+		p(0xF0, 0x0F)                                        # $AB5F -- $F0
+		p(0xF1, 0x05)                                        # $AB63 -- $F1
 		p(0x7F, (g(0x7F) + 1) & 0xFF)
 	_xAAAE()
 
@@ -593,7 +593,7 @@ func _x9398() -> void:
 	if g(0x26) == 0:
 		p(0x060C, 0)
 		p(0x05C2, 0)
-		p(0xF0, 0x10)
+		p(0xF0, 0x10)                                        # $93A4 -- $F0
 		p(0x02, 0x24 if g(0x0D) != 0 else 0x1B)
 	_hold_hero()
 
@@ -784,8 +784,8 @@ func _xA967() -> void:
 func _xA98C() -> void:
 	if g(0x05C5) != 0 and _hero_col() == 0x5B and g(0x83) == 0x48 \
 			and g(0x05A2) == 0 and _xAB6A() != 0:
-		p(0xF0, 0x0F)
-		p(0xF1, 0x05)
+		p(0xF0, 0x0F)                                        # $A9AA -- $F0
+		p(0xF1, 0x05)                                        # $A9AE -- $F1
 		p(0x7F, (g(0x7F) + 1) & 0xFF)
 	_xAAAE()
 
@@ -874,7 +874,7 @@ func _xA1DB() -> void:
 		elif (g(0x0691) & 0x7F) != 0x08 or g(0x06C1) < 0x80:
 			stop = true
 		else:
-			p(0xF1, 0x38)                                  # $A20B
+			p(0xF1, 0x38)                                       # $A20D -- $F1
 			on = true
 	if on:
 		p(0x7F, (g(0x7F) + 1) & 0xFF)
@@ -890,7 +890,7 @@ func _xA21A() -> void:
 		if g(0x58) < 0x40:
 			on = false
 		else:
-			p(0xF1, 0x38)
+			p(0xF1, 0x38)                                       # $A229 -- $F1
 	if on:
 		p(0x58, 0)
 		p(0x7F, (g(0x7F) + 1) & 0xFF)
@@ -905,7 +905,7 @@ func _xA237() -> void:
 		if g(0x58) < 0x20:
 			on = false
 		else:
-			p(0xF1, 0x38)
+			p(0xF1, 0x38)                                       # $A246 -- $F1
 	if on:
 		p(0x7F, 0x01)
 		p(0x0691, (g(0x0691) + 1) & 0xFF)
@@ -926,8 +926,8 @@ func _xA26F() -> void:
 func _xA294() -> void:
 	if g(0x05C5) != 0 and _hero_col() == 0x8D and g(0x83) == 0x46 \
 			and g(0x05A2) == 0 and _xAB6A() != 0:
-		p(0xF0, 0x0F)
-		p(0xF1, 0x05)
+		p(0xF0, 0x0F)                                        # $A2B2 -- $F0
+		p(0xF1, 0x05)                                        # $A2B6 -- $F1
 		p(0x7F, (g(0x7F) + 1) & 0xFF)
 	_xAE58()
 
@@ -1009,7 +1009,7 @@ func _xA2F7() -> void:
 	if g(0x58) == 0:
 		p(0x7F, (g(0x7F) + 1) & 0xFF)
 	if g(0x58) >= 0x20 and (g(0x58) & 0x03) == 0:
-		p(0xF1, 0x3A)
+		p(0xF1, 0x3A)                                        # $A309 -- $F1
 	_xAE58()
 
 
@@ -1019,7 +1019,7 @@ func _xA30E() -> void:
 	p(0x91, 0x3E)
 	p(0x93, 0x34)
 	_put(0x00, 0x41)                                       # $A315 -- TAX of nought
-	p(0xF1, 0x38)
+	p(0xF1, 0x38)                                         # $A325 -- $F1
 	p(0x7F, (g(0x7F) + 1) & 0xFF)
 	_xA329()
 
@@ -1055,8 +1055,8 @@ func _xADCF() -> void:
 func _xADF4() -> void:
 	if g(0x05C5) != 0 and _hero_col() == 0x7D and g(0x83) == 0x65 \
 			and g(0x05A2) == 0 and _xAB6A() != 0:
-		p(0xF0, 0x0F)
-		p(0xF1, 0x05)
+		p(0xF0, 0x0F)                                        # $AE12 -- $F0
+		p(0xF1, 0x05)                                        # $AE16 -- $F1
 		p(0x7F, (g(0x7F) + 1) & 0xFF)
 	_xAE58()
 
@@ -1226,8 +1226,8 @@ func _xA774() -> void:
 		var col: int = _adc(_hero_col(), 0x00)             # $A77C
 		if col == 0x85 and g(0x83) == 0x68 and g(0x05A2) == 0 \
 				and _xAB6A() != 0:
-			p(0xF0, 0x0F)
-			p(0xF1, 0x05)
+			p(0xF0, 0x0F)                                       # $A794 -- $F0
+			p(0xF1, 0x05)                                       # $A798 -- $F1
 			p(0x7F, (g(0x7F) + 1) & 0xFF)
 	_xA7B0()
 
@@ -1497,8 +1497,8 @@ func _xA67C() -> void:
 func _xA6A1() -> void:
 	if g(0x05C5) != 0 and _hero_col() == 0x8D and g(0x83) == 0x6A \
 			and g(0x05A2) == 0 and _xAB6A() != 0:
-		p(0xF0, 0x0F)
-		p(0xF1, 0x05)
+		p(0xF0, 0x0F)                                        # $A6BF -- $F0
+		p(0xF1, 0x05)                                        # $A6C3 -- $F1
 		p(0x7F, (g(0x7F) + 1) & 0xFF)
 	_xA6FB()
 
@@ -2020,8 +2020,8 @@ func _x9DB9() -> void:
 func _x9DBF() -> void:
 	if g(0x05C5) != 0 and _hero_col() == 0xCB and g(0x83) == 0x16 \
 			and g(0x05A2) == 0 and _xAB6A() != 0:
-		p(0xF0, 0x0F)
-		p(0xF1, 0x05)
+		p(0xF0, 0x0F)                                        # $9DDD -- $F0
+		p(0xF1, 0x05)                                        # $9DE1 -- $F1
 		p(0x7F, (g(0x7F) + 1) & 0xFF)
 	_xAE58()
 
@@ -2054,7 +2054,7 @@ func _a008() -> void:
 	if (g(0x0E) & 0x03) != 0:
 		return
 	if (g(0x0E) & 0x07) == 0:
-		p(0xF1, 0x3C)
+		p(0xF1, 0x3C)                                        # $A016 -- $F1
 	cf = 0
 	p(0x05F7, _adc((g(0x0E) >> 3) & 0x03, 0x04))
 
@@ -2266,7 +2266,7 @@ func _x9FAD() -> void:
 	p(0x06, 0x04)
 	p(0x57, (g(0x57) - 1) & 0xFF)
 	if g(0x57) == 0:
-		p(0xF1, 0x3D)
+		p(0xF1, 0x3D)                                        # $9FBA -- $F1
 		p(0x58, (g(0x58) + 1) & 0xFF)
 	_a008()
 	_xAE58()
@@ -2666,6 +2666,12 @@ func pack(pool, hero, view, table, flow) -> void:
 	if table != null:
 		for i in range(0x100):
 			p(0x0200 + i, int(table.oam[i]))
+	# Э6.3.2 -- the two bytes a request for the driver is left in.  They are
+	# carried in and back out again like any other, so a script that asks for
+	# a tune or a noise asks the engine's driver for it and a script that
+	# reads one back reads what the rest of the picture asked for.
+	p(0xF0, SolSound.want_tune)
+	p(0xF1, SolSound.want_noise)
 
 
 ## And back out again.
@@ -2695,6 +2701,8 @@ func unpack(pool, hero, view, table, flow) -> void:
 	# The three that more than one thing holds a copy of.  $55 is the stage,
 	# which the script writes when a stage is done; $05C3 the wait for a
 	# satellite; $0C the picture count the hero reads as well as the pool.
+	SolSound.want_tune = g(0xF0)            # Э6.3.2
+	SolSound.want_noise = g(0xF1)
 	pool.stage = g(0x55)
 	if flow != null:
 		flow.stage = g(0x55)

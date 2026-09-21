@@ -150,6 +150,32 @@ func boot() -> void:
 	ask(0)
 
 
+## $ECE8 as the cartridge has it.
+##
+## Power Blade 2 keeps no cell to ask through: `JSR $ECE8` maps the driver's
+## two banks and runs the request there and then, so a thing that wants a
+## noise simply calls, from wherever it is.  Nothing in the port can call --
+## an object holds a pool and a level, never the driver -- so the numbers are
+## left here instead, in the order they were asked for.
+##
+## Order is the whole of what has to be kept.  Two requests in one picture
+## settle which voice each takes, and the second can turn the first away; when
+## inside the picture they were made cannot be heard.  So they are put through
+## in order at the end of the picture, before the driver's own tick, which is
+## where the interrupt handler would have run them (`SndPlay.step`).
+static var asked: Array = []
+
+
+## Ask, from anywhere.
+static func want(n: int) -> void:
+	asked.append(n & 0xFF)
+
+
+## Nothing asked for, which is what a console coming up has.
+static func forget() -> void:
+	asked = []
+
+
 ## $8009 -- a number is asked for.
 func ask(n: int) -> void:
 	zp[B8] = n & 0xFF

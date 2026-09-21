@@ -591,6 +591,7 @@ static func _shard(o: SolObjects, i: int, step: int) -> void:
 ## and then it breaks into four that fly off the four ways.
 static func _shatter(o: SolObjects, i: int) -> void:
 	if (under(o, i) & 0x80) != 0:
+		SolSound.want_noise = 0x28      # $BBA5 -- $F1
 		for step in [0xEE, 0xF9, 0x07, 0x12]:
 			_shard(o, i, step)              # $BBA9..$BBB8
 		o.s_kind[i] = o.s_kind[i] & 0x7F    # $BBBB
@@ -626,6 +627,7 @@ static func face_step(o: SolObjects, s: int, i: int) -> int:
 	o.s_a[i] = 0x30 if c == 1 else 0xD0
 	o.z90 = 0x0100 if c == 1 else 0xFF00
 	o.z92 = 0
+	SolSound.want_noise = 0x13              # $8EE1 -- $F1
 	return c
 
 
@@ -1033,7 +1035,9 @@ const CRAWL_ORDER := [[0, 3, 2, 1], [1, 2, 3, 0], [2, 0, 1, 1], [3, 1, 0, 2]]
 ## $BA5C -- the one that crawls along the wall.  It counts down, and every
 ## picture it looks for the first open way in its own order and goes that way.
 static func _crawl(o: SolObjects, i: int) -> void:
-	# $BA5C -- the noise ($F1 = $27) is not modelled.
+	# $BA5C -- it is heard every eighth picture, not every one.
+	if (o.clock & 0x07) == 0:
+		SolSound.want_noise = 0x27      # $BA64 -- $F1
 	o.s_b[i] = (o.s_b[i] - 1) & 0xFF        # $BA66
 	if o.s_b[i] == 0:
 		gone(o, i)                          # $BD4F
@@ -1110,7 +1114,7 @@ static func _turn_world(o: SolObjects, i: int) -> void:
 			o.z399 = TURN_TILES[row][0]     # $B98E
 			o.z39a = TURN_TILES[row][1]
 			o.z39b = TURN_TILES[row][2]
-			# $B9A6 -- the noise ($F1 = $14) is not modelled.
+			SolSound.want_noise = 0x14          # $B9A6 -- $F1
 			o.hero_ground = 0x00            # $B9F5
 			o.hero_jump = 0xB8
 			o.hero_grav = 0x04

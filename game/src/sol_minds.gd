@@ -49,7 +49,12 @@ static func run(o: SolObjects, s: int) -> void:
 	# turn nor anything it might touch.
 	if o.born_wait != 0 and o.born_wait < 0x30:
 		return
+	o.quit_turn = false
 	_body(o, s)
+	# $A1AD -- a turn the pool cut short takes the touch test away with it:
+	# what is thrown off the stack there is the return into $81A9 as well.
+	if o.quit_turn:
+		return
 	# $81A9 -- a thing that has been finished off touches nobody.
 	if (o.mind[s] & 0x80) != 0:
 		return
@@ -450,6 +455,7 @@ static func _9f6a(o: SolObjects, s: int) -> void:
 	_9ffa(o, s)
 	o.anim_second(s, 0x26)
 	if o.frame[s] == 0x03:                  # $80EC
+		SolSound.want_noise = 0x2D          # $9F79 -- $F1
 		if (o.face[s] & 0x80) != 0:
 			o.hatch_right(s, 0xAB)
 		else:
@@ -495,6 +501,7 @@ static func _9e78(o: SolObjects, s: int) -> void:
 	if o.d[s] < 0x80 and _a000(o, s):
 		if (o.mind[s] & 0x3F) == 0x2D:
 			pass                            # $05F7 -- the door, not the pool
+		SolSound.want_noise = 0x14          # $9EA2 -- $F1
 		o.kind[s] = (o.kind[s] + 1) & 0xFF
 	o.anim_second(s, 0x27)
 	o.move(s)
@@ -564,6 +571,7 @@ static func _9e52(o: SolObjects, s: int) -> void:
 	if o.frame[s] == 0x02:                  # $80E6
 		o.hatch_right(s, 0x90)
 		o.hatch_left(s, 0x99)
+		SolSound.want_noise = 0x2E          # $9E6B -- $F1
 	if o.left[s] == 0xFF:
 		o.kind[s] = (o.kind[s] + 1) & 0xFF
 	o.move(s)
@@ -609,6 +617,7 @@ static func _915b(o: SolObjects, s: int) -> void:
 			if o.z58 != 0x03 or o.left[s] != 0xFF:
 				return
 			o.z26 = 0x04                    # $A3FF -> $80A9
+			SolSound.want_noise = 0x39      # $9187 -- $F1
 			o.a[s] = 0xE0
 			o.kind[s] = (o.kind[s] + 1) & 0xFF
 			o.kind[0x0B] = (o.kind[0x0B] + 1) & 0xFF
@@ -637,6 +646,7 @@ static func _915b(o: SolObjects, s: int) -> void:
 			o.kind[s] = (o.kind[s] + 1) & 0xFF
 		0x04:
 			o.kind[s] = (o.kind[s] + 1) & 0xFF
+			SolSound.want_noise = 0x40      # $91F6 -- $F1
 			o.z26 = 0x06
 		0x05:
 			o.a[s] = (o.a[s] - 1) & 0xFF
@@ -830,6 +840,7 @@ static func _94b8(o: SolObjects, s: int) -> void:
 		o.hatch_right(s, 0x24)              # $AA9E
 		o.hatch_left(s, 0x24)               # $AAA9
 		o.wants = 0x07
+		SolSound.want_noise = 0x30          # $94DF -- $F1
 		o.kind[s] = (o.kind[s] + 1) & 0xFF
 	o.step_and_look(s, o.a[1])
 	o.anim_second(s, 0x42)
@@ -863,6 +874,7 @@ static func _950c(o: SolObjects, s: int) -> void:
 	o.a[s] = o.face_hero(s) ^ 0xFF
 	o.anim_second(s, 0x45)
 	if o.left[s] == 0xFF:
+		SolSound.want_noise = 0x3B          # $951D -- $F1
 		o.kind[s] = (o.kind[s] + 1) & 0xFF
 
 
@@ -936,6 +948,7 @@ static func _95a2(o: SolObjects, s: int) -> void:
 	o.anim_second(s, 0x4A)
 	if o.left[s] != 0xFF:
 		return
+	SolSound.want_noise = 0x2B              # $95AE -- $F1
 	o.b[s] = 0x20
 	o.kind[s] = (o.kind[s] + 1) & 0xFF
 
@@ -948,6 +961,7 @@ static func _95b9(o: SolObjects, s: int) -> void:
 	if o.b[s] != 0:
 		o.cool[s] = 0x01 if (o.clock & 0x02) != 0 else 0x03
 		return
+	SolSound.want_noise = 0x2E              # $95C3 -- $F1
 	SolShots.shower(o, s)                   # $95E7
 	o.kind[s] = (o.kind[s] + 1) & 0xFF
 	o.cool[s] = 0xFF                        # $80D4
@@ -965,6 +979,7 @@ static func _95dc(o: SolObjects, s: int) -> void:
 static func _927e(o: SolObjects, s: int) -> void:
 	if (o.clock & 0x07) != 0:
 		return
+	SolSound.want_noise = 0x3E              # $928C -- $F1
 	var t := [0x00, 0xFF, 0x00, 0x01]       # $92B1
 	var yh: int = o._adc(t[o.noise & 0x03], (o.y[s] >> 8) & 0xFF)
 	# $929D -- the second index is picked out of the stirred byte by two RORs,
@@ -1040,6 +1055,9 @@ static func _932b(o: SolObjects, s: int) -> void:
 	o.pic_hi[s] = 0
 	if (o.clock & 0x07) != 0:
 		return
+	# $9337 -- and every second time of those it is heard as well.
+	if (o.clock & 0x0F) == 0:
+		SolSound.want_noise = 0x20          # $933F -- $F1
 	o.hatch_here(s, 0xC6)                   # $AAF1
 
 
@@ -1060,7 +1078,16 @@ static func _9961(o: SolObjects, s: int) -> int:
 
 ## $9954 -- the walk, with a noise on the picture it starts over.
 static func _9954(o: SolObjects, s: int, n: int) -> void:
+	# $9955 -- the picture a step ran out on is the quiet one.
+	if o.left[s] != 0xFF:
+		_96f1(o)
 	o.anim_second(s, n)
+
+
+## $96F1 -- the tread itself, heard every fourth picture.
+static func _96f1(o: SolObjects) -> void:
+	if (o.clock & 0x03) == 0:
+		SolSound.want_noise = 0x19          # $96F9 -- $F1
 
 
 ## $9905 -- the shot: near enough, hurt enough and on the right picture it
@@ -1074,6 +1101,7 @@ static func _9905(o: SolObjects, s: int) -> void:
 	if o.frame[s] == 0x01:                  # $991D -- one picture of the walk
 		var i: int = SolShots.free_slot(o)  # $9924
 		if i >= 0:
+			SolSound.want_noise = 0x28      # $992B -- $F1
 			SolShots.put(o, i, 0x9C)        # $992D -> $907B
 			# $9936 -- which way it goes is the top bit of the thing's own
 			# first byte, and that same bit is left in the carry, which is
@@ -1222,12 +1250,14 @@ static func _984a(o: SolObjects, s: int) -> void:
 
 ## $9652 -- what it drops when it has come all the way down.
 static func _9652(o: SolObjects, s: int) -> void:
+	SolSound.want_noise = 0x09              # $9654 -- $F1
 	o.hatch((o.x[s] >> 8) << 8, 0x6200, 0x36)
 
 
 ## $96FC -- the descent: it lets one out every picture and slows as it nears
 ## the height it is making for.
 static func _96fc(o: SolObjects, s: int) -> void:
+	_96f1(o)                                # $96FC
 	o.anim_second(s, 0x4F)
 	o.hatch_here(s, 0xD8)                   # $AAF1
 	o.a[s] = o.face[s] ^ 0xFF
@@ -1438,6 +1468,7 @@ static func _9b05(o: SolObjects, s: int) -> void:
 				_9c50(o, s)
 				SolStage.call_at(o, s, 0x82)    # $9C2E
 			elif o.frame[s] == 0x02:
+				SolSound.want_noise = 0x2C  # $9C25 -- $F1
 				_9c50(o, s)
 				SolStage.call_at(o, s, 0x91)
 			else:
@@ -1497,6 +1528,7 @@ static func _9c9c(o: SolObjects, s: int) -> void:
 	if o.d[s] < 0x80:
 		o.z90 = 0                           # $9CA6 -- $B0AE takes $90 as it is
 		if o.probe_behind(s, 0x0000, 0x0100) >= 0x80:
+			SolSound.want_noise = 0x07      # $9CB1 -- $F1
 			o.far_x(s)
 			o.face[s] = o.z94 ^ 0xFF
 			o.z52 = 0                       # $8133
@@ -1536,6 +1568,7 @@ static func _9b61(o: SolObjects, s: int) -> void:
 	if o.d[s] < 0x80:
 		o.z90 = 0
 		if o.probe_behind(s, 0x0000, 0x0100) >= 0x80:
+			SolSound.want_noise = 0x07      # $9B76 -- $F1
 			o.z52 = 0                       # $8133
 			o.y[s] = o.y[s] & 0xFF00
 			_9cdd(o, s, 0x40)
@@ -1555,6 +1588,7 @@ static func _9b61(o: SolObjects, s: int) -> void:
 static func _9bcf(o: SolObjects, s: int) -> void:
 	o.anim_second(s, 0x2D)
 	if o.probe_behind(s, o.z90 & 0xFF, 0x0100) >= 0x80:
+		SolSound.want_noise = 0x28          # $9BDB -- $F1
 		o.far_x(s)
 		o.face[s] = o.z94 ^ 0xFF
 		o.z52 = 0
@@ -1597,6 +1631,7 @@ static func _99a2(o: SolObjects, s: int) -> void:
 		0x08:
 			_9a64(o, s, 0x33, 0x40)         # $99E1, without the facing
 		0x0A:
+			SolSound.want_noise = 0x2B      # $9A03 -- $F1
 			o.kind[s] = (o.kind[s] + 1) & 0xFF
 		0x0B:
 			_9a09(o, s)
@@ -1648,6 +1683,7 @@ static func _9ac6(o: SolObjects, s: int) -> void:
 		o.kind[s] = (o.kind[s] + 1) & 0xFF
 	o.anim_second(s, 0x31)
 	if o.cool[s] == 0x01:                   # $80DA
+		SolSound.want_noise = 0x3A          # $9ADF -- $F1
 		o.anim_first(s, 0x36)               # $9AE1
 
 
@@ -1671,6 +1707,7 @@ static func _9a09(o: SolObjects, s: int) -> void:
 	if o.left[s] != 0xFF:
 		return
 	o.face[s] = o.face[s] ^ 0xFF
+	SolSound.want_noise = 0x38              # $9A33 -- $F1
 	o.kind[s] = (o.kind[s] + 1) & 0xFF
 
 
@@ -1681,6 +1718,7 @@ static func _9a42(o: SolObjects, s: int) -> void:
 	o.move(s)                               # $813F either way
 	if r < 0x80:
 		return
+	SolSound.want_noise = 0x36              # $9A4C -- $F1
 	o._adc(o.x[s] & 0xFF, 0x80)             # $9A53 -- only for the carry
 	o.kind[s] = 0                           # $80B3, and it loses A doing it
 	var hi: int = o._adc(0, (o.x[s] >> 8) & 0xFF) & 0xFE
@@ -1771,6 +1809,10 @@ static func _af31(o: SolObjects, s: int, score: int) -> void:
 		o.z50 = lo | hi << 8
 	o.move(s)
 	o.anim_second(s, 0x04, 4, false)
+	# $AF4A -- the burst is heard on the one picture where the walk's count and
+	# its step together come to one.
+	if (o.left[s] | o.frame[s]) == 0x01:
+		SolSound.want_noise = 0x21          # $AF56 -- $F1
 	if o.left[s] == 0xFF:                   # $80E0
 		_a989(o, s, score)
 
@@ -1841,10 +1883,10 @@ const BURST_TWO := [BURST_HERE, BURST_UNDER]                                 # $
 const BURST_ONE := [BURST_HERE]                                              # $A924
 
 
-## $A931 -- a word from it every fourth picture.  Sound is not kept, so this
-## is only where it would be said.
-static func _a931(_o: SolObjects) -> void:
-	pass                                    # $A937
+## $A931 -- a word from it every fourth picture.
+static func _a931(o: SolObjects) -> void:
+	if (o.clock & 0x03) == 0:
+		SolSound.want_noise = 0x3F          # $A937 -- $F1
 
 
 ## $A93C -- one step of a burst.  $0610 counts which of the lists has already
@@ -1966,6 +2008,7 @@ static func _a836(o: SolObjects, s: int) -> void:
 		o.b[s] = (o.y[s] >> 8) & 0xFF
 		o.move(s)
 		return
+	SolSound.want_noise = 0x14              # $A85D -- $F1
 	_a989(o, s, 0x00)                       # $A861
 	o.z52 = 0
 
@@ -1992,6 +2035,7 @@ static func _a7f0(o: SolObjects, s: int) -> void:
 		o.b[s] = (o.y[s] >> 8) & 0xFF
 		o.move(s)
 		return
+	SolSound.want_noise = 0x14              # $A815 -- $F1
 	_a989(o, s, 0x00)                       # $A819
 	o.z7f = (o.z7f + 1) & 0xFF              # $A81E
 	o.z52 = 0
@@ -2196,6 +2240,7 @@ static func _a10b(o: SolObjects, s: int) -> void:
 static func _busy(o: SolObjects) -> bool:
 	for i in range(0x0B, 0, -1):
 		if o.id[i] != 0:
+			o.quit_turn = true              # $A1B4 -- four pulls, two returns
 			return true
 	return false
 
@@ -2320,6 +2365,7 @@ static func _a1f4(o: SolObjects, s: int) -> void:
 	# $A218 -- and only on the third step of that walk.
 	if o.frame[s] != 0x02:                          # $80E6
 		if o.left[s] == 0xFF:                       # $A24C
+			SolSound.want_noise = 0x38              # $A2D6 -- $F1
 			o.kind[s] = 0                           # $A2D4
 		return
 	# $A21D -- and on step two it lets one go, which way round taken from the
@@ -2334,6 +2380,7 @@ static func _a1f4(o: SolObjects, s: int) -> void:
 		SolShots.put(o, i, 0x88)                    # $A247
 		return
 	if o.left[s] == 0xFF:
+		SolSound.want_noise = 0x38                  # $A2D6 -- $F1
 		o.kind[s] = 0                               # $A2D4
 
 ## $A13D -- and once it is low enough it is gone.
@@ -2360,10 +2407,13 @@ static func _a2a7(o: SolObjects, s: int) -> void:
 	# $A2AF -- one picture of the wind-up, and only while the walk has just
 	# that much of itself left, lets a whole ring of them go.
 	if o.frame[s] == 0x01 and o.left[s] == 0x20:
+		SolSound.want_noise = 0x2B                  # $A2BF -- $F1
 		SolStage.call_at(o, s, 0x07)                # $A2C1 -> $A1BD
 	if o.frame[s] == 0x03:
+		SolSound.want_noise = 0x2C                  # $A2CB -- $F1
 		return
 	if o.left[s] == 0xFF:
+		SolSound.want_noise = 0x38                  # $A2D6 -- $F1
 		o.kind[s] = 0                               # $A2D4
 
 
@@ -2516,6 +2566,7 @@ static func _a5fb(o: SolObjects, s: int) -> void:
 	if (o.d[s] & 0x80) == 0 and o.probe_behind(s, 0x0080, 0x0100) >= 0x80:
 		o.z52 = 0
 		o.y[s] = o.y[s] & 0xFF00
+		SolSound.want_noise = 0x07              # $A619 -- $F1
 		_8163(o, s, 0xC0)                       # $816F
 		o.kind[s] = (o.kind[s] + 1) & 0xFF
 	o.move(s)
@@ -2531,6 +2582,7 @@ static func _a624(o: SolObjects, s: int) -> void:
 	if (o.d[s] & 0x80) == 0 and o.probe_behind(s, 0x0080, 0x0100) >= 0x80:
 		o.z52 = 0
 		o.y[s] = o.y[s] & 0xFF00
+		SolSound.want_noise = 0x07              # $A648 -- $F1
 		_8163(o, s, 0xD0)                       # $8161
 		o.kind[s] = (o.kind[s] + 1) & 0xFF
 	o.move(s)
@@ -2546,6 +2598,7 @@ static func _a653(o: SolObjects, s: int) -> void:
 	if (o.d[s] & 0x80) == 0 and o.probe_behind(s, 0x0080, 0x0100) >= 0x80:
 		o.z52 = 0
 		o.y[s] = o.y[s] & 0xFF00
+		SolSound.want_noise = 0x07              # $A679 -- $F1
 		o.kind[s] = (o.kind[s] + 1) & 0xFF
 	o.move(s)
 
@@ -2558,6 +2611,7 @@ static func _a681(o: SolObjects, s: int) -> void:
 	if (o.d[s] & 0x80) == 0 and o.probe_behind(s, 0x0080, 0x0100) >= 0x80:
 		o.z52 = 0
 		o.y[s] = o.y[s] & 0xFF00
+		SolSound.want_noise = 0x07              # $A6A1 -- $F1
 		o.kind[s] = 0x0E
 	o.move(s)
 
@@ -2577,6 +2631,7 @@ static func _a6ab(o: SolObjects, s: int) -> void:
 			o.carry = 1
 			o._sbc(v, (o.y[s] >> 8) & 0xFF)
 			if o.carry != 0:
+				SolSound.want_noise = 0x08  # $A6CB -- $F1
 				o.kind[s] = (o.kind[s] + 1) & 0xFF
 	o.move(s)
 
@@ -2793,6 +2848,7 @@ static func _87cd(o: SolObjects, s: int, r: int) -> int:
 		var m: int = was & 0x18
 		if (m == 0 or m >= 0x10) and o.stage != 0x09:
 			o.hatch(o.x[s], (o.y[s] & 0xFF00), 0x36)
+			SolSound.want_noise = 0x09      # $87F9 -- $F1
 	return o.a[s]
 
 
@@ -2851,7 +2907,8 @@ static func _aa51(o: SolObjects, s: int) -> void:
 			return
 	var f: int = o.frame[s]                     # $80E6
 	if f == 0x02:
-		return                                  # $AA87 -- only a noise
+		SolSound.want_noise = 0x32              # $AA87 -- $F1
+		return
 	if f == 0x05 or (f == 0x07 and o.stage != 0):
 		o.hatch_here(s, 0x00)
 
@@ -3125,7 +3182,9 @@ static func _pickup_dead(o: SolObjects, s: int) -> void:
 		0x0C: _af31(o, s, 0x0A)             # $8F7B
 		0x12, 0x14: _af31(o, s, 0x14)       # $8F72
 		0x16: _k8545(o, s)
-		0x18: _8f68(o, s)                   # $8F65 -- a noise, then $8F68
+		0x18:
+			SolSound.want_noise = 0x3F      # $8F65 -> $A937 -- $F1
+			_8f68(o, s)                     # $8F68
 		0x1A, 0x2C: _a989(o, s, 0x00)       # $8F76
 		0x1C: _8ee6(o, s)
 		0x1E: _k84aa(o, s)
@@ -3162,7 +3221,8 @@ static func _8767(o: SolObjects, s: int) -> void:
 		o.d[s] = (o.d[s] + 1) & 0xFF        # $878E
 		_87a2(o, s)
 		return
-	if (t & 0x07) != 0:                     # $8779, a noise first
+	SolSound.want_noise = 0x2F              # $8774 -- $F1
+	if (t & 0x07) != 0:                     # $8779
 		o.d[s] = (o.d[s] + 1) & 0xFF
 		_87a2(o, s)
 		return
@@ -3262,6 +3322,7 @@ static func _k84d6(o: SolObjects, s: int) -> void:
 static func _k84fb(o: SolObjects, s: int) -> void:
 	if o.b[s] == 0:
 		if o.far_x(s) < 0x03:
+			SolSound.want_noise = 0x3C      # $8507 -- $F1
 			o.b[s] = 0xFF                   # $850B -- one down from nothing
 		o.cool[s] = 0x0F
 		return
@@ -3277,7 +3338,7 @@ static func _k84fb(o: SolObjects, s: int) -> void:
 	# $851E -- the door is opened, and it is put back at the top of the view
 	# with something of its own let out where it stood.
 	o.y[s] = (o.y[s] & 0xFF00) | 0x07               # $8523, $05F7 = 7 with it
-	# $8525 -- the noise ($F1 = $3F) is not modelled.
+	SolSound.want_noise = 0x3F          # $8525 -- $F1
 	o.hatch_here(s, 0xBD)                           # $AAF1
 	o.y[s] = (o.y[s] & 0x00FF) \
 			| (((o.cam_y >> 8) & 0xFF) << 8)        # $852D
@@ -3418,7 +3479,7 @@ static func _86ea(o: SolObjects, s: int, y: int) -> void:
 	var i: int = SolShots.free_slot(o)      # $86F4
 	if i < 0:
 		return
-	# $86F9 -- the noise ($F1 = $2C) is not modelled.
+	SolSound.want_noise = 0x2C          # $86F9 -- $F1
 	SolShots.put(o, i, 0xAA)                # $86FD -> $907B
 	o.carry = (o.face[s] >> 7) & 1          # $870A ASL
 	var v: int = SPREAD[y]                  # $870B
@@ -3444,7 +3505,7 @@ static func _k8729(o: SolObjects, s: int) -> void:
 	if o.frame[s] == 0x02:                  # $872E
 		var i: int = SolShots.free_slot(o)  # $8733
 		if i >= 0:
-			# $8738 -- the noise ($F1 = $28) is not modelled.
+			SolSound.want_noise = 0x28          # $8738 -- $F1
 			SolShots.put(o, i, 0xA9)        # $873C -> $907B
 			# $874E is an INC the other side takes back at $8754, so the page
 			# along is only added where it looks right.
@@ -3581,6 +3642,7 @@ static func _a3bc(o: SolObjects, s: int) -> void:
 	elif _is(o, r, 0x03):
 		_a3fb(o)                            # $A3FB
 	elif _is(o, r, 0x05):
+		SolSound.want_noise = 0x20          # $A461 -- $F1
 		_a458(o, s)                         # $A452
 
 
@@ -3643,7 +3705,8 @@ static func _a4a0(o: SolObjects, s: int) -> void:
 	elif _is(o, r, 0x02):
 		_927e(o, s)
 	elif _is(o, r, 0x03):
-		_a3ff(o)                            # $A4B6 -- a noise first
+		SolSound.want_noise = 0x3A          # $A4B6 -- $F1
+		_a3ff(o)                            # $A4BA
 	elif _is(o, r, 0x05):
 		_a458(o, s)
 
@@ -3691,6 +3754,8 @@ static func _af67(o: SolObjects, s: int, pic: int, set: int) -> void:
 			o.a[s] = (o.a[s] + 1) & 0xFF
 		return
 	o.anim_second(s, 0x04, 4, false)                  # $AF8D
+	if (o.left[s] | o.frame[s]) == 0x01:    # $AF92
+		SolSound.want_noise = 0x21          # $AF9E -- $F1
 	if o.left[s] == 0xFF:                   # $AFA0
 		_a989(o, s, 0x0A)
 
@@ -3782,7 +3847,7 @@ static func _89a1(o: SolObjects, s: int) -> void:
 	_8319(o, s, 2)                                      # $89B1
 	if (o.mind[s] & 0x3F) != 0x10:                      # $89B9
 		o.id[s] = o.id[s] & 0xBF                        # $906C
-	# $89C0 -- the noise it makes ($F1 = $21) is not modelled.
+	SolSound.want_noise = 0x21          # $89C0 -- $F1
 	_a989(o, s, 0x32)                                   # $89C6
 
 ## $90A9 -- one of the three last shots.  It goes up and a little sideways, and
@@ -3809,7 +3874,7 @@ static func _8f1c(o: SolObjects, s: int) -> void:
 		_8f85(o, s, 0x0A)                               # $8F7B
 		return
 	if o.a[s] == 0x00:
-		# $8F26 -- the noise it makes ($F1 = $2B) is not modelled.
+		SolSound.want_noise = 0x2B          # $8F26 -- $F1
 		o.a[s] = (o.a[s] + 1) & 0xFF                    # $8F2A
 	o.cool[s] = 0x0F + (o.clock & 0x01)                 # $80F2
 	o.anim_second(s, 0x69, 4, false)                              # $904B
@@ -3933,7 +3998,7 @@ static func _b0ec(o: SolObjects, s: int) -> void:
 		if o.carry != 0:
 			hi = (hi + 1) & 0xFF                        # $B104
 		o.hero_bonus = lo | hi << 8
-		# $B107 -- the noise it makes ($F1 = $0F) is not modelled.
+		SolSound.want_noise = 0x0F          # $B107 -- $F1
 		o.finish(s)                                     # $80BF
 	o.fall(s, 0x03)                                     # $B2BB
 	o.move_facing(s)                                    # $813A
@@ -3964,7 +4029,10 @@ static func _b26b(o: SolObjects, s: int) -> void:
 		o.anim_second(s, 0x04, 3)                       # $B2A4
 		return
 	o.anim_second(s, 0x08, 3, false)                           # $B27D
-	# $B282 -- the noise it makes ($F1 = $21) is not modelled.
+	# $B282 -- the second picture of the walk, and only while a single picture
+	# of it is left.
+	if o.frame[s] == 0x02 and o.left[s] == 0x01:
+		SolSound.want_noise = 0x21                      # $B290 -- $F1
 	if o.left[s] != 0xFF:
 		return                                          # $B292
 	_a989(o, s, 0x00)                                   # $B299
@@ -4008,8 +4076,9 @@ static func _8bfa(o: SolObjects, s: int, b: int) -> void:
 static func _8bba(o: SolObjects, s: int) -> void:
 	o.anim_second(s, 0x6B, 4, false)                              # $904B
 	var fr: int = o.frame[s]                            # $80E6
-	# $8BC4 -- the noise it makes ($F1 = $32) is not modelled.
-	if fr == 0x05:
+	if fr == 0x02:
+		SolSound.want_noise = 0x32                      # $8BC4 -- $F1
+	elif fr == 0x05:
 		_8bfa(o, s, 0x08)                               # $8BCA
 	elif fr == 0x07:
 		_8bfa(o, s, 0xF8)                               # $8BD0
@@ -4154,7 +4223,7 @@ static func _8c40(o: SolObjects, s: int) -> void:
 			o.s_a[j] = s                                # $8C82 -- which slot
 			o.s_b[j] = 0x04                             # $8C87
 			SolShots.put(o, j, 0xA7)                    # $907B
-			# $8C8F -- the noise ($F1 = $12) is not modelled.
+			SolSound.want_noise = 0x12          # $8C8F -- $F1
 			o.z90 = 0x0080                              # $8121, $8C98
 			o.z92 = 0x00C0
 			var c := 1                                  # $8C9E left it up
@@ -4219,7 +4288,7 @@ static func _9084(o: SolObjects, s: int) -> void:
 ## animation it takes a step, but only where what lies ahead is solid.
 static func _8ff8(o: SolObjects, s: int) -> void:
 	o.anim_first(s, 0x58)                               # $9026
-	# $9000 -- the noise it makes ($F1 = $29) is not modelled.
+	SolSound.want_noise = 0x29          # $9000 -- $F1
 	if o.frame[s] == 0x01:                              # $9004
 		o.z90 = 0x0080                                  # $8121, $900D
 		o.z92 = 0x0100                                  # $900F
@@ -4311,7 +4380,7 @@ static func _9975(o: SolObjects, s: int) -> void:
 		o.move(s)                                       # $999F
 		return
 	if o.d[s] == 0x00:                                  # $997F
-		# $9984 -- the noise it makes ($F1 = $36) is not modelled.
+		SolSound.want_noise = 0x36          # $9984 -- $F1
 		o.d[s] = (o.d[s] + 1) & 0xFF                    # $9988
 	_a6d6(o, s)                                         # $A6D6
 	o.face_hero(s)                                      # $8118
@@ -4363,7 +4432,7 @@ static func _a511(o: SolObjects, s: int) -> void:
 	o.anim_second(s, 0x14)                              # $A521
 	if o.left[s] != 0xFF:
 		return                                          # $A526
-	# $A528 -- the noise it makes ($F1 = $07) is not modelled.
+	SolSound.want_noise = 0x07          # $A528 -- $F1
 	o.mind[s] = (o.mind[s] + 1) & 0xFF                  # $A52C
 	o.kind[s] = 0x01                                    # $A531
 
@@ -4452,7 +4521,7 @@ static func _acb5(o: SolObjects, s: int, way: int) -> void:
 			var lo: int = o._adc(o.y[s] & 0xFF, 0x80)   # $ACF8
 			var hi: int = o._adc((o.y[s] >> 8) & 0xFF, 0x00)
 			o.s_y[j] = lo | hi << 8
-			# $AD04 -- the noise ($F1 = $12) is not modelled.
+			SolSound.want_noise = 0x12          # $AD04 -- $F1
 	_ad08(o, s)                                         # $AD08
 
 ## $8DC5 -- how the hunter reads a place.  Solid is one answer and so are the
@@ -4555,7 +4624,7 @@ static func _8cc9(o: SolObjects, s: int) -> void:
 		if j2 >= 0:
 			o.s_b[j2] = 0x04                            # $8CE5
 			SolShots.put(o, j2, 0xA4)                   # $907B
-			# $8CED -- the noise ($F1 = $13) is not modelled.
+			SolSound.want_noise = 0x13          # $8CED -- $F1
 			o.z90 = 0x0080                              # $8121, $8CFA
 			o.z92 = 0xFE00                              # $8CF4, $8CF6
 			if (o.face[s] & 0x80) == 0:                 # $8CFF
@@ -4658,7 +4727,7 @@ const BURST := [0x00, 0x22, 0x30, 0x22, 0x00, 0xDE, 0xD0, 0xDE, 0x00, 0x22]
 ## $85C4 -- one of the ring: the pair is handed to it as its own speed, and the
 ## down half is turned round for the side the thing faces.
 static func _85c4(o: SolObjects, s: int) -> void:
-	# $85C4 -- the noise ($F1 = $2C) is not modelled.
+	SolSound.want_noise = 0x2C          # $85C4 -- $F1
 	var i: int = SolShots.free_slot(o)              # $ADBA
 	if i < 0:
 		return
@@ -4685,5 +4754,5 @@ static func _8ee6(o: SolObjects, s: int) -> void:
 	if o.far_x(s) >= 0x03:                          # $AE30
 		for y in range(0x07, -1, -1):               # $8EED .. $8EF7
 			_8f05(o, s, y)
-	# $8EF9 -- the noise ($F1 = $21) is not modelled.
+	SolSound.want_noise = 0x21          # $8EF9 -- $F1
 	_8f68(o, s)                                     # $8EFD

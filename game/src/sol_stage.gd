@@ -108,6 +108,7 @@ static func _85b3(o: SolObjects, s: int) -> int:
 
 ## $8553, entry $7C -- one page to the side it faces and two pages up.
 static func _8553(o: SolObjects, s: int) -> void:
+	SolSound.want_noise = 0x26              # $8553 -- $F1
 	var i: int = SolShots.free_slot(o)      # $8557
 	if i < 0:
 		return
@@ -194,6 +195,7 @@ static func _85e8(o: SolObjects, s: int, n: int) -> void:
 	var i: int = SolShots.free_slot(o)      # $85EA
 	if i < 0:
 		return
+	SolSound.want_noise = 0x37              # $85EF -- $F1
 	var c: int = (o.face[s] >> 7) & 1       # $847D ASL
 	if c == 1:
 		o.s_a[i] = n

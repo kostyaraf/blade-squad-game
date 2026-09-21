@@ -123,7 +123,7 @@ static const uint16_t dmc_tbl[16] = {
 /* the wave and the tape */
 #define SND_EVERY 40              /* one sample every 40 cpu cycles */
 static FILE *snd_f = NULL;        /* -pcm    : s16le mono */
-static FILE *apulog_f = NULL;     /* -apulog : cycle, address, byte */
+static FILE *apulog_f = NULL;     /* -apulog : cycle, address, byte, frame */
 static int   snd_div = SND_EVERY;
 static double pulse_mix[31], tnd_mix[203];
 
@@ -1142,8 +1142,11 @@ static void apu_write(uint16_t a, uint8_t v)
 {
     if (a >= 0x4000 && a <= 0x4017) apu_regs[a - 0x4000] = v;
     if (apulog_f && a >= 0x4000 && a <= 0x4017 && a != 0x4014 && a != 0x4016)
-        fprintf(apulog_f, "%llu %04X %02X\n",
-                (unsigned long long)cpu_cycle, a, v);
+        /* The picture as well as the cycle: a stand that is judging what a
+           game asked for wants the writes of one picture together, and the
+           cycle alone does not say where one picture ends. */
+        fprintf(apulog_f, "%llu %04X %02X %ld\n",
+                (unsigned long long)cpu_cycle, a, v, cur_frame);
     switch (a) {
     case 0x4000: case 0x4004: {
         int i = (a == 0x4000) ? 0 : 1;
@@ -1582,19 +1585,37 @@ static void cpu_step(void)
     if (trace_fp && n_samples) {
         for (int k = 0; k < n_samples; k++) {
             if (samples[k].pc != PC) continue;
-            uint8_t v;
+            uint8_t v = 0;
+            uint16_t vw = 0;
+            int wide = 0;
             char what[8];
             switch (samples[k].reg) {
             case 1: v = A; strcpy(what, "A"); break;
             case 2: v = X; strcpy(what, "X"); break;
             case 3: v = Y; strcpy(what, "Y"); break;
             case 4: v = P; strcpy(what, "P"); break;
+            case 5:
+                /* Who called.  A JSR leaves its own address plus two on the
+                 * stack, so the word there less two is the JSR itself -- the
+                 * one thing a bare PC cannot say when eighty places call the
+                 * same door. */
+                vw = (uint16_t)(dbg_read((uint16_t)(0x0100 + ((SP + 1) & 0xFF)))
+                     | (dbg_read((uint16_t)(0x0100 + ((SP + 2) & 0xFF))) << 8));
+                vw = (uint16_t)(vw - 2);
+                wide = 1; strcpy(what, "S"); break;
             default:
                 v = dbg_read(samples[k].addr);
                 sprintf(what, "%04X", samples[k].addr);
             }
-            fprintf(trace_fp, "SAMPLE %ld,%04X,%d,%s,%02X\n", cur_frame,
-                    PC, prg_bank_at(PC), what, v);
+            if (wide)
+                /* The bank named is the CALLER's, not the door's: eighty
+                   places in six banks call the same address, and the window
+                   they sit in does not tell them apart. */
+                fprintf(trace_fp, "SAMPLE %ld,%04X,%d,%s,%04X\n", cur_frame,
+                        PC, prg_bank_at(vw), what, vw);
+            else
+                fprintf(trace_fp, "SAMPLE %ld,%04X,%d,%s,%02X\n", cur_frame,
+                        PC, prg_bank_at(PC), what, v);
         }
     }
     if (cov_bits || trace_fp) {
@@ -2531,7 +2552,8 @@ static void usage(void)
         "  -freeze A=V[@N[-M]] rewrite byte V to CPU address A every frame from N on\n"
         "  -rompoke O=V      write byte V at PRG file offset O before the run (hex O/V)\n"
         "  -sample P=A       log what address A held whenever PC reached P (hex);\n"
-        "                    A may instead be a register: A, X, Y or P\n"
+        "                    A may instead be a register: A, X, Y or P, or S\n"
+        "                    for the address of the JSR that got there\n"
         "  -ramat FILE@PC    write the 2K of work RAM to FILE every time PC is\n"
         "                    reached (hex); a record is frame, PC, bank, memory\n"
         "  -verbose LO-HI    one line per frame in that range: frame, PC, PRG banks\n");
@@ -2659,6 +2681,7 @@ int main(int argc, char **argv)
                     case 'X': case 'x': samples[n_samples].reg = 2; break;
                     case 'Y': case 'y': samples[n_samples].reg = 3; break;
                     case 'P': case 'p': samples[n_samples].reg = 4; break;
+                    case 'S': case 's': samples[n_samples].reg = 5; break;
                     }
                 }
                 if (!samples[n_samples].reg)
