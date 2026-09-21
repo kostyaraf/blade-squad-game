@@ -211,7 +211,7 @@ def main():
     finally:
         pb2_trace.P.sweep(tmp)
     print('%d steps of the flow, %d requests judged' % (len(cases), judged))
-    print('%d of %d differ from what the cartridge asked for'
+    print('%d of %d steps differ from what the cartridge asked for'
           % (bad, len(cases)))
     return 1 if bad else 0
 
