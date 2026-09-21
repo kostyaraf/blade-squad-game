@@ -203,6 +203,10 @@ LO = min(WATCH.values())
 HI = max(max(WATCH.values()), 0x0400 + 22 * FIELDS - 1)
 
 
+# $ECE8 -- the one door every request of the sound driver goes through.
+ASK_PC = 'ECE8'
+
+
 def state_for(first, stage, area, spot, pokes=(), patch=False, early=()):
     """The savestate a run of this area starts from.  Making one costs a run of
     the whole boot, so they are kept and shared."""
@@ -305,7 +309,12 @@ def _trace(d, state, script, first, frames, during=()):
     mem = bytearray(open(ram, 'rb').read())
 
     last = first + frames
-    sample = ['-sample', '%s=X' % CULL_PC]
+    # Э6.3.3 -- every request made of the sound driver, in the order it was
+    # made: the number, the place that asked and the slot whose turn it was.
+    # The door is one and the places are a hundred and sixteen, so the place
+    # has to be asked for by name ($ECE8=S is the JSR still on the stack).
+    sample = ['-sample', '%s=A' % ASK_PC, '-sample', '%s=S' % ASK_PC,
+              '-sample', '%s=X' % ASK_PC, '-sample', '%s=X' % CULL_PC]
     for pc, (_name, addr, _bank) in SEEN.items():
         sample += ['-sample', '%s=%04X' % (pc, addr)]
     # A byte written once, in the middle of the run, counted like the script's
@@ -322,6 +331,8 @@ def _trace(d, state, script, first, frames, during=()):
     seized = set()
     seen = {}
     culled = {}
+    asks = {}
+    ask_part = {}
     # Which frame's copy of the table the sweep now running was reading.
     #
     # A step of the game is not a frame of the console: down here it can take
@@ -336,6 +347,18 @@ def _trace(d, state, script, first, frames, during=()):
     for ln in open(log):
         if ln.startswith('SAMPLE'):
             fr, pc, bank, what, val = ln[7:].strip().split(',')
+            if pc == ASK_PC:
+                # Three samples stand at the door, so the emulator writes them
+                # in the order they were asked for: number, place, slot.  The
+                # bank on the place's line is the caller's own.
+                ask_part[what] = val
+                if what == 'S':
+                    ask_part['bank'] = bank
+                elif what == 'X':
+                    asks.setdefault(int(fr), []).append(
+                        (int(ask_part['A'], 16), int(ask_part['S'], 16),
+                         int(ask_part['bank']), int(val, 16)))
+                continue
             if pc == CULL_PC:
                 if bank == CULL_BANK and table_fr is not None:
                     culled.setdefault(table_fr, []).append(int(val, 16))
@@ -510,6 +533,8 @@ def _trace(d, state, script, first, frames, during=()):
         row['cams'] = [] if whole is None else [row['cam']]
         row['taken'] = [t for t in taken if t[0] not in born]
         row['seized'] = fr in seized
+        # What was asked of the sound driver in this frame, in order.
+        row['asks'] = asks.get(fr, [])
         out.append(row)
     return out
 

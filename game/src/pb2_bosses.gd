@@ -1902,8 +1902,7 @@ func _throw_fan_55(w: Pb2Objects, s: PackedByteArray) -> void:
 	for _i in range(FAN_55_COUNT):                     # $BF4E
 		w.make_child_aimed(s, 0x00, 0x00, FAN_55, FAN_55_SPEED, a)
 		a = (a + FAN_55_STEP) & 0xFF
-	# $BF6C -- and the sound $33 with them, which is the noise the cartridge
-	# makes and not anything the table holds; the sound is its own work.
+	Pb2Sound.want(0x33)                                # $BF6C -- the fan
 
 
 ## $BF7E -- and then it goes out again and the round starts over.
@@ -2056,6 +2055,7 @@ func _side_56(s: PackedByteArray) -> int:
 
 ## $BE77 -- the throw made, it holds the pose and waits.
 func _thrown_56(s: PackedByteArray) -> void:
+	Pb2Sound.want(0x27)                                # $BE79 -- the throw
 	s[F_PUSH] = (s[F_PUSH] + 1) & 0xFF                 # $0626
 	s[F_KIND] = PIC_56_SHOOT
 	s[F_SELF] = WAIT_56_AFTER
@@ -2116,6 +2116,10 @@ func _leap_56(w: Pb2Objects, n: int, s: PackedByteArray) -> void:
 	s[F_KEEP2] = LAND_56_WHOLE[i]
 	w.set_speed_down(s, DROP_56, 0x00)                 # $C909
 	s[F_SELF] = 0x00
+	# $BF14 -- only the first of the four says anything as it comes over the
+	# top; the other three say theirs when they land instead.
+	if s[F_TYPE] == 0x56:
+		Pb2Sound.want(0x2E)                            # $BF19
 	s[F_STATE] += 1                                    # $C966
 
 
@@ -2142,6 +2146,8 @@ func _glide_56(w: Pb2Objects, n: int, s: PackedByteArray) -> void:
 		w.snap16(s, SNAP_56)                           # $C984
 		s[F_VYFR] = s[F_KEEP]                          # $054A
 		s[F_VY] = s[F_KEEP2]                           # $0534
+		if s[F_TYPE] != 0x56:                          # $BF77
+			Pb2Sound.want(0x2F)                        # $BF7D
 	w.add_speed_down(s, WEIGHT_56)                     # $C90C
 	w.step_down(s)                                     # $C8F4
 

@@ -3911,6 +3911,12 @@ func _run_spawns(path: String) -> void:
 		if not touches.has(k):
 			touches[k] = []
 		touches[k].append(int(t[1]))
+	# Э6.3.3 -- when the stand is watching the sound, every step puts out a
+	# seventh field: which places the engine drove itself, and what they and
+	# everything else asked the driver for, in order.  The stand that judges
+	# the table alone does not ask for it and still reads six.
+	var noise := bool(cfg.get("noise", false))
+	Pb2Sound.forget()
 	var out := PackedStringArray()
 	for f in cfg["frames"]:
 		var was := {}
@@ -3949,6 +3955,9 @@ func _run_spawns(path: String) -> void:
 		# and put out with the rest.
 		var same := 0
 		var seen := 0
+		# The places whose turn was the engine's own this step: only what they
+		# asked for can be judged, the rest is named.
+		var own := PackedStringArray()
 		# How many times a place was left to a mind of the engine's own.  A
 		# run in which this is nought has proved nothing about the minds.
 		var mine := 0
@@ -4075,6 +4084,7 @@ func _run_spawns(path: String) -> void:
 						and n >= Pb2Objects.FIRST_LIVE \
 						and Pb2Objects.MINDS.has(had):
 					mine += 1
+					own.append(str(n))
 					# This one drives itself, so it is judged, not told.  The
 					# record's number is the engine's own and is left out of
 					# both; so is the type, which take() above has settled.
@@ -4136,14 +4146,24 @@ func _run_spawns(path: String) -> void:
 		for b in things.solids:
 			boxes.append("%d:%d:%d:%d" % [int(b[0]), int(b[1]), int(b[2]),
 					int(b[3])])
-		out.append("%d|%s|%s|%d/%d/%d|%s|%d,%d,%s" % [view.pos,
+		var line := "%d|%s|%s|%d/%d/%d|%s|%d,%d,%s" % [view.pos,
 				" ".join(born) if born.size() else "-",
 				" ".join(PackedStringArray(gone)) if gone.size() else "-",
 				same, seen, mine,
 				" ".join(wrong) if wrong.size() else "-",
 				things.push_x - 256 if things.push_x > 127 else things.push_x,
 				things.push_y - 256 if things.push_y > 127 else things.push_y,
-				" ".join(boxes) if boxes.size() else "-"])
+				" ".join(boxes) if boxes.size() else "-"]
+		if noise:
+			var say := PackedStringArray()
+			for i in range(Pb2Sound.asked.size()):
+				say.append("%d:%02X" % [int(Pb2Sound.asked_by[i]),
+						int(Pb2Sound.asked[i])])
+			line += "|%s;%s" % [
+					" ".join(own) if own.size() else "-",
+					" ".join(say) if say.size() else "-"]
+			Pb2Sound.forget()
+		out.append(line)
 		# $8E43 and $8E46 -- the hero's own update wipes the two pushes at the
 		# end of the step.  This stand does not run his update, so the wiping
 		# is done here, in its place and where it stands: after the sweep.

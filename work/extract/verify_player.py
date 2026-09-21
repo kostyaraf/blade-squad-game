@@ -197,6 +197,7 @@ def logic_frames(rows):
             for k in ('see_x', 'see_y', 'fall_hi', 'fall_lo', 'aim_y', 'aim_x'):
                 merged[k] = (out[-1][k] if out[-1][k] is not None else r[k])
             merged['shift_after'] = out[-1]['shift_after'] + r['shift']
+            merged['asks'] = out[-1]['asks'] + r['asks']
             merged['born'] = out[-1]['born'] + r['born']
             merged['died'] = out[-1]['died'] + r['died']
             merged['taken'] = out[-1]['taken'] + r['taken']

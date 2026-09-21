@@ -811,6 +811,11 @@ func contact() -> void:
 	var n: int = 6 if (frame & 1) != 0 else 7
 	while n < SLOTS:
 		var s: PackedByteArray = slots[n]
+		# $B24E -- the sweep keeps the place in X for as long as it looks at
+		# it, and both of the little routines below run with it still there.
+		# So a noise asked for from inside them is asked for in its name,
+		# even though the code doing the asking is the blade's, not its own.
+		Pb2Sound.at_slot = n
 		if s[F_TYPE] != 0 and (s[F_XHI] | s[F_YHI]) == 0:
 			if slots[0][F_LIFE] != 0:
 				_touch(n, slots[0], own_box(slots[0]))
@@ -825,6 +830,7 @@ func contact() -> void:
 				if row[F_LIFE] != 0 and slots[n][F_TYPE] != 0:
 					_touch(n, row, g[1])
 		n += 2
+	Pb2Sound.at_slot = -1
 
 
 ## $B285 -- is this one asked about at all, and does the hero reach it?
@@ -866,6 +872,7 @@ func _touch(n: int, hero: PackedByteArray, mine: Array) -> void:
 		return                                  # $B33D -- it is already gone
 	# $B36A -- forty pictures of grace, and which way the blow threw him.
 	hero[F_STUN] = 0x28
+	Pb2Sound.want(0x18)                         # $B371 -- he has been hit
 	if (s[F_MARK] & 0x02) != 0:
 		hero[F_PUSH] = 0xFF
 	elif hero[F_X] >= s[F_X]:
@@ -977,14 +984,16 @@ func _hit(n: int, y: int, size: int) -> void:
 	if ((int(b[1]) + size) & 0xFF) < dy:
 		return
 	if (s[F_MARK] & 0x20) != 0:
+		Pb2Sound.want(0x26)                     # $B67F -- it rang off armour
 		s[F_STUN] = 0x08                        # armour: it only rings
 		return
 	# $B688 -- a breakable block has no health to take off: one hit does it.
 	if s[F_TYPE] == 0x0C:
 		s[F_STATE] = 0x02
 		s[F_MARK] = 0x80
-		return
-	_wound(n, shot_power[slots[y][F_TYPE]])
+	else:
+		_wound(n, shot_power[slots[y][F_TYPE]])
+	Pb2Sound.want(0x21)                         # $B67A -- and this one told
 
 
 ## Э5.8 -- a guest's weapons against this one thing.  The same walk as $B5D5,
@@ -1035,15 +1044,21 @@ func _guest_hit(n: int, a: Array) -> int:
 		return -1
 	if ((int(b[1]) + reach) & 0xFF) < dy:
 		return -1
+	# The same two places as $B67F and $B67A above.  No recording can show
+	# this: the cartridge has no guest, and a guest's weapon reaching one of
+	# this game's things is Э5.8's own rule.  The noise is this game's thing
+	# being hit, so it is this game's driver that says so.
 	if (s[F_MARK] & 0x20) != 0:
+		Pb2Sound.want(0x26)                     # $B67F
 		s[F_STUN] = 0x08                        # armour: it only rings
 		return hurt[s[F_TYPE]]
 	# $B688 -- a breakable block has no health to take off: one hit does it.
 	if s[F_TYPE] == 0x0C:
 		s[F_STATE] = 0x02
 		s[F_MARK] = 0x80
-		return hurt[s[F_TYPE]]
-	_wound(n, int(a[3]))
+	else:
+		_wound(n, int(a[3]))
+	Pb2Sound.want(0x21)                         # $B67A
 	return hurt[s[F_TYPE]]
 
 
@@ -1407,7 +1422,13 @@ func turns() -> Array:
 			continue
 		var mind = MINDS.get(s[F_TYPE])
 		if mind != null:
+			# Whose turn it is, for as long as it lasts: a thing asks the
+			# driver for a noise from inside its own mind, and the cartridge
+			# knows which thing asked because the turn runs with the place in
+			# X.  Nothing else in the engine reads it.
+			Pb2Sound.at_slot = n
 			call(mind, n, s)
+			Pb2Sound.at_slot = -1
 	return gone
 
 
@@ -2875,6 +2896,7 @@ func _hold_boss(s: PackedByteArray) -> void:
 func _fill_boss(n: int, s: PackedByteArray) -> void:
 	if (frame & (int(cfg_boss["bar_every"]) - 1)) != 0:
 		return
+	Pb2Sound.want(0x23)                                # $8772 -- the meter
 	var b: PackedByteArray = slots[int(cfg_boss["slot"])]
 	b[F_LIFE] = (b[F_LIFE] + int(cfg_boss["bar_step"])) & 0xFF
 	if b[F_LIFE] != boss_bar:
@@ -2983,6 +3005,10 @@ func _die_life(n: int, s: PackedByteArray) -> void:
 	s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF
 	if s[F_KEEP] != 0:
 		return
+	# $88A5 -- the last boss of all is the only one whose own noise is still
+	# going when the health comes back, and it is the only one hushed here.
+	if s[F_TYPE] == 0x55:
+		Pb2Sound.hush()                                # $88AC
 	if lvl.stage == 5:
 		if status != null:
 			status.refill_energy = int(cfg_boss["refill_energy"])   # $30
@@ -2990,6 +3016,8 @@ func _die_life(n: int, s: PackedByteArray) -> void:
 		s[F_KEEP] = int(cfg_boss["after_wait"])
 		s[F_STATE] += 1
 		return
+	Pb2Sound.hush()                                    # $88B5
+	Pb2Sound.want(0x10)                                # $88BA -- one life more
 	if status != null:
 		status.lives = (status.lives + 1) & 0xFF       # $9F
 	s[F_STATE] += 2
@@ -3072,6 +3100,7 @@ func _smash_0c(s: PackedByteArray) -> void:
 	start_anim(s, 0x01)                                # $C83A
 	_open_cell(s)                                      # $8AF0
 	s[F_SELF] = 0x10
+	Pb2Sound.want(0x24)                                # $8AB1 -- it breaks
 	s[F_STATE] += 1
 
 
@@ -4546,7 +4575,11 @@ func _fall_27(n: int, s: PackedByteArray) -> void:
 ## $997C и $999E -- прилип.  Он встаёт вплотную к тому, во что упёрся,
 ## берёт новое положение и снова заводит счёт.
 func _land_27(s: PackedByteArray, downward: bool) -> void:
-	# $99D5 -- только звук, а его приёмка не смотрит.
+	# $99D5 -- звук.  Из двенадцати положений четыре молчат, и это те, на
+	# которых он только что был: прилипнув снова к тому же, он не звучит.
+	if s[F_SELF] != 0x00 and s[F_SELF] != 0x03 \
+			and s[F_SELF] != 0x06 and s[F_SELF] != 0x09:
+		Pb2Sound.want(0x20)                            # $99E8
 	var g: int = PIC_27[s[F_SELF]]
 	nudge_down(s, 0x00, DOWN_27[g] if downward else UP_27[g])   # $C930
 	snap16(s, 0x00)                                    # $C987 / $C98A
@@ -5183,6 +5216,7 @@ func _lob_20(s: PackedByteArray, side: int, down: int) -> bool:
 	if k < 0:
 		return false
 	set_speed_reach(slots[k], 0x40, 0xFE)              # $C9CF
+	Pb2Sound.want(0x38)                                # $9087 -- он бросил
 	return true
 
 
@@ -5543,6 +5577,7 @@ func _rail_step(s: PackedByteArray) -> void:
 	s[F_GROUND] = (s[F_GROUND] + 1) & 0xFF             # $A11A
 	if s[F_GROUND] == 0x0D:
 		s[F_GROUND] = 0x00                             # $BEA6 00
+		Pb2Sound.want(0x12)                            # $A12A -- она идёт
 	s[F_PUSH] = (s[F_PUSH] - 1) & 0xFF                 # $A12D
 	if s[F_PUSH] == 0:
 		if s[F_KEEP2] >= 0x80:                         # $A132
@@ -6253,6 +6288,7 @@ func _wake_41(n: int, s: PackedByteArray) -> void:
 	s[F_KEEP] = 0xC8                                   # $BE83 C8
 	_look_41(s)                                        # $BA94
 	_glow_41(s)                                        # $BAB9
+	Pb2Sound.want(0x2A)                                # $B9CC -- it is fired
 	s[F_STATE] += 1                                    # $C966
 
 
@@ -6269,6 +6305,7 @@ func _fly_41(n: int, s: PackedByteArray) -> void:
 	if make_child(s, BORN_41_SIDE[q], BORN_41_DOWN[q], 0x43) < 0:
 		clear(n)                                       # $B9FD
 		return
+	Pb2Sound.want(0x1E)                                # $BA01 -- and bursts
 	s[F_STATE] += 1                                    # $C966
 
 
@@ -6643,6 +6680,7 @@ func _spit_34(s: PackedByteArray) -> void:
 	var b: PackedByteArray = slots[c]
 	set_speed_reach(b, 0x40, 0xFE)                     # $C9CF
 	slots[c] = b
+	Pb2Sound.want(0x38)                                # $9087 -- он бросил
 
 
 ## $8BD8 -- то, что хвост цепи кидает в него: одна картинка и прямой полёт,
@@ -6930,7 +6968,17 @@ func _start_crawl(s: PackedByteArray) -> void:
 	s[F_SELF] = 0x00
 	set_speed_side(s, 0x00, 0x00)                      # $C906
 	set_speed_down(s, 0x00, 0x00)                      # $C909
+	_crawl_noise(s)                                    # $8294
 	s[F_STATE] += 1                                    # $C966
+
+
+## $8294 и $82D6 (банк 10) -- голос шага.  Тот самый, из-за которого картридж
+## на время подменяет тип на $33: два места спрашивают об этом одно и то же, и
+## оба молчат и при чужом типе, и когда в $0610 что-то лежит.
+func _crawl_noise(s: PackedByteArray) -> void:
+	if s[F_TYPE] == 0x33 or s[F_KEEP2] != 0:
+		return
+	Pb2Sound.want(0x24)                                # $82A2, $82E4
 
 
 ## $82A8 (банк 10) -- шаг раз в шестнадцать ходов; после четвёртого ход
@@ -6948,6 +6996,7 @@ func _crawl_3f(n: int, s: PackedByteArray) -> void:
 		else:
 			s[F_COUNT] = 0x10
 			start_anim(s, 0x01)                        # $C83A
+			_crawl_noise(s)                            # $82D6
 	if s[F_STATE] != 0x02:                             # $B4F5
 		clear(n)                                       # $C810
 
@@ -6980,6 +7029,7 @@ func _mind_0d(n: int, s: PackedByteArray) -> void:
 	s[F_SELF] = (s[F_SELF] - 1) & 0xFF
 	if s[F_SELF] != 0:
 		return
+	Pb2Sound.want(0x41)                                # $8B75 -- он сработал
 	switch = switch ^ MASK_36[s[F_LIFE]]               # $8B7F
 	clear(n)                                           # $C810
 
@@ -7066,6 +7116,12 @@ func _leave_04(s: PackedByteArray) -> void:
 	if lvl.kind == 0x06 or lvl.kind == 0x09 or lvl.kind == 0x04:
 		_start_shut_04(s)                              # $863F
 		return
+	# $8629 -- the door out of the last area of a stage leads to the boss, and
+	# the walk's tune is hushed here so that the boss's own can start clean.
+	# $D6C0 sets carry when the area after this one is past the end of the
+	# walk; the stage it reads is $53, not the one being played.
+	if Pb2Level.walk_count(came) == area + 1:          # $C8D0 -> $D6C0
+		Pb2Sound.hush()                                # $8634
 	s[F_STATE] += 1                                    # $C966
 
 
@@ -7080,6 +7136,10 @@ func _start_shut_04(s: PackedByteArray) -> void:
 ## one screen to the head of the next.  Eight rows in all, counted in $05E4.
 func _open_04(s: PackedByteArray) -> void:
 	s[F_PUSH] = (s[F_PUSH] + 1) & 0xFF
+	# $8650 -- the grinding of the door, once every eight; the row itself is
+	# laid every four, so the two counts are not the same one.
+	if (s[F_PUSH] & 0x07) == 0:
+		Pb2Sound.want(0x32)                            # $8656
 	if (s[F_PUSH] & 0x03) != 0:
 		return
 	if (s[F_COUNT] & 1) != 0 and s[F_COUNT] != 7:      # $8686
@@ -7163,6 +7223,8 @@ func _hold_03(s: PackedByteArray) -> void:
 	slots[0][F_KIND] = 0x04                            # $0442 -- the pose
 	slots[0][F_X] = s[F_X]                             # $0508 := $0508,X
 	s[F_COUNT] = 0                                     # $05E4,X
+	Pb2Sound.hush()                                    # $846C
+	Pb2Sound.want(0x2C)                                # $8471 -- the way opens
 	s[F_STATE] += 1                                    # $C966
 
 
@@ -7919,6 +7981,7 @@ func _mind_25(n: int, s: PackedByteArray) -> void:
 		s[F_MARK] = 0x01
 		start_anim(s, 0x16)                            # $BEAD 16
 		s[F_SELF] = 0x80                               # $BE75 80
+		Pb2Sound.want(0x27)                            # $937D -- он упал
 		s[F_STATE] = 1                                 # $C96F
 		return
 	add_speed_down(s, 0x24)                            # $C90C
@@ -7936,6 +7999,7 @@ func _splash_boss(s: PackedByteArray) -> void:
 	_start_crawl(s)                                    # $8279
 	s[F_TYPE] = 0x3F
 	s[F_MARK] = 0x80                                   # $C9AB
+	Pb2Sound.want(0x1C)                                # $B4E2 -- the burst
 	s[F_STATE] = 2                                     # $C972
 
 
@@ -8105,6 +8169,7 @@ func _mind_26(n: int, s: PackedByteArray) -> void:
 			s[F_MARK] = 0x01
 			start_anim(s, 0x16)                        # $BEAD 16
 			s[F_SELF] = 0x80                           # $BE75 80
+			Pb2Sound.want(0x27)                        # $937D
 			s[F_STATE] = 1                             # $C96F
 		1:
 			if s[F_KIND] != 0x51:                      # $938F

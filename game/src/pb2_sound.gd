@@ -166,14 +166,32 @@ func boot() -> void:
 static var asked: Array = []
 
 
-## Ask, from anywhere.
+## $0113 -- whose turn it is while a mind runs, which the cartridge keeps in
+## X and every thing's own code reads from there.  Below nought means the
+## request came from somewhere else: the hero, the level, the bar.
+static var at_slot := -1
+## The same list as `asked`, holding the place each request came from.
+static var asked_by: Array = []
+
+
+## $C81C -- ask, from anywhere.  The trampoline of the fixed bank is what the
+## game calls; it is `JMP $ECE8`, and the number is in A.
 static func want(n: int) -> void:
 	asked.append(n & 0xFF)
+	asked_by.append(at_slot)
+
+
+## $C83D -- be quiet, which is `JMP $EC0C` and there `LDA #$00 / JMP $ECE8`.
+## It is a request like any other: nought reaching $8009 silences all eight
+## channels.  The game asks for it before almost every noise it asks for.
+static func hush() -> void:
+	want(0x00)
 
 
 ## Nothing asked for, which is what a console coming up has.
 static func forget() -> void:
 	asked = []
+	asked_by = []
 
 
 ## $8009 -- a number is asked for.
