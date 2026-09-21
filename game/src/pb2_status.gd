@@ -57,6 +57,12 @@ var boss := 0
 var area := 0
 ## $2A/$58 -- while the level stands still the clock stands still with it.
 var frozen := false
+## $CD -- the flag of the driver's fifth track, which is the one the fanfare of
+## a change of suit is played on.  $F02B turns back while it is set, so the
+## change lasts exactly as long as the tune does.  The driver is not wired into
+## the game yet, so whoever drives the status hands this over; left at nought
+## the change is over in one picture.
+var tune_busy := 0
 ## $34 -- the bell the tick calls for once the time is short.  Whoever plays
 ## the sounds takes it and puts it back.
 var bell := false
@@ -80,7 +86,8 @@ func _init() -> void:
 
 ## One frame of it, in the cartridge's own order ($CDB8 onwards).  True means
 ## the level is to be stepped after this; false that it is not -- the menu
-## freezes everything, and so do the two refills and the change of suit.
+## freezes everything, and so do the two refills and the change of suit.  The
+## clock is not frozen by any of them.
 func step(hit: int) -> bool:
 	clock = (clock + 1) & 0xFF
 	_menu(hit)
@@ -91,13 +98,9 @@ func step(hit: int) -> bool:
 		else:
 			_cycle(hit)
 		return false
-	if mode == CHANGE:
-		_change()
-		return false
-	if mode == REFILL_LIFE or mode == REFILL_ENERGY:
-		_refill()
-		return false
 	# $CEEC -- the clock, and the last boss of all is fought without one.
+	# It runs whatever the mode is: a refill and a change of suit hold the
+	# level still, but not the clock ($CED2 turns aside only the water).
 	if boss != 0 or stage != LAST_STAGE or area != 0:
 		if time_step(frozen):
 			bell = true
@@ -105,13 +108,32 @@ func step(hit: int) -> bool:
 	# $8003 -- the level's own frame runs for anything under five.  Four is
 	# the boss's meter filling: the hero still walks and the things still
 	# get their turn, only the suit is not worn down and the menu is shut.
-	return mode < REFILL_LIFE
+	#
+	# The answer is taken here, before the mode's own work below: the level's
+	# turn ($CF1C) comes first in the cartridge's own order, and a refill that
+	# pours its last cell this step ($EFFB) frees the level only from the next
+	# one.
+	var play: bool = mode < REFILL_LIFE
+	# $CF36 -- and at the end of the step, whatever the mode itself asks for
+	# ($EF7D picks it out of a table by $27).
+	if mode == REFILL_LIFE or mode == REFILL_ENERGY:
+		_refill()
+	elif mode == CHANGE:
+		_change()
+	return play
 
 
 ## $D0A6 -- START, both ways round.
 func _menu(hit: int) -> void:
 	if mode == CHANGE:
 		return
+	# $D0AC -- the last boss of all is fought without the menu, as he is
+	# fought without a clock: not a boss's room ($79), the last stage and its
+	# nought-th area.
+	if boss == 0 and stage == LAST_STAGE and area == 0:
+		return
+	# $D0BB reads $4E and $1E as well -- the level held still by something
+	# that is not the menu -- and neither of the two is the engine's yet.
 	if menu != 0:
 		if not (hit & START):
 			return
@@ -120,15 +142,18 @@ func _menu(hit: int) -> void:
 		if suit == came_in:
 			menu = 0
 			return
-		came_in = suit
+		# $D0FE writes neither $AF nor anything else of the menu's: what he
+		# came in wearing stands until the menu is opened again.
 		mode = CHANGE
 		repaint = true
 		clear_shots = true                  # $D0FE
+		Pb2Sound.want(0x1F)                 # $D103 -- the suit he chose
 		return
 	if not (hit & START):
 		return
 	menu = 1
 	came_in = suit
+	Pb2Sound.want(0x17)                     # $D0D5 -- the menu opens
 
 
 ## $CE45 -- how long he is given.  It is read anew at the top of each half of
@@ -154,6 +179,10 @@ func time_step(frozen: bool) -> bool:
 	if (clock & (int(cfg["time_every"]) - 1)) != 0:
 		return false
 	var bell: bool = warn != 0
+	if bell:
+		# $CA50 -- the bell, asked for before the count is taken down and not
+		# after ($CA53 is the counting).
+		Pb2Sound.want(0x34)
 	_time_down()
 	if time_hi == 0 and time_lo == 0:
 		out_of_time = true
@@ -216,14 +245,24 @@ func _wear(n: int) -> void:
 	suit = n
 	chr_bank = int(cfg["chr_plain"] if n == 0 else cfg["chr_suit"])
 	repaint = true
+	# $D29A -- every step of the ring is heard, and it is heard here and not
+	# at the end of the change: $F02B puts $27 back and asks for nothing.
+	Pb2Sound.want(0x30)
 
 
 ## $F02B -- the change itself.  On the cartridge it waits for the fanfare to
 ## finish; here there is nothing to wait for, so it is over at once.
+##
+## It does not put the suit on again: the ring walk did that already ($D28C
+## wrote $9A and $45), and the mode is only let out of the change here.
 func _change() -> void:
+	# $F02B -- and it waits for the fanfare to finish before it lets the level
+	# go: $CD is the fifth track's flag, and the request at $D103 raised it.
+	if tune_busy != 0:
+		return
 	menu = 0
 	mode = PLAY
-	_wear(suit)
+	repaint = true
 
 
 ## $D2BE -- what wearing one costs.
@@ -270,6 +309,7 @@ func _refill() -> void:
 		if life >= int(cfg["cap_life"]):
 			_done()
 			return
+		Pb2Sound.want(0x1B)                 # $EFF0 -- one cell of the bar
 		life += 1
 		refill_life -= 1
 		if refill_life == 0:
@@ -278,6 +318,7 @@ func _refill() -> void:
 		if energy >= int(cfg["cap_energy"]):
 			_done()
 			return
+		Pb2Sound.want(0x1B)                 # $F015 -- and the same for a suit
 		energy += 1
 		refill_energy -= 1
 		if refill_energy == 0:
@@ -315,20 +356,26 @@ func take(what: int) -> void:
 		2:                                  # $B532 -- a spare health tank
 			if life_tanks < int(cfg["cap_life_tank"]):
 				life_tanks += 1
+				Pb2Sound.want(0x1D)         # $B53C
 		3:                                  # $B547 -- a spare suit tank
 			if tanks < int(cfg["cap_energy_tank"]):
 				tanks += 1
+				Pb2Sound.want(0x1D)         # $B551
 		4:                                  # $B58A -- the suit capsule
 			owned ^= int(cfg["stage_bit"][stage & 7])
+			Pb2Sound.want(0x1F)             # $B5A2 -- the one with no cap
 		5:                                  # $B55C -- the second blade
 			if second_blade < int(cfg["cap_second"]):
 				second_blade += 1
+				Pb2Sound.want(0x1D)         # $B566
 		6:                                  # $B569 -- the blade raised
 			if power_level < int(cfg["cap_power"]):
 				power_level += 1
+				Pb2Sound.want(0x1D)         # $B579
 		7:                                  # $B57C -- one more throw at once
 			if extra_shot < int(cfg["cap_extra"]):
 				extra_shot += 1
+				Pb2Sound.want(0x1D)         # $B587
 
 
 ## $EE5D -- SELECT spends one spare health tank to fill the health bar.  It is

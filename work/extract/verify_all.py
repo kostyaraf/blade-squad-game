@@ -80,6 +80,13 @@ STANDS = [
     ('sndplay',    'Э6.3.1', 'verify_snd_play.py', []),
     ('solnoise',   'Э6.3.2', 'verify_sol_noise.py', []),
     ('pb2noise',   'Э6.3.3', 'verify_pb2_noise.py', ['--random=2']),
+    ('pb2hero',    'Э6.3.4', 'verify_pb2_hero.py', ['--random=2', '--suits=0,1,3']),
+    ('pb2arms',    'Э6.3.5', 'verify_pb2_arms.py', ['--gear=plain,power-3,suit-2']),
+    ('pb2bar',     'Э6.3.6', 'verify_pb2_bar.py', []),
+    ('pb2wave',    'Э6.3.6', 'verify_pb2_wave.py', []),
+    ('pb2take',    'Э6.3.6', 'verify_pb2_take.py', []),
+    ('pb2menu',    'Э6.3.7', 'verify_pb2_menu.py', []),
+    ('pb2flow',    'Э6.3.8', 'verify_pb2_flow.py', []),
 ]
 
 # Every stand ends on a line that counts what differs.  Two shapes are in use:
@@ -113,6 +120,14 @@ def run(name, script, args):
     os.makedirs(LOGS, exist_ok=True)
     path = os.path.join(LOGS, name + '.txt')
     began = time.time()
+    # The log of a run that was killed has to go, and not just be written
+    # over: a stand of the killed run may still be alive, holding the same
+    # path open at its own offset, and its writes would land past the end of
+    # the new log.  The verdict is read off the end of the file, so a tail
+    # like that is read as this run's answer.  Unlinking leaves the old
+    # writer with an inode nobody can see.
+    if os.path.exists(path):
+        os.unlink(path)
     # Straight into the log rather than into a pipe, so that a stand three
     # quarters of an hour long can be watched while it runs.
     with open(path, 'w') as f:

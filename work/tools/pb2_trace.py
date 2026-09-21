@@ -22,7 +22,14 @@ WATCH = {
     'hit':   0x48,
     'cam_h': 0x66, 'cam_l': 0x67,
     'axis':  0x97,
+    # Э6.3.9 -- the screen a stage is picked on: $19 which of its steps is
+    # running and $22 which stage is picked.  $19 is a byte below $1A, so the
+    # watched window widens by the one byte.
+    'sel_step': 0x19, 'choice': 0x22,
     'stage': 0x53, 'area': 0x9C,
+    # $AD -- which half of the stage is being played, which $CF42 reads and
+    # $D7AB decides where a spent life starts from.
+    'phase': 0xAD,
     'state': P.field(1),  'face': P.field(2),  'pose': P.field(3),
     'anim_t': P.field(5), 'anim_f': P.field(6),
     'yh': P.field(8),  'yp': P.field(9),  'yf': P.field(10),
@@ -58,6 +65,24 @@ WATCH = {
     # out of a table by it).  Five is the level being played; the water only
     # moves then, because $CED2 is the fifth entry of that table.
     'w_live': 0x1A,
+    # Э6.3.6 -- the bar, the clock and the spares.  $A0 the suit's bar, $9D and
+    # $9E the spares, $57 whether the bell is set, $95/$96 the time, $2F and
+    # $30 how much of a refill is left to pour.  All above $1C, so the watched
+    # window does not widen.
+    'energy': 0xA0, 'ltanks': 0x9D, 'stanks': 0x9E,
+    'warn': 0x57, 'time_h': 0x95, 'time_l': 0x96,
+    'fill_l': 0x2F, 'fill_e': 0x30,
+    'stop': 0x58,            # $58 -- while anything holds the level still
+    # Э6.3.7 -- the suits' menu.  $4D whether it is open and $AF the suit he
+    # opened it wearing, which is what $D0DF compares to decide whether
+    # shutting it is a change of suit or no change at all.
+    'menu': 0x4D, 'came': 0xAF,
+    # $CD -- the driver's fifth track, which the change of suit waits on
+    # ($F02B).  It is the driver's own cell and not the game's.
+    'tune': 0xCD,
+    # $85:$86 -- the fraction a worn suit is drained by, which $D2BE counts
+    # down and takes a cell of the bar off when it runs under.
+    'drain_h': 0x85, 'drain_l': 0x86,
 }
 SHOT_SLOTS = (0x0401, 0x0402, 0x0403)
 # $AC5C: the objects that are solid to him keep a box each -- left, right,
@@ -320,12 +345,19 @@ def _trace(d, state, script, first, frames, during=()):
     # A byte written once, in the middle of the run, counted like the script's
     # own frames.  This is how a run is made to reach something the buttons
     # cannot: a door at the far end of an area is opened where it stands.
+    #
+    # Only the watched run below is given them.  The first run stops at the
+    # starting frame just to dump memory, and a poke counted from that frame
+    # lands after it, so handing the pokes over would change nothing there --
+    # while the watch, which reports what changed, sees the write itself.
+    late = []
     for a, v, fr in during:
-        sample += ['-poke', '%04X=%02X@%d' % (a, v, first + fr)]
+        late += ['-poke', '%04X=%02X@%d' % (a, v, first + fr)]
     subprocess.run(P.emu('-loadstate', state, '-input', inp,
                     '-frames', str(last + 1),
                     '-watch', '%04X-%04X' % (LO, HI), '-trace', log,
-                    '-tracefrom', '999999', '-traceto', '999999', *sample),
+                    '-tracefrom', '999999', '-traceto', '999999',
+                    *sample, *late),
                    check=True, capture_output=True)
     changes = {}
     seized = set()
@@ -382,7 +414,8 @@ def _trace(d, state, script, first, frames, during=()):
     subprocess.run(P.emu('-loadstate', state, '-input', inp,
                     '-frames', str(last + 1), '-watch', '0040-00A0',
                     '-trace', lo_log, '-tracefrom', '999999',
-                    '-traceto', '999999'), check=True, capture_output=True)
+                    '-traceto', '999999', *late),
+                   check=True, capture_output=True)
     for ln in open(lo_log):
         if not ln.startswith('WATCH'):
             continue

@@ -1355,10 +1355,10 @@ func _spit_3c(s: PackedByteArray) -> void:
 ## the level, and while it is set only the door and the thing at $03 move.
 ##
 ## Returns the places the sweep freed, in the order it walked them.
-## $BF32 -- один шаг прогулки по трём наборам цветов фона.  В трёх грозовых
-## областях она идёт вчетверо быстрее, а раз в 256 картинок гроза выключается
-## и включается снова -- это и есть седьмой бит $5C.  Пока меню костюма
-## открыто ($4D), не двигается ничего.
+## $BF32 -- one step of the walk through the three sets of background colours.
+## In the three stormy areas it goes four times as fast, and once every 256
+## pictures the storm switches off and on again -- that is the seventh bit of
+## $5C.  While the suit menu is open ($4D), nothing moves at all.
 func step_colour(menu: bool) -> void:
 	var thunder: bool = ((came == 2 and (area == 3 or area == 4))
 			or (came == 3 and area == 5))
@@ -1369,6 +1369,11 @@ func step_colour(menu: bool) -> void:
 			storm ^= 0x80
 			if storm >= 0x80:
 				return
+			# $BF61 -- the thunder.  The request stands on exactly the
+			# step the storm lights up on, and no harness judges it: $BF32
+			# is called by the picture's own order ($CEF0), and no stand
+			# compares that against the cartridge.  The place is Э6.3.7.
+			Pb2Sound.want(0x15)
 		if storm >= 0x80:                              # $BF66
 			return
 		if (frame & 0x03) != 0:
@@ -1957,6 +1962,11 @@ func _water_lava() -> void:
 func _water_swing() -> void:
 	var mask: int
 	if lvl.kind == 0x06:
+		# $D1D8 -- kind six is heard, one picture in sixteen ($1C AND $17
+		# covers four bits, not five).  Kind nine jumps past the asking at
+		# $D1D5 and swings in silence.
+		if (frame & 0x17) == 0:
+			Pb2Sound.want(0x25)                        # $D1E0
 		mask = 0x03
 	elif lvl.kind == 0x09:
 		mask = 0x07
@@ -7392,6 +7402,9 @@ func _blade_born(k: int, tier: int) -> void:
 	if dir == 0x02 and (slots[0][F_HOLD] & 0x40) == 0:
 		if ground(slots[k], 0x00, 0xE3) >= 0x80:
 			slots[k][F_Y] = (slots[0][F_Y] + 0xE3) & 0xFF
+	# $A338 -- and he has thrown it.  All four roads through $A33E arrive
+	# here, so the request stands unconditional, big fork over it or not.
+	Pb2Sound.want(0x1A)
 
 
 ## $A37F -- the beam a suit fires.  One picture and one speed for each of the
@@ -7413,6 +7426,7 @@ func _beam_born(k: int, tier: int) -> void:
 	# $A3C2 -- and water takes two frames of that life as well.
 	if (slots[0][F_HOLD] & 0x40) != 0 and suit != 0x02:
 		s[F_HOLD] = (s[F_HOLD] - 2) & 0xFF
+	Pb2Sound.want(0x22)                                # $A3D3 -- the beam
 
 
 ## $A358 -- water takes half the speed off what he throws, unless the suit
@@ -7700,6 +7714,7 @@ func _blade_step(k: int) -> void:
 	whirr = (whirr + 1) & 0xFF
 	if whirr == 0x0A:
 		whirr = 0
+		Pb2Sound.want(0x1A)                            # $A58C
 	if ground(s, 0x00, 0x00) >= 0x80:                  # $A591
 		clear(k)
 		return

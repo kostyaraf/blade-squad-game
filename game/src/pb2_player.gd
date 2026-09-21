@@ -475,6 +475,7 @@ func _suit_air(rising: bool) -> bool:
 				_snap_head(0xE0)
 			else:
 				_snap_head_obj(0xE0)
+			Pb2Sound.want(0x3A)         # $92E8 -- he has it
 			_shove_side()
 			_roof_start()
 			return true
@@ -530,7 +531,10 @@ func _air_grab() -> void:
 		return
 	# $93A1: a wall, but not one he is too near the foot of the screen for
 	if (pad & (LEFT | RIGHT)) and (y >> 8) < 0xC8 and _grab_wall():
-		_wall_start()                   # $9417
+		# $9417 -- the second road to the same noise: out of a slide it is
+		# $9182 that asks, here it is $9419, and both say "he caught it".
+		Pb2Sound.want(0x3A)
+		_wall_start()
 		return
 	_move_y()
 
@@ -613,6 +617,7 @@ func _fly() -> void:
 	var beat: int = ((fall >> 8) & 0xFF) + 1
 	if beat >= int(cfg["fly_beat"]):
 		beat = 0
+		Pb2Sound.want(0x16)             # $9BA4
 	fall = (fall & ~0xFF00) | ((beat & 0xFF) << 8)
 	_fly_along()
 	body_x = 0x2A
@@ -923,6 +928,7 @@ func _slide_reach() -> bool:
 	face_left = not face_left
 	y += 10 << 8
 	if _grab_wall():
+		Pb2Sound.want(0x3A)             # $9182 -- he caught it
 		_wall_start()
 		return true
 	face_left = not face_left
@@ -1437,6 +1443,9 @@ func _ladder_hold() -> void:
 	vx = 0
 	vy = 0
 	_anim_start(2)
+	# $9499 -- bare he catches it in silence; in a suit it clangs.
+	if suit != 0:
+		Pb2Sound.want(0x3A)             # $949D
 	state = 0x04
 	sub = SUB_LADDER
 
@@ -1667,6 +1676,7 @@ func _land() -> void:
 	if fall >= int(cfg["hard_landing"]) << 8:
 		_set_pose(POSE_CROUCH)
 		fall = (fall & ~0xFF) | 12
+		Pb2Sound.want(0x19)             # $9453 -- he came down hard
 		state = 0x08
 		sub = SUB_LANDED
 	else:

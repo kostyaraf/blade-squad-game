@@ -39,6 +39,8 @@ func _ready() -> void:
 	var oam := ""
 	var demo := ""
 	var timing := ""
+	var bar := ""
+	var flow := ""
 	var play := ""
 	var run := ""
 	var give := ""
@@ -88,6 +90,8 @@ func _ready() -> void:
 		elif a.begins_with("--oam="): oam = a.substr(6)
 		elif a.begins_with("--demo="): demo = a.substr(7)
 		elif a.begins_with("--time="): timing = a.substr(7)
+		elif a.begins_with("--bar="): bar = a.substr(6)
+		elif a.begins_with("--flow="): flow = a.substr(7)
 		elif a.begins_with("--play="): play = a.substr(7)
 		elif a.begins_with("--run="): run = a.substr(6)
 		elif a.begins_with("--give="): give = a.substr(7)
@@ -118,6 +122,10 @@ func _ready() -> void:
 		elif a.begins_with("--sound="): sound = a.substr(8)
 		elif a.begins_with("--apu="): apu = a.substr(6)
 		elif a.begins_with("--sndplay="): sndplay = a.substr(10)
+	if flow != "":
+		_run_flow(flow)
+		get_tree().quit()
+		return
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -272,6 +280,10 @@ func _ready() -> void:
 		return
 	if timing != "":
 		_run_time(timing, stage, area)
+		get_tree().quit()
+		return
+	if bar != "":
+		_run_bar(bar)
 		get_tree().quit()
 		return
 	if demo != "":
@@ -3187,7 +3199,11 @@ func _run_replay(path: String) -> void:
 	var view := Pb2Camera.new(level_pb2)
 	view.place(int(cfg["cam"]) >> 8, int(cfg["cam"]) & 0xFF,
 			int(cfg["cam_pend"]), int(cfg["clock"]))
+	# Э6.3.4 -- and the noises his own step asked for, when the stand wants
+	# them: one field more on the line, in the order they were asked.
+	var noise := bool(cfg.get("noise", false))
 	var out := PackedStringArray()
+	Pb2Sound.forget()
 	for f in cfg["frames"]:
 		p.solids = f["solids"]
 		p.held = int(f["hold"])
@@ -3207,8 +3223,15 @@ func _run_replay(path: String) -> void:
 		p.step(int(f["pad"]), int(f["hit"]), view.pos,
 				int(f["shots"]), int(f["lim"]))
 		view.decide(((p.y if level_pb2.vertical else p.x) >> 8) & 0xFF)
-		out.append("%d %d %d %d %d %d %d %d" % [p.x, p.y, p.vx, p.vy,
-				p.state, p.sub, p.pose, 1 if p.face_left else 0])
+		var line := "%d %d %d %d %d %d %d %d" % [p.x, p.y, p.vx, p.vy,
+				p.state, p.sub, p.pose, 1 if p.face_left else 0]
+		if noise:
+			var say := PackedStringArray()
+			for n in Pb2Sound.asked:
+				say.append("%02X" % int(n))
+			line += " |%s" % (" ".join(say) if say.size() else "-")
+			Pb2Sound.forget()
+		out.append(line)
 	print("\n".join(out))
 
 
@@ -4335,9 +4358,13 @@ func _run_weapon(path: String) -> void:
 	# what he throws is really thrown.
 	p.world = things
 	var out := PackedStringArray()
+	# Э6.3.5 -- and the noises the throws asked for, when the stand wants
+	# them: one field more on the line, in the order they were asked.
+	var noise := bool(cfg.get("noise", false))
 	# Nothing has been handed over yet, so the first table is told and not
 	# judged: the throws in it were made over steps the engine never saw.
 	var told := false
+	Pb2Sound.forget()
 	for f in cfg["frames"]:
 		var bad := PackedStringArray()
 		var wholes: Array = f["whole"]
@@ -4380,6 +4407,13 @@ func _run_weapon(path: String) -> void:
 				var w2: Array = tbl[n]
 				for fl in range(Pb2Objects.FIELDS):
 					s2[fl] = int(w2[fl])
+			# $A57D -- the blade's whirr counts its frames in $0400, which is
+			# the type of his own place and belongs to nobody.  The port keeps
+			# it in a field of its own, so the count is not carried over with
+			# the table: it is set once, out of the first table handed over,
+			# and after that the engine runs it itself.
+			if not told and not tbl.is_empty():
+				things.whirr = int(tbl[0][Pb2Objects.F_TYPE])
 			told = told or not tbl.is_empty()
 			if i != 0:
 				continue
@@ -4430,7 +4464,15 @@ func _run_weapon(path: String) -> void:
 			p.step(int(f["pad"]), int(f["hit"]), view.pos,
 					int(f["shots"]), int(f["lim"]))
 			view.decide(((p.y if level_pb2.vertical else p.x) >> 8) & 0xFF)
-		out.append("%d %s" % [p.charge, " ".join(bad) if bad.size() else "-"])
+		var line := "%d %s" % [p.charge,
+				" ".join(bad) if bad.size() else "-"]
+		if noise:
+			var say := PackedStringArray()
+			for n in Pb2Sound.asked:
+				say.append("%02X" % int(n))
+			line += " |%s" % (" ".join(say) if say.size() else "-")
+			Pb2Sound.forget()
+		out.append(line)
 	print("\n".join(out))
 
 
@@ -4451,6 +4493,10 @@ func _run_water(path: String) -> void:
 	view.wait = int(cfg["still"])
 	view.grip = int(cfg["grip"])
 	var out := PackedStringArray()
+	# Э6.3.6 -- and the noise the swinging water asks for, when the stand
+	# wants it: one field more on the line.
+	var noise := bool(cfg.get("noise", false))
+	Pb2Sound.forget()
 	for f in cfg["frames"]:
 		things.frame = int(f["clock"])
 		things.playing = int(f["mode"])
@@ -4459,7 +4505,14 @@ func _run_water(path: String) -> void:
 		# $D924 -- and then the view takes its hold and counts the same wait
 		# down a second time.
 		view.drive()
-		out.append("%d %d %d" % [things.water, things.draw, things.flow])
+		var line := "%d %d %d" % [things.water, things.draw, things.flow]
+		if noise:
+			var say := PackedStringArray()
+			for n in Pb2Sound.asked:
+				say.append("%02X" % int(n))
+			line += " |%s" % (" ".join(say) if say.size() else "-")
+			Pb2Sound.forget()
+		out.append(line)
 	print("\n".join(out))
 
 
@@ -4600,6 +4653,7 @@ func _start_play(st: int, ar: int) -> void:
 	# clock is concerned; a door goes through $1A := 6 and never touches it.
 	if opened:
 		status.restart_time(came, phase)
+		Pb2Flow.stage_tune(came, ar)                # $CE22 -> $CE25
 	turn = Pb2Turn.new(level_pb2, world, hero, view, status)
 	view.place(level_pb2.cam_start_page, level_pb2.cam_start_low, 0, 0)
 	hero.place(level_pb2.start_x, level_pb2.start_y, view.pos)
@@ -4656,6 +4710,7 @@ func _step_pb2() -> void:
 		_start_play(level_pb2.stage, world.area)
 		# $CE45 -- the other half of a stage is given its own time.
 		status.restart_time(came, phase)
+		Pb2Flow.stage_again(came, world.area)       # $CFCF
 		_apply()
 		return
 	if how == Pb2Turn.DIED:
@@ -4695,9 +4750,15 @@ func _next_area() -> void:
 		status.cleared |= 1 << came
 		_start_choice()
 		return
-	var st: int = 6 if world.boss != 0 else level_pb2.stage
+	# $79 -- whether a boss's room is what is being built, which the door set
+	# before it asked for the building and the building does not touch.
+	var boss: int = world.boss
+	var st: int = 6 if boss != 0 else level_pb2.stage
 	var ar: int = world.area
 	_start_play(st, ar)
+	# $CF42 -- the one area with a tune of its own, and then a boss's room if
+	# a boss's room is what was built.
+	Pb2Flow.area_again(came, ar, phase, boss)
 	_apply()
 
 
@@ -4705,14 +4766,30 @@ func _next_area() -> void:
 ## left the game is over and the stage begins from its first area.
 func _die() -> void:
 	died_count += 1
+	# $CFF7 and $D01C -- steps eight and ten: the tune of it, and then be
+	# quiet once the tune has finished.  The cartridge sits on step nine for
+	# two hundred pictures between the two of them; the engine has nothing to
+	# show there yet, so it does both at once.
+	Pb2Flow.died()
+	Pb2Flow.mourned()
 	if lives > 0:
 		lives -= 1
-		_start_play(level_pb2.stage, level_pb2.area)
+		# $D7AB -- where a spent life puts him, which is not the area he died
+		# in: the top of the stage, or its middle if he had got past it and
+		# owns the suit that is kept there.
+		var to: Array = Pb2Flow.life_area(came, level_pb2.area, phase,
+				status.owned)
+		phase = int(to[1])
+		_start_play(level_pb2.stage, int(to[0]))
 	else:
 		lives = 2                                   # $D090: $18 := 2
+		phase = 0
 		_start_play(level_pb2.stage, 0)
 	# $D063 -- a life lost is a clock wound up again.
 	status.restart_time(came, phase)
+	# $D066 -- and the stage's tune again, read from where the life starts.
+	Pb2Flow.stage_tune(came, level_pb2.area)
+	Pb2Flow.area_again(came, level_pb2.area, phase, 0)   # $D069, $79 nought
 	_apply()
 
 
@@ -4830,6 +4907,121 @@ func _run_demo(spec: String, st: int, ar: int) -> void:
 ## the run began, how many pictures to play, and a time to start from instead
 ## of the one the stage gives.  One line a picture: the time as the
 ## bar would show it, and whether the bell is ringing.
+## Э6.3.6: the bar, the clock and what he picks up -- $CDB8 and nothing else.
+##
+## `Pb2Status` alone, driven one step at a time: the picture count is handed
+## over from the recording (the two refills and the clock are all measured on
+## it), and so is every byte the cartridge was poked with -- the mode it was
+## put into, the time it was given, the collectable it was handed.  What is put
+## out is the counters, and after them the noises the step asked for.
+func _run_bar(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	status = Pb2Status.new()
+	status.stage = int(cfg.get("stage", 0))
+	status.area = int(cfg.get("area", 0))
+	status.boss = int(cfg.get("boss", 0))
+	status.suit = int(cfg.get("suit", 0))
+	status.owned = int(cfg.get("owned", 0))
+	status.life = int(cfg.get("life", 0x10))
+	status.energy = int(cfg.get("energy", 0))
+	status.tanks = int(cfg.get("tanks", 0))
+	status.life_tanks = int(cfg.get("life_tanks", 0))
+	status.power_level = int(cfg.get("power", 0))
+	status.second_blade = int(cfg.get("second", 0))
+	status.extra_shot = int(cfg.get("extra", 0))
+	status.drain_hi = int(cfg.get("drain_hi", 0))
+	status.drain_lo = int(cfg.get("drain_lo", 0))
+	status.time_hi = int(cfg.get("time_hi", 0))
+	status.time_lo = int(cfg.get("time_lo", 0))
+	status.warn = int(cfg.get("warn", 0))
+	status.mode = int(cfg.get("mode", Pb2Status.PLAY))
+	var out := PackedStringArray()
+	Pb2Sound.forget()
+	for f in cfg["frames"]:
+		# Whatever the cartridge was poked with at this step, poked here too.
+		if f.has("mode"):
+			status.mode = int(f["mode"])
+		if f.has("fill_life"):
+			status.refill_life = int(f["fill_life"])
+		if f.has("fill_energy"):
+			status.refill_energy = int(f["fill_energy"])
+		if f.has("life"):
+			status.life = int(f["life"])
+		if f.has("energy"):
+			status.energy = int(f["energy"])
+		if f.has("time_hi"):
+			status.time_hi = int(f["time_hi"])
+			status.time_lo = int(f["time_lo"])
+			status.warn = int(f["warn"])
+		# $B4AF -- a collectable he walked into, handed over by its subtype.
+		if f.has("take"):
+			status.take(int(f["take"]))
+		# $CD -- the driver's fifth track, which the change of suit waits
+		# on.  The driver is not on trial here, so its cell is handed over.
+		if f.has("tune"):
+			status.tune_busy = int(f["tune"])
+		# $9A -- the suit, which the menu's own picking ($D259) is not in
+		# this harness: the stand writes it where the picking would have.
+		if f.has("suit"):
+			status.suit = int(f["suit"])
+		status.frozen = bool(f.get("frozen", false))
+		# $1C -- the count itself, and step() takes it on by one as $CD5A
+		# does, so it is put back one to land on the recording's own.
+		status.clock = (int(f["clock"]) - 1) & 0xFF
+		status.bell = false
+		# $48 -- what has just gone down this picture, which is all $D0A6
+		# reads of the pad.
+		status.step(int(f.get("hit", 0)))
+		var say := PackedStringArray()
+		for n in Pb2Sound.asked:
+			say.append("%02X" % int(n))
+		out.append("%d %d %d %d %02X %02X %d %d %d |%s"
+				% [status.mode, status.life, status.energy, status.warn,
+				status.time_hi, status.time_lo, status.life_tanks,
+				status.menu, status.came_in,
+				" ".join(say) if say.size() else "-"])
+		Pb2Sound.forget()
+	print("\n".join(out))
+
+
+## The tunes of the level's own flow, asked for one step at a time.
+##
+## `Pb2Flow` is the whole of what is under test and it keeps nothing, so there
+## is no level here and no picture: each line of the config names a step of
+## $1A and the four bytes that step's gates read, and what comes out is the
+## numbers that step asked the driver for, in order.
+func _run_flow(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var out := PackedStringArray()
+	for e in cfg["events"]:
+		var st: int = int(e.get("stage", 0))
+		var ar: int = int(e.get("area", 0))
+		var ph: int = int(e.get("phase", 0))
+		var bs: int = int(e.get("boss", 0))
+		Pb2Sound.forget()
+		# $9C and $AD -- where a spent life puts him, which step eleven works
+		# out for itself ($D7AB) and the other steps are handed.
+		var said_to := ""
+		match int(e["step"]):
+			2: Pb2Flow.stage_tune(st, ar)               # $CE14 -> $CE25
+			6: Pb2Flow.area_again(st, ar, ph, bs)       # $CF3C
+			7: Pb2Flow.stage_again(st, ar)              # $CFBA
+			8: Pb2Flow.died()                           # $CFF7
+			10: Pb2Flow.mourned()                       # $D017
+			11:
+				var to: Array = Pb2Flow.life_spent(st, ar, ph,
+						int(e.get("owned", 0)))         # $D022
+				said_to = " %d %d" % [int(to[0]), int(to[1])]
+			12: Pb2Flow.continued(st, ar, bs)           # $CFB4
+		var say := PackedStringArray()
+		for n in Pb2Sound.asked:
+			say.append("%02X" % int(n))
+		out.append("%d%s |%s" % [int(e["step"]), said_to,
+				" ".join(say) if say.size() else "-"])
+	Pb2Sound.forget()
+	print("\n".join(out))
+
+
 func _run_time(spec: String, st: int, ar: int) -> void:
 	var f := spec.split(":")
 	pads = [Pad.player_one(), Pad.player_two()]
@@ -5281,6 +5473,7 @@ func _pick(n: int) -> void:
 	phase = 0                                       # $A08F -- a fresh stage
 	_start_play(n, 0)
 	status.restart_time(came, phase)                # $CE45
+	Pb2Flow.stage_tune(came, 0)                     # $CE25
 	_apply()
 
 
