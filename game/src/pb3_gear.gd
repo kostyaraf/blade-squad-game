@@ -85,10 +85,15 @@ func _init(kinds: Array, energy_: int = 16, tanks_: int = 0) -> void:
 		# $56 -- every suit at once, which is the whole of Э5.5 on this side.
 		for m in s.cfg["own_mask"]:
 			s.owned |= int(m)
-		# The clock is the level's and not the gear's; a stage with no clock
-		# is how $CEEC says so, and that is stage six, area nought.
-		s.stage = Pb2Status.LAST_STAGE
-		s.area = 0
+		# The clock is the level's and not the gear's, and it is stopped by
+		# leaving it nothing to count: $CA3A turns back the moment $52/$53
+		# are both nought, which is where `Pb2Status` starts them.
+		#
+		# The other way of saying it -- the last stage's nought-th area,
+		# which is how $CEEC is told a stage has no clock -- cannot be used
+		# here, because $D0AC shuts the menu on exactly that triple, and a
+		# bar that offers everything from the start is the whole of Э5.5.
+		# The stand walks the menu out itself, and that is how it was found.
 		st.append(s)
 
 
