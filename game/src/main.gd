@@ -53,6 +53,7 @@ func _ready() -> void:
 	var menuwalk := ""
 	var keepwalk := ""
 	var titlewalk := ""
+	var passwalk := ""
 	var choose := ""
 	var play := ""
 	var run := ""
@@ -108,6 +109,7 @@ func _ready() -> void:
 		elif a.begins_with("--menu="): menuwalk = a.substr(7)
 		elif a.begins_with("--keep="): keepwalk = a.substr(7)
 		elif a.begins_with("--title="): titlewalk = a.substr(8)
+		elif a.begins_with("--pass="): passwalk = a.substr(7)
 		elif a.begins_with("--choose="): choose = a.substr(9)
 		elif a.begins_with("--play="): play = a.substr(7)
 		elif a.begins_with("--run="): run = a.substr(6)
@@ -149,6 +151,10 @@ func _ready() -> void:
 		return
 	if titlewalk != "":
 		await _run_title(titlewalk)
+		get_tree().quit()
+		return
+	if passwalk != "":
+		await _run_pass(passwalk)
 		get_tree().quit()
 		return
 	if choose != "":
@@ -3419,6 +3425,10 @@ func _apply() -> void:
 		img = title.page_image
 		size = Vector2(Pb2Title.WIDTH, Pb2Title.HEIGHT)
 		banks = title.banks + title.spr_banks
+	elif secret != null:
+		img = secret.page_image
+		size = Vector2(Pb2Pass.WIDTH, Pb2Pass.HEIGHT)
+		banks = secret.banks + secret.spr_banks
 	elif select != null:
 		# The screen a stage is picked on owns the whole of the picture: no
 		# bar under it and no level behind it.
@@ -3503,6 +3513,10 @@ func _process(dt: float) -> void:
 		return
 	if title != null:
 		_title_show()
+		queue_redraw()
+		return
+	if secret != null:
+		_pass_show()
 		queue_redraw()
 		return
 	_bar_show(bg.material)
@@ -3612,11 +3626,64 @@ func _title_step() -> void:
 		_progress_read()
 		_apply()
 		return
-	# The two other ways out are screens this port does not have: $9672, where
-	# a password is typed, is Э7.6, and $EE31, the game showing itself off, is
-	# nobody's yet.  Neither is quietly pretended at -- the asking screen
-	# comes back up instead.
+	if took == Pb2Title.GOES_TO[1]:
+		# $8018 = $9672 -- the screen a password is typed on.
+		_start_pass()
+		return
+	# The one way out left is a screen this port does not have: $EE31, the
+	# game showing itself off, is nobody's yet.  It is not quietly pretended
+	# at -- the asking screen comes back up instead.
 	_start_menu()
+
+
+## $9672 -- the screen a password is typed on, up, and the whole of the
+## picture its own.
+func _start_pass() -> void:
+	secret = Pb2Pass.new()
+	pal_tex = Nes.palette_texture(secret.palette)
+	origin = Vector2i.ZERO
+	view_h = 240
+	bar = null
+	oam = PackedByteArray()
+	oam.resize(Pb2Sprites.OAM)
+	oam.fill(Pb2Sprites.HIDDEN)
+	var img := Image.create(Pb2Sprites.SPRITES, 1, false, Image.FORMAT_RGBA8)
+	oam_tex = ImageTexture.create_from_image(img)
+	bg.material.set_shader_parameter("oam", oam_tex)
+	oam = Pb2Sprites.build(secret.slots, rot, oam)
+	rot = (rot + Pb2Sprites.ROTATE) & 0xFF
+	_apply()
+
+
+## $9672 -- one picture of it, and what the password it was given opened.
+func _pass_step() -> void:
+	# $48 -- the first player's newly pressed, which is the only pad this
+	# screen reads.
+	var took: int = secret.step(pads[0].pressed)
+	oam = Pb2Sprites.build(secret.slots, rot, oam)
+	rot = (rot + Pb2Sprites.ROTATE) & 0xFF
+	if took < 0:
+		return
+	_pass_took()
+
+
+## $9745 and $974F -- the two screens a password opens are the screen a stage
+## is picked on and the one after it, and this port has neither (Э3.10b).  So
+## what it opens is the first area of the stage the password named, the way the
+## command line opens one, carrying what the password said about the stages
+## behind him and the suits he has found.
+func _pass_took() -> void:
+	var was_cleared: int = secret.cleared
+	var was_owned: int = secret.suits
+	var st: int = secret.stage
+	secret = null
+	_start_play(st, 0)
+	# $5B and $56 -- and these are not read back out of the file: a password
+	# just typed is the newer word of the two.  What it opened is written down
+	# by the watching itself (Э7.3), so a password is another way of saving.
+	status.cleared = was_cleared
+	status.owned = was_owned
+	_apply()
 
 
 ## Э7.3 -- what was kept, put back where the game carries it.
@@ -3723,6 +3790,87 @@ func _title_line(t: Pb2Title, took: int) -> String:
 			" ".join(say) if say.size() else "-"]
 
 
+## Э7.6's harness -- the screen a password is typed on, walked by a script of
+## pad words, one line to a picture.
+##
+## `Pb2Pass` is the whole of the screen, so the harness hands over the pad and
+## says what came out: the step, the place the caret stands at, the count left
+## in the wait, the twelve digits on the screen and the twelve the verdict laid
+## out, the six bytes it found, what the password said about the stages and the
+## suits, the caret's own three fields, the screen it left for and the step of
+## that screen, and what was asked of the driver.
+##
+## The screen is raised and shown the way the game raises and shows it, so a
+## picture asked for here is the port's own picture.
+func _run_pass(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	Pb2Sound.forget()
+	game = "pb2"
+	var shots: Dictionary = cfg.get("shots", {})
+	_start_pass()
+	var t: Pb2Pass = secret
+	# $1C -- the console's own count, which the going dark steps by and which
+	# nothing in this port keeps across screens: it is handed over from the
+	# recording, and put back one because step() takes it on first, the way
+	# $ED62 does before the screen's own step.
+	t.clock = (int(cfg.get("clock", 1)) - 1) & 0xFF
+	var out := PackedStringArray()
+	out.append(_pass_line(t, -1))
+	var n := 0
+	for f in cfg["frames"]:
+		# $48 -- the first pad's edge, which is all this screen reads.
+		var took: int = t.step(int(f.get("hit", 0)))
+		oam = Pb2Sprites.build(t.slots, rot, oam)
+		rot = (rot + Pb2Sprites.ROTATE) & 0xFF
+		out.append(_pass_line(t, took))
+		if shots.has(str(n)):
+			_pass_show()
+			await RenderingServer.frame_post_draw
+			get_viewport().get_texture().get_image().save_png(shots[str(n)])
+		if took >= 0:
+			# $9737 -- the screen is gone; there is nothing left to walk, and
+			# what it opened is the game's own doing, not the harness's: the
+			# last line says which stage was opened and what the password
+			# granted, so that the wiring is judged and not only the screen.
+			_pass_took()
+			out.append("> %d %d %02X %02X" % [status.stage, status.area,
+					status.cleared, status.owned])
+			break
+		n += 1
+	print("\n".join(out))
+
+
+func _pass_line(t: Pb2Pass, took: int) -> String:
+	var say := PackedStringArray()
+	for n in Pb2Sound.asked:
+		say.append("%02X" % int(n))
+	Pb2Sound.forget()
+	var one: PackedByteArray = t.slots[0]
+	var seen := PackedStringArray()
+	for v in t.field:
+		seen.append("%X" % v)
+	var out := PackedStringArray()
+	for v in t.laid:
+		out.append("%X" % v)
+	var got := PackedStringArray()
+	for v in t.found:
+		got.append("%02X" % v)
+	# $03E0..$03FF -- the shadow palette, which the going dark steps a colour
+	# at a time ($80D9): the one thing this screen changes that no counter
+	# anywhere says a word about.
+	var paint := PackedStringArray()
+	for v in t.palette:
+		paint.append("%02X" % v)
+	return "%d %d %02X %s %s %s %02X %02X %02X %02X %02X %d %d %s |%s" % [
+			t.step_no, t.spot, t.wait,
+			"".join(seen), "".join(out), "".join(got),
+			t.cleared, t.suits,
+			one[Pb2Objects.F_Y], one[Pb2Objects.F_X],
+			one[Pb2Objects.F_KIND],
+			took, t.next_step, "".join(paint),
+			" ".join(say) if say.size() else "-"]
+
+
 ## Э7.3's harness -- the port's own remembering, one picture at a time.
 ##
 ## Everything here is the way a player goes: the screen goes up, a script of
@@ -3738,20 +3886,29 @@ func _run_keep(path: String) -> void:
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if bool(cfg.get("forget", false)):
 		DirAccess.remove_absolute(Pb3Save.PATH)
-	pads = [Pad.player_one(), Pad.player_two()]
-	_start_menu()
+	# A stand has no keys, so the pad the whole run reads is the harness's
+	# own: the asking screen is not the only screen on the way in any more --
+	# Power Blade 2 stands on its title screen first (Э7.4), and START there
+	# is what starts the game.
 	var hand := Pad.new({}, -1)
+	pads = [hand, Pad.new({}, -1)]
+	pads[1].handed = 0
+	_start_menu()
 	var keys: Array = cfg.get("keys", [])
 	var pokes: Dictionary = cfg.get("pokes", {})
 	var out := PackedStringArray()
 	for t in range(int(cfg.get("frames", 0))):
 		var said := "-"
+		# What `Pad.poll` works out from the console's two reads, handed over
+		# directly, exactly as Э7.2's harness hands it over.
+		# The word is handed to the pad and not written into it: `_step_game`
+		# polls every pad before it steps anything, so anything written would
+		# be worked out all over again from what was handed.
+		hand.handed = int(keys[t]) if t < keys.size() else 0
 		if menu != null:
-			# What `Pad.poll` works out from the console's two reads, handed
-			# over directly, exactly as Э7.2's harness hands it over.
-			var word: int = int(keys[t]) if t < keys.size() else 0
-			hand.pressed = word & ~hand.held
-			hand.held = word
+			# The asking screen is stepped straight from here and not through
+			# `_step_game`, so the pad is read here too.
+			hand.poll()
 			menu.step(hand)
 			# The screen may settle on this very picture, and then it is the
 			# picture it settled on: what it settled on is the next line's.
@@ -3760,7 +3917,13 @@ func _run_keep(path: String) -> void:
 			if pokes.has(str(t)):
 				_poke_progress(pokes[str(t)])
 			_step()
-			said = JSON.stringify(_progress_now())
+			var now: Dictionary = _progress_now()
+			# A screen that stands between the asking and the game -- Power
+			# Blade 2's title screen and the one a password is typed on --
+			# carries nothing to remember, and says so the same way the
+			# asking screen does.
+			said = "on the screen" if now.is_empty() \
+					else JSON.stringify(now)
 		out.append("%d |%s |%s |%s"
 				% [t, "-" if menu != null else game,
 				"keeping" if keeping else "-", said])
@@ -3810,6 +3973,9 @@ func _step_game() -> void:
 		return
 	if title != null:
 		_title_step()
+		return
+	if secret != null:
+		_pass_step()
 		return
 	if choosing:
 		_choice_step()
@@ -5162,6 +5328,27 @@ func _title_show() -> void:
 	oam_tex.update(img)
 
 
+## The password screen's own picture.  The page goes over again every picture,
+## because a digit that was turned changes a word of it ($9940), and so do the
+## colours: the going out fades them a step every sixteenth picture ($80D9).
+func _pass_show() -> void:
+	var m: ShaderMaterial = bg.material
+	m.set_shader_parameter("scroll", Vector2.ZERO)
+	m.set_shader_parameter("split_at", 1000.0)
+	m.set_shader_parameter("clip_left", 0.0)
+	m.set_shader_parameter("banks",
+			PackedInt32Array(secret.banks + secret.spr_banks))
+	m.set_shader_parameter("sprites_on", true)
+	Nes.update_palette(pal_tex, secret.palette)
+	m.set_shader_parameter("palette", pal_tex)
+	map_tex.update(secret.page_image)
+	var img := Image.create(Pb2Sprites.SPRITES, 1, false, Image.FORMAT_RGBA8)
+	for i in range(Pb2Sprites.SPRITES):
+		img.set_pixel(i, 0, Color8(oam[i * 4], oam[i * 4 + 1],
+				oam[i * 4 + 2], oam[i * 4 + 3]))
+	oam_tex.update(img)
+
+
 ## The picking screen's own picture: the ground where the ride has left it and
 ## the two sprites -- the man and the sign over the stage he is standing at.
 func _choice_show() -> void:
@@ -5785,6 +5972,8 @@ var choice := 0                                     ## $22
 var select: Pb2Select = null
 ## Э7.4 -- $ED7B, the screen the cartridge opens on, while it is up.
 var title: Pb2Title = null
+## Э7.6 -- $9672, the screen a password is typed on, while it is up.
+var secret: Pb2Pass = null
 
 
 ## $88F0 -> $18 := 5 -> the map -> $18/$19 := 3/20.  The stage the choice opens

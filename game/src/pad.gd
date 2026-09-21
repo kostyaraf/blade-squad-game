@@ -15,6 +15,12 @@ const RIGHT := 0x01
 
 var held: int = 0
 var pressed: int = 0          # newly down this frame
+## A stand has no keys, so it hands the word over instead of pressing it:
+## anything but -1 is read in place of the console's own two reads.  What is
+## handed over is taken as the console would have reported it, cleaned up
+## already -- a stand that hands left and right at once is saying the
+## cartridge saw both, which it could not.
+var handed: int = -1
 var _keys: Dictionary
 var _device: int
 
@@ -25,6 +31,10 @@ func _init(keys: Dictionary, device: int) -> void:
 
 
 func poll() -> void:
+	if handed >= 0:
+		pressed = handed & ~held
+		held = handed
+		return
 	var now := 0
 	for bit in _keys:
 		if Input.is_key_pressed(_keys[bit]):

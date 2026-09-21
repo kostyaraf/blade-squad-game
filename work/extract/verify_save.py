@@ -73,6 +73,14 @@ BY_HAND = [
     ('the asking screen', ['--menu=']),
 ]
 
+# $EDA3 -- how long Power Blade 2's title screen waits before it reads the pad
+# at all, and a few pictures over: $80 for the first wait, and step 2 is live
+# from the picture after it (Э7.4).  $EDFB -- and how long the taken row
+# blinks before the screen hands over: another $80, and a few over again.
+TITLE_WAIT = 0x80 + 4
+TITLE_GO = 0x80 + 4
+
+
 # The scripts that settle Э7.2's screen on a row: down to it, and START.  A
 # button has to be let go of before it counts again, which is the pad both
 # cartridges read.
@@ -84,10 +92,17 @@ def settle(row):
 
 
 def walk(row, pokes_at, tail=4, forget=False):
-    """A whole run: settle on a row, poke what a finished stage would have
-    moved, and go on for a few more pictures so that the looking-over has
-    something to look at twice."""
+    """A whole run: settle on a row, settle whatever screen the game opens
+    on, poke what a finished stage would have moved, and go on for a few more
+    pictures so that the looking-over has something to look at twice."""
     keys = settle(row)
+    if ROWS[row] == 'pb2':
+        # $ED7B -- Power Blade 2 does not start on a stage but on its
+        # title screen, and START on its first row is what starts one.
+        # The screen is deaf until its first wait is out and it does not
+        # hand over until the taken row has blinked itself out, so the
+        # stand waits out both the way a player would.
+        keys += [0] * TITLE_WAIT + [START, 0] + [0] * TITLE_GO
     pokes = {str(len(keys) + n): what for n, what in pokes_at}
     return {'forget': forget, 'keys': keys, 'pokes': pokes,
             'frames': len(keys) + tail}
