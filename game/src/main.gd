@@ -21,6 +21,12 @@ var map_tex: ImageTexture
 var clock := Clock.new()
 var pads: Array[Pad] = []
 
+## Э6.3.1 -- the sound, and nothing of it unless somebody is playing.  A stand
+## walks pictures by the hundred thousand and wants none of this, so `snd` is
+## left null there and every seam below falls through.
+var snd: SndPlay = null
+var snd_out: AudioStreamPlayer = null
+
 
 func _ready() -> void:
 	var shots := ""
@@ -62,6 +68,7 @@ func _ready() -> void:
 	var solwalk := ""
 	var sound := ""
 	var apu := ""
+	var sndplay := ""
 	var stage := 0
 	var area := 0
 	for a in OS.get_cmdline_user_args():
@@ -110,6 +117,7 @@ func _ready() -> void:
 		elif a.begins_with("--solwalk="): solwalk = a.substr(10)
 		elif a.begins_with("--sound="): sound = a.substr(8)
 		elif a.begins_with("--apu="): apu = a.substr(6)
+		elif a.begins_with("--sndplay="): sndplay = a.substr(10)
 	if replay != "":
 		_run_replay(replay)
 		get_tree().quit()
@@ -132,6 +140,10 @@ func _ready() -> void:
 		return
 	if apu != "":
 		_run_apu(apu)
+		get_tree().quit()
+		return
+	if sndplay != "":
+		_run_sndplay(sndplay)
 		get_tree().quit()
 		return
 	if solwalk != "":
@@ -267,6 +279,7 @@ func _ready() -> void:
 		get_tree().quit()
 		return
 	pads = [Pad.player_one(), Pad.player_two()]
+	_snd_raise()
 	# The bar is drawn by this node itself, and a node draws under its own
 	# children unless it is told otherwise.
 	bg.z_index = -1
@@ -3169,11 +3182,41 @@ func _run_replay(path: String) -> void:
 	print("\n".join(out))
 
 
+## Э6.3.1 -- the sound, raised for the game that is about to be played.
+##
+## The node is made here and not put in `main.tscn`: a stand runs Godot with
+## no sound card at all (`--headless`), and a scene with a player in it would
+## have to carry one for nothing.  Without a card `get_stream_playback` hands
+## back nothing, the chip goes on counting, and the samples simply pile up and
+## are dropped -- which is what `SndPlay.dropped` is for.
+func _snd_raise() -> void:
+	snd = SndPlay.new(game)
+	var gen := AudioStreamGenerator.new()
+	gen.mix_rate = SndPlay.RATE
+	# A twelfth of a second of room.  Less and a picture that took too long on
+	# the monitor's side is heard as a hole; more and a sound lags its picture.
+	gen.buffer_length = 0.08
+	snd_out = AudioStreamPlayer.new()
+	snd_out.stream = gen
+	add_child(snd_out)
+	snd_out.play()
+
+
+## The level's game changed, so the driver does.  A driver holds a tune in its
+## own tables, and the other game's tables are not the same tables, so nothing
+## is carried over: the old one stops and the new one starts silent.
+func _snd_use(g: String) -> void:
+	if snd == null or snd.game == g:
+		return
+	snd = SndPlay.new(g)
+
+
 var _cache := {}
 
 
 func _load(g: String, stage: int, area: int) -> void:
 	game = g
+	_snd_use(g)
 	stage_sol = stage
 	var key := "%s/%d/%d" % [g, stage, area]
 	if game == "pb2":
@@ -3354,6 +3397,8 @@ func _process(dt: float) -> void:
 		return
 	for _i in range(clock.tick(dt)):
 		_step()
+	if snd != null and snd_out != null:
+		snd.pump(snd_out.get_stream_playback())
 	if sol_flow != null and (sol_flow.screen != "" or level_sol == null):
 		_sol_screen_frame()
 		queue_redraw()
@@ -3372,7 +3417,16 @@ func _process(dt: float) -> void:
 		queue_redraw()
 
 
+## One picture.  The game moves first and the driver last, the way the console
+## has it: the cartridge's own driver runs out of the interrupt handler, after
+## the picture the game has just finished asking for.
 func _step() -> void:
+	_step_game()
+	if snd != null:
+		snd.step()
+
+
+func _step_game() -> void:
 	for p in pads:
 		p.poll()
 	if choosing:
@@ -5295,6 +5349,27 @@ func _run_apu(path: String) -> void:
 		of.store_buffer(chip.wave())
 		of.close()
 		print("apu %s %d %d" % [r["say"], cycles, chip.out_n / 2])
+
+
+## Э6.3.1 -- the seat, with nobody sitting in it.  Each run is a game and a
+## number of pictures; what comes back is how many cycles of the chip those
+## pictures were worth and how many samples came out of them.  Nothing here
+## listens: `verify_snd_play.py` counts.
+func _run_sndplay(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(
+			FileAccess.get_file_as_string(path))
+	for r in cfg["runs"]:
+		var s := SndPlay.new(String(r["game"]))
+		if r.has("ask"):
+			s.ask(int(r["ask"]))
+		for _i in range(int(r["pictures"])):
+			s.step()
+			# Nobody is taking them, so they are thrown away by the handful,
+			# the way the player would if the monitor stopped.  What is being
+			# counted is `made`, which is every sample the chip ever made.
+			s.pump(null)
+		print("play %s %d %d %d %d" % [r["game"], int(r["pictures"]),
+				s.cycles, s.made, s.dropped])
 
 
 func _run_sound(path: String) -> void:

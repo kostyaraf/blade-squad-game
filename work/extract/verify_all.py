@@ -77,6 +77,7 @@ STANDS = [
     ('pb3run',     'Э5.7', 'verify_pb3_run.py',    []),
     ('sound',      'Э6.1', 'verify_sound.py',      []),
     ('apu',        'Э6.2', 'verify_apu.py',        []),
+    ('sndplay',    'Э6.3.1', 'verify_snd_play.py', []),
 ]
 
 # Every stand ends on a line that counts what differs.  Two shapes are in use:

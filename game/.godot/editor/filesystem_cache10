@@ -65,9 +65,9 @@ stage16.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
 stage17.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
 stage18.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
 stage19.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
-::res://src/::1789942573
+::res://src/::1789954966
 clock.gd::GDScript::2216181933474047874::1787438544::0::1::::Clock<>RefCounted<><>0<>0<><>::
-main.gd::GDScript::1218616883181121138::1789942628::0::1::::<>Node2D<><>0<>0<><>::
+main.gd::GDScript::1218616883181121138::1789955025::0::1::::<>Node2D<><>0<>0<><>::
 main.tscn::PackedScene::-1::1787438203::0::1::::<><><>0<>0<><>::res://src/main.gd<>res://src/nes_bg.gdshader
 nes.gd::GDScript::2050658942601880072::1788783741::0::1::::Nes<>Node<><>0<>0<><>::
 nes_bg.gdshader::Shader::4407094755704472713::1789229633::0::1::::<><><>0<>0<><>::
@@ -89,7 +89,8 @@ pb3_list.gd::GDScript::3634073308043296398::1789824413::0::1::::Pb3List<>RefCoun
 pb3_pair.gd::GDScript::3124040861488315118::1789935789::0::1::::Pb3Pair<>RefCounted<><>0<>0<><>::
 pb3_pick.gd::GDScript::4047639535520912948::1789824413::0::1::::Pb3Pick<>RefCounted<><>0<>0<><>::
 snd_apu.gd::GDScript::5535766578118992592::1789939983::0::1::::SndApu<>RefCounted<><>0<>0<><>::
-snd_chip.gd::GDScript::2670879321052439757::1789942628::0::1::::SndChip<>RefCounted<><>0<>0<><>::
+snd_chip.gd::GDScript::2670879321052439757::1789942942::0::1::::SndChip<>RefCounted<><>0<>0<><>::
+snd_play.gd::GDScript::2113936140136200463::1789954976::0::1::::SndPlay<>RefCounted<><>0<>0<><>::
 snd_rom.gd::GDScript::3087391182285212592::1789942498::0::1::::SndRom<>RefCounted<><>0<>0<><>::
 sol_as_pb2.gd::GDScript::242089461584575406::1789784614::0::1::::SolAsPb2<>Pb2Level<><>0<>0<><>::
 sol_board.gd::GDScript::6942532545757191415::1789239549::0::1::::SolBoard<>RefCounted<><>0<>0<><>::
