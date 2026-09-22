@@ -90,6 +90,18 @@ var w_pen := PackedByteArray()      # $0770: how much it can still go through
 var weapons_skipped := {}
 var sat_skipped := {}
 
+## Э7.5 -- what this pool's third walk drew this picture, written down in the
+## level's own numbers instead of the screen's, so that it can be laid out
+## again from another view.  Only a guest of another game's level needs it and
+## only he turns it on: his pool is stepped with the view pretended to stand on
+## him (Э5.7), so everything the drawing measured is measured from a view the
+## picture has not got, and unlike the satellite's the drawing here cannot
+## simply be done again -- it lives inside the behaviour that moved the thing.
+## An entry is [x, y, left tile, right tile, left mark, right mark], and a
+## right tile below nought means there was one sprite and not two.
+var w_keep := false
+var w_drew: Array = []
+
 # Where it is on the screen, in whole pixels, filled by the frame walk.
 var at_x := PackedInt32Array()      # $5C:$5D
 var at_y := PackedInt32Array()      # $5E:$5F

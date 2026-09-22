@@ -69,7 +69,7 @@ stage18.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
 stage19.json::JSON::-1::1787437732::0::1::::<><><>0<>0<><>::
 ::res://src/::1790027724
 clock.gd::GDScript::2216181933474047874::1787438544::0::1::::Clock<>RefCounted<><>0<>0<><>::
-main.gd::GDScript::1218616883181121138::1790029578::0::1::::<>Node2D<><>0<>0<><>::
+main.gd::GDScript::1218616883181121138::1790044880::0::1::::<>Node2D<><>0<>0<><>::
 main.tscn::PackedScene::-1::1787438203::0::1::::<><><>0<>0<><>::res://src/main.gd<>res://src/nes_bg.gdshader
 nes.gd::GDScript::2050658942601880072::1790021675::0::1::::Nes<>Node<><>0<>0<><>::
 nes_bg.gdshader::Shader::4407094755704472713::1790027127::0::1::::<><><>0<>0<><>::
@@ -89,12 +89,12 @@ pb2_sprites.gd::GDScript::2148773555688016034::1787918431::0::1::::Pb2Sprites<>R
 pb2_status.gd::GDScript::7877088053072491319::1790001330::0::1::::Pb2Status<>RefCounted<><>0<>0<><>::
 pb2_title.gd::GDScript::8552838156000630316::1790022647::0::1::::Pb2Title<>RefCounted<><>0<>0<><>::
 pb2_turn.gd::GDScript::2275000604369634798::1789935207::0::1::::Pb2Turn<>RefCounted<><>0<>0<><>::
-pb3_board.gd::GDScript::4996076200061824117::1790027570::0::1::::Pb3Board<>Control<><>0<>0<><>::
-pb3_draw.gd::GDScript::7574946768536462125::1790028050::0::1::::Pb3Draw<>RefCounted<><>0<>0<><>::
+pb3_board.gd::GDScript::4996076200061824117::1790044450::0::1::::Pb3Board<>Control<><>0<>0<><>::
+pb3_draw.gd::GDScript::7574946768536462125::1790044811::0::1::::Pb3Draw<>RefCounted<><>0<>0<><>::
 pb3_gear.gd::GDScript::9052348880231036392::1790021643::0::1::::Pb3Gear<>RefCounted<><>0<>0<><>::
 pb3_list.gd::GDScript::3634073308043296398::1789824413::0::1::::Pb3List<>RefCounted<><>0<>0<><>::
 pb3_menu.gd::GDScript::3296358048743745015::1790027717::0::1::::Pb3Menu<>Control<><>0<>0<><>::
-pb3_pair.gd::GDScript::3124040861488315118::1789935789::0::1::::Pb3Pair<>RefCounted<><>0<>0<><>::
+pb3_pair.gd::GDScript::3124040861488315118::1790044713::0::1::::Pb3Pair<>RefCounted<><>0<>0<><>::
 pb3_pick.gd::GDScript::4047639535520912948::1789824413::0::1::::Pb3Pick<>RefCounted<><>0<>0<><>::
 pb3_save.gd::GDScript::7080582979375984373::1790022239::0::1::::Pb3Save<>RefCounted<><>0<>0<><>::
 snd_apu.gd::GDScript::5535766578118992592::1789939983::0::1::::SndApu<>RefCounted<><>0<>0<><>::
@@ -109,7 +109,7 @@ sol_fade.gd::GDScript::8934423303277202312::1789247284::0::1::::SolFade<>RefCoun
 sol_flow.gd::GDScript::7979264052078054773::1789959737::0::1::::SolFlow<>RefCounted<><>0<>0<><>::
 sol_level.gd::GDScript::5046486342476241528::1789796281::0::1::::SolLevel<>RefCounted<><>0<>0<><>::
 sol_minds.gd::GDScript::7156372340938303070::1789960356::0::1::::SolMinds<>RefCounted<><>0<>0<><>::
-sol_objects.gd::GDScript::1118724843448497988::1789960186::0::1::::SolObjects<>RefCounted<><>0<>0<><>::
+sol_objects.gd::GDScript::1118724843448497988::1790044682::0::1::::SolObjects<>RefCounted<><>0<>0<><>::
 sol_over.gd::GDScript::5746184363517316972::1789252535::0::1::::SolOver<>RefCounted<><>0<>0<><>::
 sol_panels.gd::GDScript::4644287431813056094::1789260149::0::1::::SolPanels<>RefCounted<><>0<>0<><>::
 sol_player.gd::GDScript::2811187895158063517::1789959737::0::1::::SolPlayer<>RefCounted<><>0<>0<><>::
@@ -118,9 +118,9 @@ sol_screen.gd::GDScript::9032662263684290231::1789255511::0::1::::SolScreen<>Ref
 sol_script.gd::GDScript::2443930131510707994::1789959737::0::1::::SolScript<>RefCounted<><>0<>0<><>::
 sol_shots.gd::GDScript::7466980848808254761::1789959737::0::1::::SolShots<>RefCounted<><>0<>0<><>::
 sol_sound.gd::GDScript::5657610627241910502::1789955559::0::1::::SolSound<>RefCounted<><>0<>0<><>::
-sol_sprites.gd::GDScript::7655189911224916346::1789258973::0::1::::SolSprites<>RefCounted<><>0<>0<><>::
+sol_sprites.gd::GDScript::7655189911224916346::1790044899::0::1::::SolSprites<>RefCounted<><>0<>0<><>::
 sol_stage.gd::GDScript::6927969166075851370::1789959737::0::1::::SolStage<>RefCounted<><>0<>0<><>::
 sol_tale.gd::GDScript::8698462583078723902::1789230063::0::1::::SolTale<>RefCounted<><>0<>0<><>::
 sol_test.gd::GDScript::3387085590134284054::1789247284::0::1::::SolTest<>RefCounted<><>0<>0<><>::
 sol_turn.gd::GDScript::5272920047363449808::1789824413::0::1::::SolTurn<>RefCounted<><>0<>0<><>::
-sol_weapon.gd::GDScript::5088889908044780250::1789959737::0::1::::SolWeapon<>RefCounted<><>0<>0<><>::
+sol_weapon.gd::GDScript::5088889908044780250::1790044791::0::1::::SolWeapon<>RefCounted<><>0<>0<><>::

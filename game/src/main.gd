@@ -5589,7 +5589,10 @@ func _oam_image(table: PackedByteArray) -> Image:
 ##   it must come out the same as `guest`, or the second pass is not drawing
 ##   what the first one would;
 ## * `solo` -- the same level, view and table handed to the road the single
-##   game is drawn by, which judges the wiring rather than the shader.
+##   game is drawn by, which judges the wiring rather than the shader;
+## * `noarm` -- a pair of pieces of the guest alone, one with what he has
+##   thrown in his table and one with it left out, which is the only way to
+##   see from outside that the beams reach the picture at all.
 ##
 ## The pad is handed over rather than pressed, so the road walked here is the
 ## road the player walks: the list, A into the record, and SELECT out of it.
@@ -5617,12 +5620,21 @@ func _run_pb3_draw(path: String) -> void:
 			out.append("rec %s up 0" % say)
 			continue
 		var ran := 0
+		# What the guest has thrown, counted over the whole walk: how many
+		# pictures had something of his in the air and how many sprites they
+		# put on the picture altogether.  A Power Blade guest throws into his
+		# own pool and is gathered with it, so this counts a Solbrain one.
+		var threw := 0
+		var arms := 0
 		for f in range(frames):
 			var now: Array = _pb3_pilot(f)
 			pads[0].handed = int(now[0])
 			pads[1].handed = int(now[1])
 			_step_game()
 			ran += 1
+			if pb3_draw.guest_arms > 0:
+				threw += 1
+				arms += pb3_draw.guest_arms
 		var mine: Array = _pb3_table_says(pb3_draw.oam)
 		var his: Array = _pb3_table_says(pb3_draw.guest_oam)
 		# Which way the level runs, because a downward Power Blade area
@@ -5633,8 +5645,9 @@ func _run_pb3_draw(path: String) -> void:
 		out.append("rec %s up 1 host %d guest %d sheet %s tall %d ran %d "
 				% [say, pb3.two.host, pb3_draw.guest, pb3_draw.guest_sheet,
 						1 if tall else 0, ran]
-				+ "on %d %d line %d %d"
-				% [int(mine[0]), int(his[0]), int(mine[1]), int(his[1])])
+				+ "on %d %d line %d %d arms %d %d"
+				% [int(mine[0]), int(his[0]), int(mine[1]), int(his[1]),
+						threw, arms])
 		# What each half was handed, so that the promises about the banks and
 		# the colours can be judged without a photograph: the background's
 		# four are one and the same and the sprite four are each his own.
@@ -5645,7 +5658,7 @@ func _run_pb3_draw(path: String) -> void:
 				% [say, _pb3_says(Array(pb3_draw.palette)),
 						_pb3_says(Array(pb3_draw.guest_palette))])
 		if shots.has(say):
-			await _pb3_shots(shots[say] as Dictionary)
+			await _pb3_shots(shots[say] as Dictionary, say, out)
 		# And out the way a player goes out.
 		pads[0].handed = Pad.SELECT
 		pads[1].handed = 0
@@ -5725,7 +5738,8 @@ func _pb3_table_says(table: PackedByteArray) -> Array:
 ## The picture in as many of its six pieces as were asked for.  The board is
 ## the port's own writing over the picture and is taken down while a piece is
 ## being shot, or every piece would have it in.
-func _pb3_shots(want: Dictionary) -> void:
+func _pb3_shots(want: Dictionary, say: String,
+		out: PackedStringArray) -> void:
 	var m: ShaderMaterial = bg.material
 	pb3_board.visible = false
 	# The walk steps the game inside one picture of the monitor, so the
@@ -5788,8 +5802,49 @@ func _pb3_shots(want: Dictionary) -> void:
 		_pb3_apply()
 	if want.has("solo"):
 		await _pb3_solo(str(want["solo"]))
+	# Last, because it is the one piece that steps the game on: the others are
+	# all of the picture the walk ended on, and the counts printed beside them
+	# were counted there.
+	if want.has("noarm"):
+		out.append(await _pb3_arms_shot(say, want["noarm"] as Dictionary))
 	shooting = false
 	pb3_board.visible = true
+
+
+## The guest alone over no background, twice over: once with what he has thrown
+## in his table and once with it left out.  Nothing else of the picture moves
+## between the two, so whatever differs between them is what he has thrown and
+## nothing else.
+##
+## A picture with nothing of his in the air would prove nothing, and which
+## picture that is depends on the pilot, so the game is stepped on until he has
+## something in the air.  How many pictures that took is printed, and a walk
+## that never gets there prints no count at all rather than a piece that means
+## nothing.
+func _pb3_arms_shot(say: String, a: Dictionary) -> String:
+	var waited := 0
+	while pb3_draw.guest_arms == 0 and waited < PB3_ARMS_WAIT:
+		var now: Array = _pb3_pilot(waited)
+		pads[0].handed = int(now[0])
+		pads[1].handed = int(now[1])
+		_step_game()
+		waited += 1
+	if pb3_draw.guest_arms == 0:
+		return "arms %s 0 0" % say
+	var n: int = pb3_draw.guest_arms
+	_pb3_show()
+	var m: ShaderMaterial = bg.material
+	m.set_shader_parameter("map_size", Vector2.ZERO)
+	await _pb3_one_shot(str(a["with"]), false, true)
+	pb3_draw.guest_arms_off = true
+	pb3_draw.lay_guest_again()
+	_pb3_show()
+	m.set_shader_parameter("map_size", Vector2.ZERO)
+	await _pb3_one_shot(str(a["without"]), false, true)
+	pb3_draw.guest_arms_off = false
+	pb3_draw.lay_guest_again()
+	_pb3_apply()
+	return "arms %s %d %d" % [say, waited + 1, n]
 
 
 ## One piece, with each of the two tables told whether it is there.
@@ -6497,6 +6552,9 @@ var shooting := false
 const SPRITE_WHITE_FROM := 16
 const PAINTS := 32
 const WHITE := 0x30
+## How many pictures a harness will step on looking for something of the
+## guest's in the air before it gives the piece up.
+const PB3_ARMS_WAIT := 60
 const BLUE := 0x12
 ## The guest's half of the picture: his own colours and his own sprite table.
 var pal2_tex: ImageTexture = null

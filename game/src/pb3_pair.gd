@@ -489,9 +489,14 @@ func _raise_flow() -> void:
 		if i == host:
 			continue
 		if who[i] == SOL:
-			# A pool of his own game, never stepped, only ever asked what box
-			# his picture gives him ($80DE).
+			# A pool of his own game.  It began as something only ever
+			# asked what box his picture gives him ($80DE); Э5.7 gave it a
+			# step of its own, so that what he throws flies.
 			guest_pool[i] = SolObjects.new(solv)
+			# Э7.5 -- and what it throws has to be written down as it is
+			# drawn: his pool is stepped with a pretended view, so the only
+			# way onto the picture is to lay it out again afterwards.
+			guest_pool[i].w_keep = true
 		if game == PB2:
 			var row := Pb2Objects.empty_row()
 			row[Pb2Objects.F_LIFE] = 0x10

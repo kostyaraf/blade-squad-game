@@ -24,6 +24,8 @@ class_name SolWeapon
 
 ## $B168 -- one picture of the pool, from slot seven down to slot nought.
 static func step(o: SolObjects) -> void:
+	if o.w_keep:
+		o.w_drew.clear()
 	for i in range(SolObjects.WALKED - 1, -1, -1):
 		_one(o, i)
 
@@ -183,6 +185,7 @@ static func gone(o: SolObjects, i: int) -> void:
 ## $C01B -- two sprites side by side, at the scratch as it stands.
 static func _draw_pair(o: SolObjects, tile_l: int, tile_r: int,
 		attr_l: int, attr_r: int) -> void:
+	_kept(o, tile_l, tile_r, attr_l, attr_r)
 	if o.table == null:
 		return
 	SolSprites.pair(o.table, o.z90 & 0xFFFF, o.z92 & 0xFFFF,
@@ -191,9 +194,46 @@ static func _draw_pair(o: SolObjects, tile_l: int, tile_r: int,
 
 ## $C030 -- one sprite, at the scratch as it stands.
 static func _draw_one(o: SolObjects, tile: int, attr: int) -> void:
+	_kept(o, tile, -1, attr, 0)
 	if o.table == null:
 		return
 	SolSprites.one(o.table, o.z90 & 0xFFFF, o.z92 & 0xFFFF, tile, attr)
+
+
+## Э7.5 -- one emitted sprite written down, in the level's own numbers.
+##
+## The scratch the emitters read is where the thing stands on the screen, so
+## where it stands in the level is that plus the view the walk was given.  The
+## view is put back in on purpose: a guest is stepped with a pretended one, and
+## a number measured from a view the picture has not got is of no use to
+## anybody.
+static func _kept(o: SolObjects, tile_l: int, tile_r: int,
+		attr_l: int, attr_r: int) -> void:
+	if not o.w_keep:
+		return
+	o.w_drew.append([(o.z90 + o.cam_x) & 0xFFFF, (o.z92 + o.cam_y) & 0xFFFF,
+			tile_l, tile_r, attr_l, attr_r])
+
+
+## Э7.5 -- the pool laid into a table again, from where the view really stands.
+##
+## The order is the order the walk drew in, so the table fills the way the
+## console's would; what would not fit on the screen is dropped by the same two
+## emitters, which is the dropping the walk itself would have done had it been
+## given the right view in the first place.  How many sprites were laid is
+## handed back, because outside the table there is nothing to count them by.
+static func draw_again(o: SolObjects, t: SolSprites.Table,
+		view_x: int, view_y: int) -> int:
+	var laid := 0
+	for e in o.w_drew:
+		var x: int = (int(e[0]) - view_x) & 0xFFFF
+		var y: int = (int(e[1]) - view_y) & 0xFFFF
+		if int(e[3]) < 0:
+			laid += SolSprites.one(t, x, y, int(e[2]), int(e[4]))
+		else:
+			laid += SolSprites.pair(t, x, y, int(e[2]), int(e[3]),
+					int(e[4]), int(e[5]))
+	return laid
 
 
 ## $B43C -- the puff, which three different behaviours end in.

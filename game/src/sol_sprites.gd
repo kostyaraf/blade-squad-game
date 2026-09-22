@@ -208,12 +208,16 @@ static func reset(t: Table, frame: int) -> void:
 ## The place is in sixteenths and half a sprite comes off both axes before the
 ## shift down to whole pixels; whatever will not fit in a byte after that is
 ## off the picture and is not drawn at all.
+##
+## How many sprites were laid is handed back, which is two or none.  Nothing of
+## the cartridge asks -- both emitters there end in an RTS and say nothing --
+## and only Э7.5 does, to count what a guest's thrown things put on a picture.
 static func pair(t: Table, x: int, y: int, tile_l: int, tile_r: int,
-		attr_l: int, attr_r: int) -> void:
+		attr_l: int, attr_r: int) -> int:
 	var px: int = ((x - 0x80) & 0xFFFF) >> 4
 	var py: int = ((y - 0x80) & 0xFFFF) >> 4
 	if px > 0xFF or py > 0xFF:
-		return
+		return 0
 	t.turn = (t.turn + 1) & 0xFF                     # $E58C
 	if (t.turn & 1) != 0:
 		var at: int = t.fwd
@@ -221,33 +225,36 @@ static func pair(t: Table, x: int, y: int, tile_l: int, tile_r: int,
 		at = _fwd_on(at)
 		_four(t, at, py, tile_r, attr_r, (px + 8) & 0xFF)
 		t.fwd = _fwd_on(at)
-		return
+		return 2
 	if t.count >= CROWDED:                           # $E5DE
-		return
+		return 0
 	var at: int = t.back
 	_four(t, (at - 3) & 0xFF, py, tile_l, attr_l, px)
 	at = _back_on(at, BACK_FLOOR)                    # $E5FB
 	_four(t, (at - 3) & 0xFF, py, tile_r, attr_r, (px + 8) & 0xFF)
 	t.back = _back_on(at, BACK_FLOOR)
+	return 2
 
 
-## $EA0E -- one sprite, and half of one comes off instead of half of two.
-static func one(t: Table, x: int, y: int, tile: int, attr: int) -> void:
+## $EA0E -- one sprite, and half of one comes off instead of half of two.  How
+## many were laid is handed back the same way: one or none.
+static func one(t: Table, x: int, y: int, tile: int, attr: int) -> int:
 	var px: int = ((x - 0x40) & 0xFFFF) >> 4
 	var py: int = ((y - 0x40) & 0xFFFF) >> 4
 	if px > 0xFF or py > 0xFF:
-		return
+		return 0
 	t.turn = (t.turn + 1) & 0xFF
 	if (t.turn & 1) != 0:
 		var at: int = t.fwd
 		_four(t, at, py, tile, attr, px)
 		t.fwd = _fwd_on(at)
-		return
+		return 1
 	if t.count >= CROWDED:
-		return
+		return 0
 	# $EA91 -- the single stops one row of four higher than the pair does.
 	_four(t, (t.back - 3) & 0xFF, py, tile, attr, px)
 	t.back = _back_on(t.back, FWD_WRAP)
+	return 1
 
 
 ## The four bytes of one sprite: down, tile, colour, along.

@@ -56,6 +56,14 @@ var rot := 0
 var guest_oam := PackedByteArray()
 var guest_rot := 0
 var guest_table: SolSprites.Table = null
+## How many sprites of his table what he has thrown put there this picture,
+## which is the one thing about him a stand cannot count from outside.
+var guest_arms := 0
+## Э7.5 -- with this on, what he has thrown is left out of his table.  Nobody
+## playing ever turns it on: it is there so that a stand can take two
+## photographs of one picture and show that the beams are in it, since nothing
+## else of his moves when they are dropped.
+var guest_arms_off := false
 ## Which suit a Power Blade guest has on, which is both three of his colours
 ## and the kilobyte his pictures come out of ($D290).
 var guest_suit := 0
@@ -175,6 +183,22 @@ func _wear_into(pal: PackedByteArray, s: Pb2Status) -> void:
 		pal[SPRITE_PAINT + 5 + i] = int(c[i])
 
 
+## Э7.5 -- the guest's half laid out again out of what is already decided.
+##
+## Nothing of his is stepped by it: the table is wiped and filled again from
+## where he and his things already stand, so asking twice gives the same
+## picture twice.  A stand asks, so that it can photograph one picture with
+## `guest_arms_off` and without.
+##
+## Only a Solbrain guest can be asked: a Power Blade one is gathered the way
+## $8038 gathers, which moves the place the gathering starts at every time, and
+## asking twice would not be asking the same thing twice.
+func lay_guest_again() -> void:
+	if guest < 0 or two.who[guest] == PB2:
+		return
+	_guest_table()
+
+
 ## One picture's worth of both halves, laid out after the pair has stepped.
 ##
 ## The colours are gathered again every picture and not once: a level moves its
@@ -224,6 +248,12 @@ func _host_table() -> void:
 ## that pretended view.  Where he really stands is `screen_of`, which does the
 ## mending a sideways area and a downward one each need, so the view to lay him
 ## out from is the pretended one moved by the difference between the two.
+##
+## Three things of his are laid out, in his own game's order: himself, what he
+## has thrown and his satellite.  The middle one is the odd one, because its
+## drawing lives inside the behaviour that moved it and cannot be done again --
+## what it drew is written down as it goes (`SolObjects.w_drew`) and laid out
+## from here.
 func _guest_table() -> void:
 	if guest < 0:
 		return
@@ -244,7 +274,12 @@ func _guest_table() -> void:
 	vy = (vy - ((s.y - PRETEND_Y) << 4)) & 0xFFFF
 	SolSprites.reset(guest_table, pool.clock if pool != null else 0)
 	SolSprites.hero(h, (h.x - vx) & 0xFFFF, (h.y - vy) & 0xFFFF, guest_table)
+	guest_arms = 0
 	if pool != null:
+		# The order is his own game's: himself ($9159), then what he has
+		# thrown ($B168), then his satellite ($9156).
+		if not guest_arms_off:
+			guest_arms = SolWeapon.draw_again(pool, guest_table, vx, vy)
 		# $A6CD -- and his satellite, from the view the picture really has.
 		SolSat.draw_again(pool, guest_table, vx, vy)
 	guest_oam = guest_table.oam
