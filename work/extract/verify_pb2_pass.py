@@ -22,8 +22,13 @@ the caret stands at ($51), the count left in the wait ($50), the twelve digits
 as they stand on the screen ($0690..$069B), the twelve the verdict lays out
 ($0680..$068B), the six bytes it finds ($06A0..$06A5), what the password said
 about the stages ($5B) and the suits ($56), the caret's own three fields
-($0442, $04C6, $0508), what was asked of the driver ($ECE8), and on the last
-picture the screen it left for ($18) and the step of that screen ($19).
+($0442, $04C6, $0508), which of the two rows the showing half stands on
+($4F), what was asked of the driver ($ECE8), and on the last picture the
+screen it left for ($18) and the step of that screen ($19).
+
+$4F is nothing to the typing half -- it never writes it and it never reads it
+-- and it is on the line because Э7.7 walks the other half of the same screen
+through the same harness.
 
 The laid-out field and the six found bytes are not scenery: they are the whole
 of the verdict, and a port that took the right passwords for the wrong reason
@@ -106,6 +111,8 @@ LEAD_WAIT = 600
 FLOW = 0x0018, 0x009C
 SCREEN, STEP, CLOCK, WAIT, SPOT = 0x18, 0x19, 0x1C, 0x50, 0x51
 STAGE, SUITS, CLEARED, AREA = 0x53, 0x56, 0x5B, 0x9C
+# $4F -- which of the two rows the showing half stands on (Э7.7).
+CHOICE = 0x4F
 # The caret's three, which are three fields of the nought-th place, and the
 # shadow palette above them, which the going dark steps ($80D9).  One range,
 # because the emulator watches one at a time.
@@ -307,7 +314,7 @@ def cart_state(down, frames, offset):
     caret, _ = cart_run(down, frames, offset, CARET[0], CARET[1])
     field, _ = cart_run(down, frames, offset, FIELD[0], FIELD[1])
     now = {SCREEN: 0, STEP: 0, WAIT: 0, SPOT: 0, SUITS: 0, CLEARED: 0,
-           STAGE: 0, AREA: 0, KIND: 0, DOWN: 0, ALONG: 0}
+           STAGE: 0, AREA: 0, KIND: 0, DOWN: 0, ALONG: 0, CHOICE: 0}
     for a in range(FIELD[0], FIELD[1] + 1):
         now[a] = 0
     for a in range(PAINT, PAINT + PAINTS):
@@ -324,17 +331,26 @@ def cart_state(down, frames, offset):
             now[CLEARED], now[SUITS],
             now[DOWN], now[ALONG], now[KIND],
             [now[PAINT + i] for i in range(PAINTS)],
+            now[CHOICE],
             (now[STAGE], now[AREA], now[CLEARED], now[SUITS]),
             list(asked.get(f, []))))
     return rows
 
 
-def engine(hit, clock, shots, tmp):
+def engine(hit, clock, shots, tmp, show=None):
     """`Pb2Pass` given the same pad, one line to a picture, and the port's own
-    picture at every line asked for."""
+    picture at every line asked for.
+
+    `show` is Э7.7's half: the stages behind him and the suits he has found,
+    which the game hands the screen because the screen has nothing of its own
+    to name.
+    """
     cfg = {'clock': clock,
            'frames': [{'hit': h} for h in hit],
            'shots': {str(f): os.path.join(tmp, 'e%d.png' % f) for f in shots}}
+    if show is not None:
+        cfg['show'] = True
+        cfg['cleared'], cfg['suits'] = show
     path = os.path.join(tmp, 'p.json')
     open(path, 'w').write(json.dumps(cfg))
     cmd = [V.GODOT, '--path', V.GAME]
@@ -354,15 +370,21 @@ def engine(hit, clock, shots, tmp):
         line = line.strip()
         if line.startswith('> '):
             # What the screen handed the game: the stage and area it opened
-            # and the two counters the password granted.
+            # and the two counters the password granted.  The showing half
+            # hands nothing back but the title screen, so it says so in
+            # words and the tuple is left as it was written.
+            got = line[2:].split()
+            if got and got[0] == 'title':
+                opened = ('title', got[1] == 'up')
+                continue
             opened = tuple(int(x, 16) if i >= 2 else int(x)
-                           for i, x in enumerate(line[2:].split()))
+                           for i, x in enumerate(got))
             continue
         parts = line.split('|')
         if len(parts) != 2:
             continue
         h = parts[0].split()
-        if len(h) != 14 or not h[0].isdigit():
+        if len(h) != 15 or not h[0].isdigit():
             continue
         say = parts[1].strip()
         out.append((
@@ -371,7 +393,8 @@ def engine(hit, clock, shots, tmp):
              [int(h[5][i * 2:i * 2 + 2], 16) for i in range(FOUNDS)],
              int(h[6], 16), int(h[7], 16),
              int(h[8], 16), int(h[9], 16), int(h[10], 16),
-             [int(h[13][i * 2:i * 2 + 2], 16) for i in range(PAINTS)]),
+             [int(h[13][i * 2:i * 2 + 2], 16) for i in range(PAINTS)],
+             int(h[14], 16)),
             int(h[11]), int(h[12]),
             [] if say == '-' else [int(x, 16) for x in say.split()]))
     if not out:
@@ -418,13 +441,13 @@ def _say(ns):
 
 def _short(row):
     """A row of either side, said in one line."""
-    return '%d/%d w%02X %s %s %s %02X %02X %02X %02X %02X %s' % (
+    return '%d/%d w%02X %s %s %s %02X %02X %02X %02X %02X %s r%d' % (
         row[0], row[1], row[2],
         ''.join('%X' % v for v in row[3]),
         ''.join('%X' % v for v in row[4]),
         ''.join('%02X' % v for v in row[5]),
         row[6], row[7], row[8], row[9], row[10],
-        ''.join('%02X' % v for v in row[11]))
+        ''.join('%02X' % v for v in row[11]), row[12])
 
 
 def check(name, presses, frames, shots, tmp):

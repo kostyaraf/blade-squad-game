@@ -3650,6 +3650,9 @@ func _title_step() -> void:
 		# $8009 = $859D -- the screen a stage is picked on.  This port cannot
 		# open that one without a level standing behind it (Э3.10b), so what
 		# START opens is the first area, the way the command line opens it.
+		# $9F -- and three lives with it: the cartridge writes that on the
+		# screen this port cannot open, so here it goes where a game starts.
+		lives = 2
 		_start_play(0, 0)
 		_progress_read()
 		_apply()
@@ -3667,7 +3670,20 @@ func _title_step() -> void:
 ## $9672 -- the screen a password is typed on, up, and the whole of the
 ## picture its own.
 func _start_pass() -> void:
-	secret = Pb2Pass.new()
+	_pass_up(Pb2Pass.new())
+
+
+## $D090 -- and the same screen the other way about: the game naming a
+## password back, put up at its fourth step.  What it names is what the game
+## carries -- $5B the stages behind him and $56 the suits he has found.
+func _start_pass_show() -> void:
+	_pass_up(Pb2Pass.new(true, status.cleared, status.owned))
+
+
+## Either half of it, and the whole of the picture its own: no bar under it
+## and no level behind it.
+func _pass_up(s: Pb2Pass) -> void:
+	secret = s
 	pal_tex = Nes.palette_texture(secret.palette)
 	origin = Vector2i.ZERO
 	view_h = 240
@@ -3701,10 +3717,19 @@ func _pass_step() -> void:
 ## command line opens one, carrying what the password said about the stages
 ## behind him and the suits he has found.
 func _pass_took() -> void:
+	if secret.taken == Pb2Pass.SHOWN_GOES_TO:
+		# $9822 -- the showing half hands the game nothing at all: what it
+		# had to say it said on the screen, and $18 := 0 is the title.
+		secret = null
+		_start_title()
+		return
 	var was_cleared: int = secret.cleared
 	var was_owned: int = secret.suits
 	var st: int = secret.stage
 	secret = null
+	# $9755 -- and $9F := 2, which is the one place the cartridge itself puts
+	# the lives back where this port can see it.
+	lives = 2
 	_start_play(st, 0)
 	# $5B and $56 -- and these are not read back out of the file: a password
 	# just typed is the newer word of the two.  What it opened is written down
@@ -3825,8 +3850,9 @@ func _title_line(t: Pb2Title, took: int) -> String:
 ## says what came out: the step, the place the caret stands at, the count left
 ## in the wait, the twelve digits on the screen and the twelve the verdict laid
 ## out, the six bytes it found, what the password said about the stages and the
-## suits, the caret's own three fields, the screen it left for and the step of
-## that screen, and what was asked of the driver.
+## suits, the caret's own three fields, which of the two rows the showing half
+## stands on, the screen it left for and the step of that screen, and what was
+## asked of the driver.
 ##
 ## The screen is raised and shown the way the game raises and shows it, so a
 ## picture asked for here is the port's own picture.
@@ -3835,7 +3861,13 @@ func _run_pass(path: String) -> void:
 	Pb2Sound.forget()
 	game = "pb2"
 	var shots: Dictionary = cfg.get("shots", {})
-	_start_pass()
+	# Э7.7 -- which half is walked.  A showing run is handed what the game
+	# carries, because the screen has nothing of its own to name.
+	if bool(cfg.get("show", false)):
+		_pass_up(Pb2Pass.new(true, int(cfg.get("cleared", 0)),
+				int(cfg.get("suits", 0))))
+	else:
+		_start_pass()
 	var t: Pb2Pass = secret
 	# $1C -- the console's own count, which the going dark steps by and which
 	# nothing in this port keeps across screens: it is handed over from the
@@ -3860,9 +3892,15 @@ func _run_pass(path: String) -> void:
 			# what it opened is the game's own doing, not the harness's: the
 			# last line says which stage was opened and what the password
 			# granted, so that the wiring is judged and not only the screen.
+			var shown: bool = t.taken == Pb2Pass.SHOWN_GOES_TO
 			_pass_took()
-			out.append("> %d %d %02X %02X" % [status.stage, status.area,
-					status.cleared, status.owned])
+			if shown:
+				# $9822 -- and the showing half opens nothing: it leaves for
+				# the title screen, so what is said is whether it is up.
+				out.append("> title %s" % ("up" if title != null else "no"))
+			else:
+				out.append("> %d %d %02X %02X" % [status.stage, status.area,
+						status.cleared, status.owned])
 			break
 		n += 1
 	print("\n".join(out))
@@ -3889,13 +3927,13 @@ func _pass_line(t: Pb2Pass, took: int) -> String:
 	var paint := PackedStringArray()
 	for v in t.palette:
 		paint.append("%02X" % v)
-	return "%d %d %02X %s %s %s %02X %02X %02X %02X %02X %d %d %s |%s" % [
+	return "%d %d %02X %s %s %s %02X %02X %02X %02X %02X %d %d %s %02X |%s" % [
 			t.step_no, t.spot, t.wait,
 			"".join(seen), "".join(out), "".join(got),
 			t.cleared, t.suits,
 			one[Pb2Objects.F_Y], one[Pb2Objects.F_X],
 			one[Pb2Objects.F_KIND],
-			took, t.next_step, "".join(paint),
+			took, t.next_step, "".join(paint), t.choice,
 			" ".join(say) if say.size() else "-"]
 
 
@@ -5310,9 +5348,13 @@ func _die() -> void:
 		phase = int(to[1])
 		_start_play(level_pb2.stage, int(to[0]))
 	else:
-		lives = 2                                   # $D090: $18 := 2
-		phase = 0
-		_start_play(level_pb2.stage, 0)
+		# $D06B -- the last life is spent, and what the level flow does with
+		# that is put the password screen up the other way about ($18 := 2,
+		# $19 := 4), where the game names the password this playing is worth.
+		# Nothing below here runs: $D063, $D066 and $D069 all stand inside
+		# the branch a life is left in.
+		_start_pass_show()
+		return
 	# $D063 -- a life lost is a clock wound up again.
 	status.restart_time(came, phase)
 	# $D066 -- and the stage's tune again, read from where the life starts.

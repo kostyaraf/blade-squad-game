@@ -12,7 +12,11 @@ class_name Pb2Pass
 ## nought raises it, one is typed on, two counts out and three leaves, and
 ## twelve and thirteen are the same two after a password that was refused.
 ## The other eight are the same screen the other way about -- the game naming
-## a password back to the player -- and nothing in this port reaches them yet.
+## a password back to the player (Э7.7).  Four raises it, five puts the caret
+## up, six is chosen on, seven acts on the choice, eight lays the field out,
+## nine writes the twelve digits, ten stands until START and eleven leaves for
+## the title screen.  Nothing but the end of the game reaches them: $D050 asks
+## how many lives are left and $D090 puts this screen up at its fourth step.
 
 ## $9693 -- the two streams: nought fills both pages and $16 lays the screen
 ## over the first of them.  The numbers are already doubled ($CB4C).
@@ -31,6 +35,15 @@ const COUNT := 2
 const LEAVE := 3
 const NO_COUNT := 12
 const NO_BACK := 13
+## $9760..$981A -- and the eight of the showing half.
+const SHOW_RAISE := 4
+const SHOW_WAIT := 5
+const SHOW_PICK := 6
+const SHOW_ACT := 7
+const SHOW_FIELD := 8
+const SHOW_DIGITS := 9
+const SHOW_HOLD := 10
+const SHOW_DONE := 11
 
 ## $9723 -- how long the screen stands after a password that was taken, and
 ## $96F2 -- after one that was refused.
@@ -46,6 +59,8 @@ const DOWN := 0x04
 const UP := 0x08
 const B := 0x40
 const A := 0x80
+## $9848 -- and the one button only the showing half reads.
+const SELECT := 0x20
 
 ## $96B9 -- the screen is up, $990F -- the caret walked, $98E7/$98FC -- a digit
 ## was turned, $96EA -- the password was refused, $9713 -- it was taken.
@@ -54,10 +69,18 @@ const MOVED_SOUND := 0x39
 const TURNED_SOUND := 0x1D
 const NO_SOUND := 0x31
 const YES_SOUND := 0x28
+## $977E -- the showing screen going up, and $97CD -- the row of it that shows
+## no password at all.
+const SHOW_SOUND := 0x48
+const BACK_SOUND := 0x29
 
 ## $96ED -- the queued stream the refusal writes over the middle row of the
 ## field, which is stream seven of the table at $CD28.
 const NO_STREAM := 7
+## $9784 and $97AC -- and the two the showing half writes: the words of the
+## screen over an empty page, and the two rows the choice is made on.
+const SHOW_STREAM := 9
+const PICK_STREAM := 8
 
 ## $9745 and $974F -- where the screen goes once the password was taken: the
 ## screen a stage is picked on, or, with all five stages behind him, the one
@@ -67,6 +90,13 @@ const GOES_TO_ALL := 4
 ## $9707 -- and the stage the game is started at, by the same test.
 const ALL_DONE := 0x1F
 const STAGE_ALL := 5
+## $9822 -- and where the showing half leaves for, which is $18 := 0: the
+## title screen, with everything this screen carried put back to nought.
+const SHOWN_GOES_TO := 0
+## $9788 -- what the raising of the showing half leaves in $50.  It is the
+## wait the row that shows no password walks out through: $97D8 puts $19 to
+## two and never touches $50, so the count that runs down there is this one.
+const PICK_WAIT := 1
 
 ## $80E1 -- the fade takes a step every sixteenth picture and nothing on the
 ## fifteen between.
@@ -82,6 +112,7 @@ var slots: Array = []
 var step_no := TYPING             ## $19
 var spot := 0                     ## $51 -- which place the caret is at
 var wait := 0                     ## $50
+var choice := 0                   ## $4F -- which of the two rows is chosen
 var clock := 0                    ## $1C -- the console's own count of pictures
 
 ## $0690..$069B -- the twelve digits as they stand on the screen, and
@@ -111,7 +142,14 @@ var _pass: Dictionary
 var _page := PackedByteArray()
 
 
-func _init() -> void:
+## `show` is the other half: the game naming a password back instead of the
+## player typing one in.  What it names is handed in, because the screen has
+## nothing of its own to name -- $5B and $56 are the game's.
+##
+## Either half raises itself here, one picture sooner than the cartridge does:
+## the picture before a raising is spent on nothing but the step number, and
+## this port has no picture to spend on that.
+func _init(show := false, cleared_ := 0, suits_ := 0) -> void:
 	_doc = Nes._load_json(Nes.DATA + "/pb2/screens.json")
 	_pass = Nes._load_json(Nes.DATA + "/pb2/password.json")
 	var bg: Array = _pass["bg"]
@@ -122,6 +160,11 @@ func _init() -> void:
 	field.resize(int(_pass["places"]))
 	laid.resize(int(_pass["places"]))
 	found.resize(6)
+	if show:
+		cleared = cleared_                         # $5B
+		suits = suits_                             # $56
+		_show_raise()
+		return
 	_raise()
 
 
@@ -146,11 +189,19 @@ func _raise() -> void:
 
 ## $96AC and $96A7 -- the wipe and then the screen over it, and the colours
 ## record $803E is handed.
-func _paint() -> void:
+## `with_screen` is false where $C882 is called and $C84C is not: the raising
+## of the showing half leaves the page filled and writes its words into it out
+## of the queue instead.  `with_colours` is false where $803E is not called
+## either: $97E1 raises the field screen while the screen is dark and leaves it
+## dark, and it is the twelfth digit that lights it up again ($9807).
+func _paint(with_screen := true, with_colours := true) -> void:
 	_page.resize(0x400)
 	for i in range(_page.size()):
 		_page[i] = 0
-	for which in [WIPE, int(_pass["screen"])]:
+	var draw: Array = [WIPE]
+	if with_screen:
+		draw.append(int(_pass["screen"]))
+	for which in draw:
 		for s in _doc["screens"]:
 			if int(s["x"]) != which:
 				continue
@@ -167,6 +218,12 @@ func _paint() -> void:
 	for ty in range(HEIGHT):
 		for tx in range(WIDTH):
 			_draw(ty * WIDTH + tx)
+	if with_colours:
+		_colours()
+
+
+## $803E -- the colours record $15, which both halves are handed.
+func _colours() -> void:
 	palette = PackedByteArray(_doc["palettes"][int(_pass["palette"])])
 
 
@@ -249,7 +306,185 @@ func step(pad: int) -> int:
 			# is the raising all over again on the picture after this one.
 			if _fade():
 				step_no = RAISE
+		SHOW_WAIT:
+			_show_wait()
+		SHOW_PICK:
+			_show_pick(pad)
+		SHOW_ACT:
+			_show_act()
+		SHOW_FIELD:
+			# $97E1 -- nothing at all until the screen has gone dark.
+			if _fade():
+				_show_field()
+		SHOW_DIGITS:
+			_show_digit()
+		SHOW_HOLD:
+			# $9810 -- and it stands here as long as it is looked at.
+			if (pad & START) != 0:
+				step_no = SHOW_DONE
+		SHOW_DONE:
+			# $981A -- the same dark again, and then the title screen.
+			if _fade():
+				return _show_out()
 	return -1
+
+
+## $9760 -- the showing screen put up.  There is no screen out of $CBCC here at
+## all: $C882 fills both pages and everything that stands on the first of them
+## is the queued stream, which is why the raising takes no $C84C.
+##
+## Step four is the step $D096 writes, so nothing in this class reaches
+## `SHOW_RAISE` -- it is raised in the making, the way the typing half is.
+func _show_raise() -> void:
+	_paint(false)                                  # $9772 and $C882
+	_place()                                       # $D098 = $D746
+	Pb2Sound.hush()                                # $977B
+	Pb2Sound.want(SHOW_SOUND)                      # $977E
+	_queue(SHOW_STREAM)                            # $9784
+	wait = PICK_WAIT                               # $9788
+	choice = 0                                     # $979E
+	step_no = SHOW_WAIT
+
+
+## $97A7 -- the two rows the choice is made on, and the caret on the first of
+## them.
+##
+## The cartridge waits here for $C8, which is the queue emptying into a
+## blanking; this port's queue goes onto the page as it is asked for, so there
+## is nothing to wait for and this is the picture after the raising.
+func _show_wait() -> void:
+	_queue(PICK_STREAM)                            # $97AC
+	_show_caret()                                  # $985D
+	step_no = SHOW_PICK
+
+
+## $985D -- the caret of the showing half.  It is a different picture from the
+## typing one ($5A and not $59), it stands at one place along, and which of the
+## two rows it is on is $4F.  Its thinking field is left alone here too.
+func _show_caret() -> void:
+	var one: PackedByteArray = slots[0]
+	one[Pb2Objects.F_KIND] = int(_pass["shown_kind"])
+	one[Pb2Objects.F_X] = int(_pass["shown_x"])
+	one[Pb2Objects.F_Y] = int(_pass["shown_y"][choice])
+
+
+## $983F -- the choosing.  $48 is shifted five times for START and once more
+## for SELECT, so only one of the two can be the newly pressed one.
+func _show_pick(pad: int) -> void:
+	if (pad & START) != 0:                         # $9846
+		step_no = SHOW_ACT
+	elif (pad & SELECT) != 0:                      # $9849
+		Pb2Sound.want(MOVED_SOUND)                 # $984F
+		choice ^= 1                                # $9856
+		_show_caret()
+
+
+## $97BA -- what was chosen.  The lower row shows the password; the upper one
+## leaves the way a password that was taken leaves, through the same wait and
+## the same step three.
+func _show_act() -> void:
+	Pb2Sound.hush()                                # $97BE or $97CA
+	if choice != 0:
+		for i in range(laid.size()):               # $99EB
+			laid[i] = 0
+		for i in range(field.size()):              # $99F7
+			field[i] = 0
+		for i in range(found.size()):
+			found[i] = 0
+		step_no = SHOW_FIELD
+		return
+	# $97CD -- and out.  $50 is not written here: what runs down is the one
+	# the raising left ($9788), which is why it is a wait of one.
+	Pb2Sound.want(BACK_SOUND)
+	choice = 0                                     # $97D6
+	step_no = COUNT                                # $97D8
+
+
+## $97E1 -- the field screen raised, dark, and the password put together on it.
+func _show_field() -> void:
+	_paint(true, false)                            # $C882 and $16 over it
+	_place()                                       # $C813 = $D746
+	spot = 0                                       # $97F1
+	_pack()                                        # $9A1C
+	step_no = SHOW_DIGITS
+
+
+## $97FC -- one digit a picture, and on the twelfth the colours again, which is
+## what lights the screen back up after $97E1 left it dark.
+func _show_digit() -> void:
+	_digit(spot)                                   # $9872 -> $9940
+	spot += 1                                      # $97FF
+	if spot < field.size():                        # $9803
+		return
+	_colours()                                     # $9807
+	step_no = SHOW_HOLD
+
+
+## $9A1C -- the password put together, which is the verdict run backwards and
+## through the same tables.  The cartridge has two copies of this, one for the
+## code $1F and one for every other, and they are byte for byte the same
+## ($9A25 and $9A58).
+##
+## The seven places the code and the suits do not live in stay nought, and so
+## do the four bytes of score: this game never fills them, which is why the
+## verdict refuses a password whose score is not nought ($9D6C).
+func _pack() -> void:
+	laid[7] = (cleared & 0x03) << 1                # $9A26
+	laid[9] = (cleared & 0x0C) >> 1                # $9A2D
+	laid[11] = (cleared & 0x10) >> 2               # $9A35
+	laid[8] = (suits & 0x03) << 1                  # $9A3F
+	laid[10] = (suits & 0x0C) >> 1                 # $9A47
+	_sum_in()                                      # $9A8A
+	_shuffle()                                     # $9B21
+	_shift()                                       # $9AE9
+
+
+## $9A8A -- the sum of all twelve, laid into the low bit of the last six
+## places.  Those low bits are all nought when it is taken, which is why it is
+## the same sum $9C2B works out with them masked away.
+##
+## The sum itself is kept in $00 here and not in $06A5, where the verdict
+## leaves it: the two halves of the codec do not share that cell.
+func _sum_in() -> void:
+	var s := 0
+	for v in laid:
+		s = (s + v) & 0xFF
+	for i in range(5):
+		laid[6 + i] |= (s >> i) & 1
+	laid[11] |= (s & 0x60) >> 5
+
+
+## $9B21 -- the shuffle: the i-th place of the screen is the perm[i]-th of the
+## laid-out field, which is $9BFC read the other way about.
+func _shuffle() -> void:
+	var perm: Array = _pass["perm_odd"] if cleared == ALL_DONE \
+			else _pass["perm"][cleared & 0x0F]
+	for i in range(field.size()):
+		field[i] = laid[int(perm[i])]
+
+
+## $9AE9 -- and the offset of each place put on, which $9B09 takes off again.
+func _shift() -> void:
+	var off: Array = _pass["offset"]
+	for i in range(field.size()):
+		field[i] = (field[i] + int(off[i])) & 0x07
+
+
+## $981A -- and out.  $18 := 0 is the title screen, and the game starts over:
+## everything this screen carried goes back to nought, including the stages
+## and the suits it has just named.
+##
+## Four more cells it puts back the port has nowhere for -- $2B, $2C, $57 and
+## the $1A, $27 and $98 of the row that showed nothing ($97D2) -- because they
+## belong to the level the game was playing and not to this screen.
+func _show_out() -> int:
+	cleared = 0                                    # $9826
+	suits = 0                                      # $9828
+	stage = 0                                      # $9830
+	_wipe()                                        # $C813
+	taken = SHOWN_GOES_TO
+	next_step = 0
+	return taken
 
 
 ## $96CE -- the screen while it is typed on.

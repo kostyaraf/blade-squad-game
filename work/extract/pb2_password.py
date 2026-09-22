@@ -39,8 +39,10 @@ DIGIT_TBL, DIGITS, DIGIT_TILES = 0x99A3, 8, 4
 # $99D3 -- and where each place is written, high byte first ($9952 reads the
 # high one and $9958 the low).
 WHERE, WHERE_STEP = 0x99D3, 0x20
-# $9870 -- the two rows the caret stands on while a password is being shown.
+# $9870 -- the two rows the caret stands on while a password is being shown,
+# and $9865 -- the one place along it stands at, which does not move.
 SHOWN_Y = 0x9870
+SHOWN_X = 0x5A
 # $9914, $985D -- what the caret is on the two halves of the screen.
 KIND_TYPED, KIND_SHOWN = 0x59, 0x5A
 # $803E is handed $15 at $96B7 and $9774, and $C84C is handed $16 at $96AC:
@@ -77,6 +79,7 @@ def main():
         caret_kind=KIND_TYPED,
         shown_kind=KIND_SHOWN,
         shown_y=[at(SHOWN_Y), at(SHOWN_Y + 1)],
+        shown_x=SHOWN_X,
         digit=[[at(word(DIGIT_TBL + d * 2) + k) for k in range(DIGIT_TILES)]
                for d in range(DIGITS)],
         # The address is kept as the cartridge keeps it, so that the port
