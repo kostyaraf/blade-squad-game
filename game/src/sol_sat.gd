@@ -89,6 +89,31 @@ static func _draw(o: SolObjects, x: int) -> void:
 			(o.x[x] - o.cam_x) & 0xFFFF, (o.y[x] - o.cam_y) & 0xFFFF, o.table)
 
 
+## Э7.5 -- the four slots laid out again, from where the view really stands.
+##
+## A guest of another game's level steps his own pool with the view pretended
+## to stand on him, so that nothing of his own is thrown out at the edge
+## (Э5.7), and the laying out above happens inside that step -- which puts his
+## satellite on the picture measured from a view the picture has not got.  This
+## is the same laying out done again afterwards from the right view.  Nothing
+## else of the pool is touched: what a slot is and where it stands has already
+## been decided, and the table and the view are put back as they were.
+static func draw_again(o: SolObjects, t: SolSprites.Table,
+		view_x: int, view_y: int) -> void:
+	var was_table: SolSprites.Table = o.table
+	var was_x: int = o.cam_x
+	var was_y: int = o.cam_y
+	o.table = t
+	o.cam_x = view_x
+	o.cam_y = view_y
+	for x in range(FIRST, LAST + 1):
+		if o.id[x] != 0:
+			_draw(o, x)
+	o.table = was_table
+	o.cam_x = was_x
+	o.cam_y = was_y
+
+
 ## $A4BC -- the slot has been knocked out and falls off the picture.  Which
 ## way it falls is the hero's own up and down.
 static func _dying(o: SolObjects, x: int) -> void:

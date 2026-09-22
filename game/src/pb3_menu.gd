@@ -16,13 +16,14 @@ class_name Pb3Menu
 
 ## Which game, and what it is called on the screen.
 ##
-## Two, and not the three the plan asks for: the PB3 mode is played by its own
-## stands and has never been drawn -- every `pb3` way into `main.gd` puts out
-## text -- so a third row here would offer something that cannot be shown.
-## It goes in when Э7.5 draws it, and not before.
+## Three, which is the whole of the plan: the two cartridges and the mode that
+## is this port's own.  The third row waited for Э7.5, because until the PB3
+## mode was drawn it would have offered something that cannot be shown -- every
+## `pb3` way into `main.gd` put out text and nothing else.
 const WAYS := [
 	["pb2", "POWER BLADE 2"],
 	["sol", "SOLBRAIN"],
+	["pb3", "POWER BLADE 3"],
 ]
 
 ## The console's own picture, which the whole build is stretched from.

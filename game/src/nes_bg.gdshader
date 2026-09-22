@@ -20,6 +20,19 @@ uniform sampler2D map : filter_nearest;        // R = tile number, G = palette
 uniform sampler2D palette : filter_nearest;    // 32 x 1, the colours in force
 uniform sampler2D oam : filter_nearest;        // 64 x 1: R = y, G = tile, B = attr, A = x
 
+// Э7.5 -- a hybrid picture: the level and its own things belong to one game and
+// a guest of it to the other, so the guest brings a second table of his own.
+// His sprites come out of his own game's sheet, his own four sprite banks and
+// his own game's colours; only the sprite half of `palette2` is looked at.  The
+// background, its colours and its four banks are the level's own and there is
+// only one of them.  `work/re/pb3_draw.md`.
+uniform sampler2D sheet2 : filter_nearest;
+uniform sampler2D oam2 : filter_nearest;
+uniform sampler2D palette2 : filter_nearest;
+uniform int banks2[8];
+uniform bool sprites2_on = false;
+uniform float sheet2_tiles_w = 128.0;
+
 uniform vec2 scroll = vec2(0.0);               // world pixel at the top left
 uniform vec2 map_size = vec2(1.0);             // the map, in tiles
 uniform vec2 sheet_size = vec2(1024.0, 512.0); // the sheet, in pixels
@@ -89,6 +102,16 @@ int tile_colour(int bank, int index, int px, int py) {
     return int(texelFetch(sheet, ivec2(sp), 0).r * 255.0 / 85.0 + 0.5);
 }
 
+// The same reading out of the guest's sheet.  A sampler cannot be handed to a
+// function in this shader language, so the reading is written twice rather than
+// the tile being fetched through an argument.
+int tile_colour2(int bank, int index, int px, int py) {
+    int idx = bank * 64 + index;
+    vec2 sp = vec2(float(idx % int(sheet2_tiles_w)) * 8.0 + float(px),
+                   float(idx / int(sheet2_tiles_w)) * 8.0 + float(py));
+    return int(texelFetch(sheet2, ivec2(sp), 0).r * 255.0 / 85.0 + 0.5);
+}
+
 void fragment() {
     // Outside the level's window is the status bar's business.
     bool outside = FRAGCOORD.y < view_top || FRAGCOORD.y >= view_bottom;
@@ -130,6 +153,12 @@ void fragment() {
     int here_x = int(FRAGCOORD.x);
     int here_y = int(FRAGCOORD.y);
     int on_line = 0;
+    // Whether the level's own table has this point already.  It is set by the
+    // sprite that wins the point and not by the colour that ends up showing:
+    // the console picks the front-most sprite first and only then asks the
+    // "behind the background" bit, so a sprite of the level's that loses to the
+    // background has still taken the point.
+    bool taken = false;
     // The console draws its sprites over the whole of the picture and not
     // only over the level's window: while he arrives the four pieces come in
     // across the bottom sixteen lines, which are the strip's.
@@ -162,6 +191,46 @@ void fragment() {
         // first opaque pixel found is the answer and the rest are not looked at.
         if ((attr & 0x20) == 0 || bg_c == 0) {
             COLOR = texelFetch(palette, ivec2(16 + (attr & 3) * 4 + c, 0), 0);
+        }
+        taken = true;
+        break;
+    }
+    // Э7.5 -- and then the guest's own table, over the picture the level's own
+    // left behind.  A sprite of the level's hides a sprite of the guest's and
+    // not the other way about, which is why this runs second and only where the
+    // level's own took nothing.  Its own eight to a line, because each game
+    // shuffles its own table and one queue of eight would make the two
+    // shuffles fight.
+    int on_line2 = 0;
+    for (int i = 0; sprites2_on && !taken && i < 64; i++) {
+        vec4 o = texelFetch(oam2, ivec2(i, 0), 0);
+        int line = here_y - (int(o.r * 255.0 + 0.5) + 1);
+        if (line < 0 || line >= 16) {
+            continue;
+        }
+        on_line2++;
+        if (on_line2 > 8) {
+            break;
+        }
+        int col = here_x - int(o.a * 255.0 + 0.5);
+        if (col < 0 || col >= 8) {
+            continue;
+        }
+        int attr = int(o.b * 255.0 + 0.5);
+        int tile = int(o.g * 255.0 + 0.5);
+        int fine = (attr & 0x80) != 0 ? 15 - line : line;
+        int index = (tile & 0xFE) + (fine >= 8 ? 1 : 0);
+        int bank = banks2[((tile & 1) != 0 ? 4 : 0) + index / 64];
+        int c = tile_colour2(bank, index % 64,
+                (attr & 0x40) != 0 ? 7 - col : col, fine & 7);
+        if (c == 0) {
+            continue;
+        }
+        // The bit that says "behind the background" is read against the
+        // level's own background, because there is only one background and it
+        // is the level's.
+        if ((attr & 0x20) == 0 || bg_c == 0) {
+            COLOR = texelFetch(palette2, ivec2(16 + (attr & 3) * 4 + c, 0), 0);
         }
         break;
     }

@@ -76,6 +76,7 @@ func _ready() -> void:
 	var pb3gear := ""
 	var pb3list := ""
 	var pb3run := ""
+	var pb3draw := ""
 	var pb3arms := ""
 	var solflow := ""
 	var solscript := ""
@@ -132,6 +133,7 @@ func _ready() -> void:
 		elif a.begins_with("--pb3gear="): pb3gear = a.substr(10)
 		elif a.begins_with("--pb3list="): pb3list = a.substr(10)
 		elif a.begins_with("--pb3run="): pb3run = a.substr(9)
+		elif a.begins_with("--pb3draw="): pb3draw = a.substr(10)
 		elif a.begins_with("--pb3arms="): pb3arms = a.substr(10)
 		elif a.begins_with("--solflow="): solflow = a.substr(10)
 		elif a.begins_with("--solscript="): solscript = a.substr(12)
@@ -251,6 +253,10 @@ func _ready() -> void:
 		return
 	if pb3gear != "":
 		_run_pb3_gear(pb3gear)
+		get_tree().quit()
+		return
+	if pb3draw != "":
+		await _run_pb3_draw(pb3draw)
 		get_tree().quit()
 		return
 	if pb3run != "":
@@ -3414,6 +3420,9 @@ func _bar_step() -> void:
 
 
 func _apply() -> void:
+	if pb3 != null:
+		_pb3_apply()
+		return
 	if sol_flow != null and (sol_flow.screen != "" or level_sol == null):
 		_sol_screen_frame()
 		return
@@ -3489,6 +3498,13 @@ func _apply() -> void:
 func _process(dt: float) -> void:
 	if pads.is_empty():
 		return
+	# While a piece of the picture is being shot the harness owns both the
+	# stepping and the shader: the monitor must neither step the game on nor
+	# put the sprite tables back, or the piece asked for would be cut out of
+	# another picture than the one that was measured.
+	if shooting:
+		queue_redraw()
+		return
 	# The logic runs on the console's clock, not the monitor's.  While a walk
 	# is being taken picture by picture it owns the stepping and the monitor
 	# must not add any of its own, or the picture asked for at a given step
@@ -3517,6 +3533,13 @@ func _process(dt: float) -> void:
 		return
 	if secret != null:
 		_pass_show()
+		queue_redraw()
+		return
+	if pb3 != null:
+		# While the list is up there is no console picture at all, and the
+		# board draws itself.
+		if pb3.two != null and pb3_draw != null:
+			_pb3_show()
 		queue_redraw()
 		return
 	_bar_show(bg.material)
@@ -3581,6 +3604,11 @@ func _menu_took(which: String) -> void:
 		# read once the screen has been settled and there is a game to put it
 		# into.
 		_start_title()
+		return
+	if which == "pb3":
+		# Э7.5 -- the mode that is this port's own, and the only one of the
+		# three with no cartridge behind it: it opens on its own list.
+		_start_pb3()
 		return
 	_start_sol_boot()
 	_progress_read()
@@ -3977,6 +4005,9 @@ func _step_game() -> void:
 	if secret != null:
 		_pass_step()
 		return
+	if pb3 != null:
+		_step_pb3()
+		return
 	if choosing:
 		_choice_step()
 		return
@@ -4249,6 +4280,8 @@ func _sol_dark() -> void:
 	m.set_shader_parameter("map_size", Vector2.ZERO)
 	m.set_shader_parameter("wrap", Vector2.ZERO)
 	m.set_shader_parameter("sprites_on", false)
+	# Э7.5 -- and the guest's own table, which only the PB3 mode ever has.
+	m.set_shader_parameter("sprites2_on", false)
 	m.set_shader_parameter("bands_on", false)
 	m.set_shader_parameter("bar_on", false)
 	m.set_shader_parameter("split_at", 1000.0)
@@ -5349,6 +5382,479 @@ func _pass_show() -> void:
 	oam_tex.update(img)
 
 
+# ---- Э7.5: the PB3 mode, played and drawn -------------------------------
+
+## The mode of two games at once, up.  It opens on the list of records, because
+## there is nothing else it could open on: the mode is a level of one game with
+## a hero of the other in it, and until a record is settled on there is no
+## level.  `work/re/pb3_draw.md`.
+func _start_pb3() -> void:
+	# Neither game's driver is here yet, so what both of them ask for is
+	# dropped rather than piled up.
+	Pb2Sound.forget()
+	SolSound.forget()
+	pb3 = Pb3List.new([Pb3Pair.PB2, Pb3Pair.SOL])
+	pb3_gear = null
+	pb3_draw = null
+	pb3_board = Pb3Board.new()
+	add_child(pb3_board)
+	pb3_board.show_list(pb3.at)
+	# The board is the port's own writing and stands over the picture.
+	bg.z_index = -1
+	_apply()
+
+
+## One picture of the mode: the list until a record is settled on, and the
+## record itself after that.
+func _step_pb3() -> void:
+	var p: Pad = pads[0]
+	if pb3.two == null:
+		# A is the way in, and it is taken here rather than left to the list:
+		# `Pb3List.step` raises a record with the level's own game left out,
+		# which is Э5.6's empty room, and what is wanted here is Э5.7's whole
+		# one.
+		if (p.pressed & Pad.A) != 0:
+			if pb3.enter(true):
+				_pb3_enter()
+			return
+		pb3.step(p.held)
+		pb3_board.show_list(pb3.at)
+		return
+	# SELECT -- back to the list.  Neither game knows a way out of a level
+	# like this: it is the port's own road, and it is named in the разбор.
+	if (p.pressed & Pad.SELECT) != 0:
+		_pb3_leave()
+		return
+	Pb2Sound.forget()
+	SolSound.forget()
+	# Э5.5 -- the bar first, because a suit put on or a gun chosen is what the
+	# picture after it is played with.
+	pb3_gear.step([pads[0].pressed, pads[1].pressed])
+	pb3.two.step([pads[0].held, pads[1].held])
+	pb3_draw.after_step(pb3_gear)
+	pb3_board.show_bar(pb3_gear)
+
+
+## A record raised: the pair, the bar both of them spend, and the laying out of
+## the picture.  The arming is the same three lines Э5.8's own run uses.
+func _pb3_enter() -> void:
+	var two: Pb3Pair = pb3.two
+	# $92CD -- the satellite a finished combination gives him, and the one
+	# place in the engine that hands one over.
+	pb3_gear = Pb3Gear.new(pb3.kinds)
+	for i in range(two.who.size()):
+		if two.who[i] != Pb3Pair.SOL:
+			continue
+		if i == two.host:
+			pb3_gear.arm(two.host_sol, i)
+		else:
+			pb3_gear.arm(two.guest_pool[i], i)
+	pb3_draw = Pb3Draw.new(two)
+	pb3_draw.after_step(pb3_gear)
+	pb3_board.show_bar(pb3_gear)
+	_apply()
+
+
+## And out again, back to the record it was entered from.
+func _pb3_leave() -> void:
+	pb3.leave()
+	pb3_gear = null
+	pb3_draw = null
+	pb3_board.show_list(pb3.at)
+	_apply()
+
+
+## The whole of the picture handed over again, which is what a record going up
+## or coming down needs.
+##
+## The background is the level's own, whole: its map, its size, the window it
+## keeps and the sixteen lines a Power Blade area gives away to a bar it has
+## not got here.  What is doubled is the sprites -- the guest's sheet, his
+## colours, his banks and his table -- and that is all that is doubled.
+func _pb3_apply() -> void:
+	var m: ShaderMaterial = bg.material
+	if pb3.two == null or pb3_draw == null:
+		# The list has no console picture behind it at all.
+		_sol_dark()
+		return
+	var two: Pb3Pair = pb3.two
+	var img: Image
+	var size: Vector2
+	if two.game == Pb3Pair.PB2:
+		var lv: Pb2Level = two.pb2v as Pb2Level
+		game = "pb2"
+		img = lv.map_image
+		size = Vector2(lv.width_tiles, lv.height_tiles)
+		# Power Blade 2 hangs its level sixteen pixels below the top of the
+		# screen and keeps the bottom sixty-four for the status bar.
+		origin = Vector2i(0, 16)
+		view_h = 160
+	else:
+		var sl: SolLevel = two.solv as SolLevel
+		game = "sol"
+		img = sl.map_image
+		size = Vector2(sl.width_tiles, sl.height_tiles)
+		# Solbrain gives the level everything but the bottom sixteen lines.
+		origin = Vector2i.ZERO
+		view_h = 224
+	pal_tex = Nes.palette_texture(pb3_draw.palette)
+	pal2_tex = Nes.palette_texture(pb3_draw.guest_palette)
+	map_tex = ImageTexture.create_from_image(img)
+	oam_tex = ImageTexture.create_from_image(_oam_image(pb3_draw.oam))
+	oam2_tex = ImageTexture.create_from_image(_oam_image(pb3_draw.guest_oam))
+	var second: Texture2D = Nes.sheet(pb3_draw.guest_sheet)
+	m.set_shader_parameter("sheet", Nes.sheet(game))
+	m.set_shader_parameter("sheet_size", Nes.sheet(game).get_size())
+	m.set_shader_parameter("map", map_tex)
+	m.set_shader_parameter("map_size", size)
+	m.set_shader_parameter("palette", pal_tex)
+	m.set_shader_parameter("oam", oam_tex)
+	m.set_shader_parameter("sheet2", second)
+	m.set_shader_parameter("sheet2_tiles_w",
+			float(int(second.get_size().x) / 8))
+	m.set_shader_parameter("palette2", pal2_tex)
+	m.set_shader_parameter("oam2", oam2_tex)
+	# Nothing of a screen outside a level: the picture is one level's the whole
+	# frame, and the bar over it is the board's writing and not a map.
+	m.set_shader_parameter("bands_on", false)
+	m.set_shader_parameter("bar_on", false)
+	m.set_shader_parameter("split_at", 1000.0)
+	m.set_shader_parameter("clip_left", 0.0)
+	m.set_shader_parameter("wrap", Vector2.ZERO)
+	_pb3_show()
+	m.set_shader_parameter("view_top", float(origin.y))
+	m.set_shader_parameter("view_bottom", float(origin.y + view_h))
+
+
+## One picture of the mode handed over: where the view stands, the colours of
+## both halves, both sets of banks and both sprite tables.
+func _pb3_show() -> void:
+	var m: ShaderMaterial = bg.material
+	var two: Pb3Pair = pb3.two
+	if two.game == Pb3Pair.PB2:
+		var lv: Pb2Level = two.pb2v as Pb2Level
+		if lv.map_dirty:
+			lv.map_dirty = false
+			map_tex.update(lv.map_image)
+		# $F52C -- a downward area keeps the level in pages of two hundred and
+		# forty lines and the view counts them in pages of two hundred and
+		# fifty six, which is the sum `Pb2Objects._world` does.
+		var pos: int = two.eye.pos
+		var w: int = ((pos >> 8) * 240 + (pos & 0xFF)) if lv.vertical else pos
+		scroll = Vector2i(0, w) if lv.vertical else Vector2i(w, 0)
+	else:
+		var sl: SolLevel = two.solv as SolLevel
+		if sl.map_dirty:
+			sl.map_dirty = false
+			map_tex.update(sl.map_image)
+		scroll = Vector2i(two.sol_eye.x >> 4, two.sol_eye.y >> 4)
+	m.set_shader_parameter("scroll", Vector2(scroll - origin))
+	Nes.update_palette(pal_tex, pb3_draw.palette)
+	Nes.update_palette(pal2_tex, pb3_draw.guest_palette)
+	m.set_shader_parameter("banks", PackedInt32Array(pb3_draw.banks))
+	m.set_shader_parameter("banks2", PackedInt32Array(pb3_draw.guest_banks))
+	m.set_shader_parameter("sprites_on", true)
+	m.set_shader_parameter("sprites2_on", pb3_draw.guest >= 0)
+	oam_tex.update(_oam_image(pb3_draw.oam))
+	oam2_tex.update(_oam_image(pb3_draw.guest_oam))
+
+
+## A console sprite table as the shader reads it: one point a sprite, its four
+## bytes in the four channels.
+func _oam_image(table: PackedByteArray) -> Image:
+	var img := Image.create(Pb2Sprites.SPRITES, 1, false, Image.FORMAT_RGBA8)
+	for i in range(Pb2Sprites.SPRITES):
+		img.set_pixel(i, 0, Color8(table[i * 4], table[i * 4 + 1],
+				table[i * 4 + 2], table[i * 4 + 3]))
+	return img
+
+
+## Э7.5's harness -- the mode walked the way a player walks it, and its picture
+## taken apart.
+##
+## What it puts out is one line a record: whether the record came up, which of
+## the two is the level's own hero and which is its guest, which game's sheet
+## the guest is drawn out of, how many pictures were played, how many sprites
+## each table has on the picture and the most either of them has on one line.
+##
+## What it can be asked for besides is the picture itself, in as many as six
+## pieces, so that a stand can hold each half against what it should be:
+##
+## * `both` -- the picture as the mode draws it;
+## * `host` -- the same with the guest's table turned off;
+## * `guest` -- the same with the level's own table turned off;
+## * `bare` -- the background alone;
+## * `swap` -- the guest's table drawn as the *first* table, out of his sheet
+##   and his colours, which is the accepted single-game way of drawing a table:
+##   it must come out the same as `guest`, or the second pass is not drawing
+##   what the first one would;
+## * `solo` -- the same level, view and table handed to the road the single
+##   game is drawn by, which judges the wiring rather than the shader.
+##
+## The pad is handed over rather than pressed, so the road walked here is the
+## road the player walks: the list, A into the record, and SELECT out of it.
+func _run_pb3_draw(path: String) -> void:
+	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var frames: int = int(cfg.get("frames", 0))
+	var shots: Dictionary = cfg.get("shots", {})
+	var want: Array = cfg.get("records", [])
+	pads = [Pad.new({}, -1), Pad.new({}, -1)]
+	for one in pads:
+		(one as Pad).handed = 0
+	_start_pb3()
+	var recs: Array = Pb3List.records()
+	var out := PackedStringArray()
+	for n in range(recs.size()):
+		var say: String = Pb3List.say(recs[n])
+		if not want.is_empty() and not want.has(say):
+			continue
+		# The cursor is put on the record and the way in is pressed, so that
+		# what is judged is the road and not a call.
+		pb3.at = n
+		pb3.last_pad = 0
+		_pb3_hand(Pad.A)
+		if pb3.two == null:
+			out.append("rec %s up 0" % say)
+			continue
+		var ran := 0
+		for f in range(frames):
+			var now: Array = _pb3_pilot(f)
+			pads[0].handed = int(now[0])
+			pads[1].handed = int(now[1])
+			_step_game()
+			ran += 1
+		var mine: Array = _pb3_table_says(pb3_draw.oam)
+		var his: Array = _pb3_table_says(pb3_draw.guest_oam)
+		# Which way the level runs, because a downward Power Blade area
+		# counts its pages by two hundred and forty and a stand choosing a
+		# record to photograph wants one of each.
+		var tall: bool = pb3.two.game == Pb3Pair.PB2 \
+				and (pb3.two.pb2v as Pb2Level).vertical
+		out.append("rec %s up 1 host %d guest %d sheet %s tall %d ran %d "
+				% [say, pb3.two.host, pb3_draw.guest, pb3_draw.guest_sheet,
+						1 if tall else 0, ran]
+				+ "on %d %d line %d %d"
+				% [int(mine[0]), int(his[0]), int(mine[1]), int(his[1])])
+		# What each half was handed, so that the promises about the banks and
+		# the colours can be judged without a photograph: the background's
+		# four are one and the same and the sprite four are each his own.
+		out.append("banks %s %s / %s"
+				% [say, _pb3_says(pb3_draw.banks),
+						_pb3_says(pb3_draw.guest_banks)])
+		out.append("paint %s %s / %s"
+				% [say, _pb3_says(Array(pb3_draw.palette)),
+						_pb3_says(Array(pb3_draw.guest_palette))])
+		if shots.has(say):
+			await _pb3_shots(shots[say] as Dictionary)
+		# And out the way a player goes out.
+		pads[0].handed = Pad.SELECT
+		pads[1].handed = 0
+		_step_game()
+		pads[0].handed = 0
+		_step_game()
+	# The mode is over: what is left of the picture is nobody's, and the
+	# monitor must not go on stepping a list that is not there.
+	remove_child(pb3_board)
+	pb3_board.free()
+	pb3_board = null
+	pb3 = null
+	pb3_gear = null
+	pb3_draw = null
+	# And with no pads there is nothing for the monitor to step at all, which
+	# is what every run here leaves behind when it is done.
+	pads = []
+	print("\n".join(out))
+
+
+## A row of numbers as one word, in hex, for a line a stand reads.
+func _pb3_says(ns: Array) -> String:
+	var out := PackedStringArray()
+	for n in ns:
+		out.append("%02X" % int(n))
+	return "".join(out)
+
+
+## One picture with a word handed to the first pad and nothing to the second.
+func _pb3_hand(word: int) -> void:
+	pads[0].handed = word
+	pads[1].handed = 0
+	_step_game()
+	pads[0].handed = 0
+
+
+## The pilot the harness plays with, which is Э5.8's own: both of them towards
+## the far edge, each tapping half a throw apart so that they do not throw at
+## the same thing on the same picture, and downwards as well in an area that
+## rides down.  The pilot is not on trial.
+func _pb3_pilot(f: int) -> Array:
+	var two: Pb3Pair = pb3.two
+	var down: bool = two.game == Pb3Pair.PB2 \
+			and (two.pb2v as Pb2Level).vertical
+	var way: int = Pad.RIGHT | (Pad.DOWN if down else 0)
+	var now: Array = [way, way]
+	for i in range(2):
+		if f % 24 == 8:
+			now[i] = int(now[i]) | Pad.A
+		if (f + i * 4) % 8 < 2:
+			now[i] = int(now[i]) | Pad.B
+	return now
+
+
+## How much of a table is on the picture, and the most of it on any one line.
+## The console draws no more than eight of a table on a line, and each table
+## here keeps its own eight (`work/re/pb3_draw.md`), so this is counted a table
+## at a time.
+func _pb3_table_says(table: PackedByteArray) -> Array:
+	var on := 0
+	var lines := PackedInt32Array()
+	lines.resize(240)
+	for i in range(Pb2Sprites.SPRITES):
+		# The console puts a sprite one line below the number in the table.
+		var top: int = table[i * 4] + 1
+		if top >= 240:
+			continue
+		on += 1
+		for y in range(top, mini(top + 16, 240)):
+			lines[y] += 1
+	var worst := 0
+	for y in range(240):
+		worst = maxi(worst, lines[y])
+	return [on, worst]
+
+
+## The picture in as many of its six pieces as were asked for.  The board is
+## the port's own writing over the picture and is taken down while a piece is
+## being shot, or every piece would have it in.
+func _pb3_shots(want: Dictionary) -> void:
+	var m: ShaderMaterial = bg.material
+	pb3_board.visible = false
+	# The walk steps the game inside one picture of the monitor, so the
+	# shader is still holding the picture the record came up with: it is
+	# handed the one that was just measured before anything is shot.
+	_pb3_show()
+	shooting = true
+	if want.has("both"):
+		await _pb3_one_shot(str(want["both"]), true, true)
+	if want.has("host"):
+		await _pb3_one_shot(str(want["host"]), true, false)
+	if want.has("guest"):
+		await _pb3_one_shot(str(want["guest"]), false, true)
+	if want.has("bare"):
+		await _pb3_one_shot(str(want["bare"]), false, false)
+	# The guest alone over a background that is not there.  With no map the
+	# whole of it is the backdrop and nothing of it is opaque, so the bit that
+	# says "behind the background" has nothing to hide behind and the piece is
+	# the guest's own marks and nothing else.
+	if want.has("flat"):
+		m.set_shader_parameter("map_size", Vector2.ZERO)
+		await _pb3_one_shot(str(want["flat"]), false, true)
+		_pb3_apply()
+	if want.has("swap"):
+		# The guest's own table in the first pass: his sheet, his colours and
+		# his banks where the level's own were.  The background is taken away
+		# with them, because the first pass draws the background out of the
+		# same sheet and the guest's would be another picture; with no map
+		# both pieces are the marks alone and can be held against one another.
+		m.set_shader_parameter("map_size", Vector2.ZERO)
+		var second: Texture2D = Nes.sheet(pb3_draw.guest_sheet)
+		m.set_shader_parameter("sheet", second)
+		m.set_shader_parameter("sheet_size", second.get_size())
+		m.set_shader_parameter("sheet_tiles_w",
+				float(int(second.get_size().x) / 8))
+		m.set_shader_parameter("palette", pal2_tex)
+		m.set_shader_parameter("oam", oam2_tex)
+		m.set_shader_parameter("banks",
+				PackedInt32Array(pb3_draw.guest_banks))
+		await _pb3_one_shot(str(want["swap"]), true, false)
+		_pb3_apply()
+	# Which of the two tables took a point, said in colours that cannot be
+	# mistaken for the background or for one another: the level's own marks
+	# are white, the guest's blue, and the background is taken away so that
+	# nothing can hide behind it.  Three pieces, and the promise "the level's
+	# own table is in front" is then a plain reading of them.
+	if want.has("front"):
+		var f: Dictionary = want["front"] as Dictionary
+		var one := PackedByteArray(pb3_draw.palette)
+		var other := PackedByteArray(pb3_draw.guest_palette)
+		for i in range(SPRITE_WHITE_FROM, PAINTS):
+			one[i] = WHITE
+			other[i] = BLUE
+		m.set_shader_parameter("map_size", Vector2.ZERO)
+		Nes.update_palette(pal_tex, one)
+		Nes.update_palette(pal2_tex, other)
+		await _pb3_one_shot(str(f["host"]), true, false)
+		await _pb3_one_shot(str(f["guest"]), false, true)
+		await _pb3_one_shot(str(f["both"]), true, true)
+		_pb3_apply()
+	if want.has("solo"):
+		await _pb3_solo(str(want["solo"]))
+	shooting = false
+	pb3_board.visible = true
+
+
+## One piece, with each of the two tables told whether it is there.
+func _pb3_one_shot(where: String, host_on: bool, guest_on: bool) -> void:
+	var m: ShaderMaterial = bg.material
+	m.set_shader_parameter("sprites_on", host_on)
+	m.set_shader_parameter("sprites2_on", guest_on and pb3_draw.guest >= 0)
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(where)
+	m.set_shader_parameter("sprites_on", true)
+	m.set_shader_parameter("sprites2_on", pb3_draw.guest >= 0)
+
+
+## The same level, the same view and the level's own table handed to the road
+## the single game is drawn by.
+##
+## What this judges is the wiring and not the shader: if the mode hands over
+## another window, another place for the view, other banks or other colours
+## than the accepted road hands over, the two pictures come out different.  The
+## guest is not in it, because the single game's road knows nothing of him.
+func _pb3_solo(where: String) -> void:
+	var two: Pb3Pair = pb3.two
+	var keep: Pb3List = pb3
+	var laid: Pb3Draw = pb3_draw
+	pb3 = null
+	# The single game knows nothing of a guest, so his pass is put out.
+	(bg.material as ShaderMaterial).set_shader_parameter("sprites2_on", false)
+	if two.game == Pb3Pair.PB2:
+		game = "pb2"
+		level_pb2 = two.pb2v as Pb2Level
+		level_sol = null
+		view = two.eye
+		world = two.host_pb2
+		hero = two.pb2[two.host] if two.host >= 0 else two.spare_pb2
+		status = two.host_status
+		bar = null
+		oam = laid.oam
+		pal_tex = Nes.palette_texture(laid.palette)
+		origin = Vector2i(0, 16)
+		view_h = 160
+	else:
+		game = "sol"
+		level_sol = two.solv as SolLevel
+		level_pb2 = null
+		sol_hero = two.sol[two.host] if two.host >= 0 else two.spare_sol
+		sol_view = two.sol_eye
+		sol_table = two.host_table
+		pal_tex = Nes.palette_texture(laid.palette)
+		origin = Vector2i.ZERO
+		view_h = 224
+	_apply()
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(where)
+	world = null
+	hero = null
+	view = null
+	sol_hero = null
+	sol_view = null
+	sol_table = null
+	level_pb2 = null
+	level_sol = null
+	pb3 = keep
+	_pb3_apply()
+
+
 ## The picking screen's own picture: the ground where the ride has left it and
 ## the two sprites -- the man and the sign over the stage he is standing at.
 func _choice_show() -> void:
@@ -5974,6 +6480,27 @@ var select: Pb2Select = null
 var title: Pb2Title = null
 ## Э7.6 -- $9672, the screen a password is typed on, while it is up.
 var secret: Pb2Pass = null
+
+## Э7.5 -- the PB3 mode: the list a record is picked from, the pair the record
+## raised, the one bar the two of them spend, the laying out of the picture
+## both games go into, and the port's own writing over it.
+var pb3: Pb3List = null
+var pb3_gear: Pb3Gear = null
+var pb3_draw: Pb3Draw = null
+var pb3_board: Pb3Board = null
+# A harness that shoots pieces of one picture holds the monitor still: see
+# `_process`.
+var shooting := false
+# The colours a harness marks the two tables with, and where the sprite half
+# of a palette starts: $30 is the console's white and $12 its blue, and
+# neither is a colour the backdrop is ever set to here.
+const SPRITE_WHITE_FROM := 16
+const PAINTS := 32
+const WHITE := 0x30
+const BLUE := 0x12
+## The guest's half of the picture: his own colours and his own sprite table.
+var pal2_tex: ImageTexture = null
+var oam2_tex: ImageTexture = null
 
 
 ## $88F0 -> $18 := 5 -> the map -> $18/$19 := 3/20.  The stage the choice opens

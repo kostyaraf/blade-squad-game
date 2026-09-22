@@ -41,9 +41,10 @@ START = 0x10
 UP = 0x08
 DOWN = 0x04
 
-# Which game each row is, top down.  Two, and not three: the PB3 mode has
-# never been drawn, so the screen does not offer it -- see work/re/release.md.
-ROWS = ['pb2', 'sol']
+# Which game each row is, top down.  Three, which is the whole of the plan:
+# the third row waited until Э7.5 had a picture to show for it, and it is
+# offered now -- see `work/re/pb3_draw.md`.
+ROWS = ['pb2', 'sol', 'pb3']
 
 # (name, the buttons picture by picture, what the caret should read after each
 #  of them, and what should have been taken by then)
@@ -52,13 +53,17 @@ WALKS = [
     ('down one', [DOWN, 0], [1, 1], [None, None]),
     # A button held is not a button pressed: the caret walks once and waits.
     ('down held', [DOWN, DOWN, DOWN], [1, 1, 1], [None, None, None]),
-    ('down twice', [DOWN, 0, DOWN, 0], [1, 1, 1, 1], [None] * 4),
+    ('down twice', [DOWN, 0, DOWN, 0], [1, 1, 2, 2], [None] * 4),
+    ('down at the bottom', [DOWN, 0, DOWN, 0, DOWN, 0],
+     [1, 1, 2, 2, 2, 2], [None] * 6),
     ('up at the top', [UP, 0, UP], [0, 0, 0], [None, None, None]),
     ('down then up', [DOWN, 0, UP, 0], [1, 1, 0, 0], [None] * 4),
     ('start takes the top', [START, 0], [0, 0], ['pb2', 'pb2']),
     ('a takes it too', [A, 0], [0, 0], ['pb2', 'pb2']),
     ('start takes the second', [DOWN, 0, START, 0],
      [1, 1, 1, 1], [None, None, 'sol', 'sol']),
+    ('start takes the third', [DOWN, 0, DOWN, 0, START, 0],
+     [1, 1, 2, 2, 2, 2], [None, None, None, None, 'pb3', 'pb3']),
     # Once taken, the screen is done: neither the caret nor the answer moves.
     ('taken is taken', [START, 0, DOWN, 0, START],
      [0, 0, 0, 0, 0], ['pb2'] * 5),
