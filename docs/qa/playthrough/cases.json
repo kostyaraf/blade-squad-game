@@ -171,5 +171,8 @@
   },
   {
     "file": "s14-nova/replay.json"
+  },
+  {
+    "file": "s1-nova/replay.json"
   }
 ]
