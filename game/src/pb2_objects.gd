@@ -860,6 +860,11 @@ func _touch(n: int, hero: PackedByteArray, mine: Array) -> void:
 		if (s[F_MARK] & 0x88) != 0:
 			return
 	# His own box ($B2C1), which for a guest is the one his own game gives him.
+	# PB3 doorways use the level's approach box. Solbrain's walking art has
+	# a four-pixel half-width and stops nine pixels from the door; the native
+	# six-pixel half-width reaches its trigger without requiring a slide.
+	if s[F_TYPE] in [0x03, 0x04]:
+		mine = own_box(hero)
 	var up: int = int(mine[0])
 	var half_w: int = int(mine[1])
 	var half_h: int = int(mine[2])

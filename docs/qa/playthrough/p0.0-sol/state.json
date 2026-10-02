@@ -1,1 +1,1 @@
-{"ended":0,"enemies":[],"entry":1,"id":2414,"message":"","players":[{"alive":true,"life":8,"state":0,"x":224,"y":303}],"tick":930,"view":[0,144]}
+{"ended":0,"enemies":[{"life":3,"slot":19,"state":1,"stun":0,"type":19,"x":112,"y":111},{"life":3,"slot":20,"state":1,"stun":0,"type":19,"x":144,"y":79},{"life":0,"slot":21,"state":1,"stun":0,"type":44,"x":64,"y":47}],"entry":1,"id":3110,"message":"","players":[{"alive":true,"life":8,"slide_attack":false,"state":0,"traversal_frame":-1,"x":222,"y":304}],"tick":930,"view":[0,144]}

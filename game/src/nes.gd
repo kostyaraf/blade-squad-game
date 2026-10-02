@@ -11,6 +11,7 @@ class_name Nes
 const DATA := "res://data"
 
 static var _sheets := {}
+static var sol_traversal_bank := 0
 static var nes_rgb: PackedColorArray = PackedColorArray()
 
 
@@ -48,9 +49,36 @@ static func sheet(game: String) -> ImageTexture:
 	# The sheet is one byte per pixel; keep it that way so the shader can read
 	# the colour index back out without a conversion losing it.
 	img.convert(Image.FORMAT_R8)
+	if game == "sol":
+		img = _sol_traversal_sheet(img)
 	var tex := ImageTexture.create_from_image(img)
 	_sheets[game] = tex
 	return tex
+
+
+## Original PB3 frames occupy appended CHR banks; cartridge pixels stay intact.
+static func _sol_traversal_sheet(native: Image) -> Image:
+	sol_traversal_bank = native.get_width() * native.get_height() / 4096
+	var frames: Array = _load_json(DATA + "/pb3/sol_traversal.json")["frames"]
+	var extra_tiles := 0
+	for frame in frames:
+		extra_tiles += int(frame.width) * int(frame.height) / 64
+	var columns: int = native.get_width() / 8
+	var extra_rows: int = (extra_tiles + columns - 1) / columns
+	var out := Image.create(native.get_width(), native.get_height() + extra_rows * 8, false, Image.FORMAT_R8)
+	out.blit_rect(native, Rect2i(0, 0, native.get_width(), native.get_height()), Vector2i.ZERO)
+	var tile := native.get_width() * native.get_height() / 64
+	for frame in frames:
+		for y in range(0, int(frame.height), 16):
+			for x in range(0, int(frame.width), 8):
+				for row in range(16):
+					var at: int = tile + row / 8
+					for col in range(8):
+						var digit: String = frame.pixels[y + row][x + col]
+						var value: int = 0 if digit == "." else int(digit)
+						out.set_pixel((at % columns) * 8 + col, (at / columns) * 8 + row % 8, Color(value / 3.0, 0, 0))
+				tile += 2
+	return out
 
 
 ## One of the console's sixty-four colours, for a thing drawn outside the

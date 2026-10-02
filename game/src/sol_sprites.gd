@@ -27,6 +27,7 @@ static var shine_off: PackedByteArray = PackedByteArray()
 ## $9384 -- the three pictures a hero with no suit on is drawn out of.
 static var bare: PackedByteArray = PackedByteArray()
 static var pictures: Array = []
+static var traversal: Array = []
 
 ## $F4D0 -- past this many sprites the second end is not written at all.
 const CROWDED := 0x3A
@@ -80,17 +81,27 @@ static func load_data() -> void:
 static func hero(p: SolPlayer, x: int, y: int, t: Table) -> void:
 	if p.draw_id < 0:
 		return
-	var before: PackedByteArray = t.oam.duplicate() if p.bridge_compact else PackedByteArray()
+	if p.bridge_frame >= 0:
+		_traversal(p, x, y, t)
+		return
 	_place(p.draw_id, p.draw_mark, x, y, t)
-	if p.bridge_compact:
-		# PB3-only slide: the existing crouch art is drawn at half height.
-		# Bit 4 is unused by the NES renderer and marks only these parts.
-		var feet: int = (y >> 4) + 16
-		for n in range(0, 256, 4):
-			if t.oam[n] >= 240 or t.oam[n] == before[n]:
-				continue
-			t.oam[n] = clampi(feet - (feet - int(t.oam[n]) + 1) / 2 - 1, 0, 239)
-			t.oam[n + 2] |= 0x10
+
+
+## PB3 artwork, not a cartridge pose: full-height tiles and normal NES flips.
+static func _traversal(p: SolPlayer, x: int, y: int, t: Table) -> void:
+	if traversal.is_empty():
+		var tile := 0
+		for frame in Nes._load_json(Nes.DATA + "/pb3/sol_traversal.json")["frames"]:
+			var parts: Array = []
+			for row in range(0, int(frame.height), 16):
+				for col in range(0, int(frame.width), 8):
+					parts.append([row + 15 - int(frame.origin[1]), col - int(frame.origin[0]), tile | 1, 0x10])
+					tile += 2
+			traversal.append(parts)
+	var flip := p.face_left and p.bridge_compact
+	var mark: int = (p.draw_mark & 3) | (0x40 if flip else 0)
+	t.fwd = _walk(traversal[p.bridge_frame], mark, flip, false,
+			(x & 0xFFFF) >> 4, (y & 0xFFFF) >> 4, t, t.fwd, true)
 
 
 ## $CF73 -- any picture at all, which is how an object puts itself in.

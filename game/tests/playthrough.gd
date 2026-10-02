@@ -102,7 +102,8 @@ func status() -> Dictionary:
 		else:
 			var p: SolPlayer = pair.sol[i]
 			player.alive = player.alive and p.state not in [0x0C, 0x0E]
-			player.merge({"state":p.state,"life":p.suit})
+			player.merge({"state":p.state,"life":p.suit,
+					"traversal_frame":p.bridge_frame,"slide_attack":p.bridge_slide})
 		result.players.append(player)
 	if pair.host_pb2 != null:
 		for n in range(Pb2Objects.FIRST_LIVE,Pb2Objects.SLOTS):

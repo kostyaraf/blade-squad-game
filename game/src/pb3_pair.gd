@@ -838,7 +838,10 @@ func _supply_surfaces(i: int) -> void:
 ## level's probes and ROM speeds, while Solbrain keeps his own art/weapons.
 func _sol_traversal(i: int, pad: int) -> bool:
 	var h: SolPlayer = sol[i]
+	var was_sliding := h.bridge_slide
 	h.bridge_compact = false
+	h.bridge_frame = -1
+	h.bridge_slide = false
 	if h.state >= 0x0C:
 		climbers.erase(i)
 		return false
@@ -879,15 +882,30 @@ func _sol_traversal(i: int, pad: int) -> bool:
 	h.vx = 0
 	h.vy = 0
 	h.skip(pad)
+	# $948D still ages arrival/hit flashing while the borrowed controller runs.
+	# Freezing an odd timer here could hide him for the entire ladder climb.
+	h.timer = mini(255, h.timer + 1)
 	if low:
 		h.state = SolPlayer.ST_CROUCH
 		h._pose(0x03)
 		h.bridge_compact = true
+		h.bridge_slide = q.sub == Pb2Player.SUB_SLIDE and q.vx != 0
+		h.bridge_slide_ticks = h.bridge_slide_ticks + 1 if was_sliding else 0
+		h.bridge_frame = 0 if h.bridge_slide_ticks < 4 else 1 + (h.bridge_slide_ticks / 6) % 2
+	elif q.sub in [Pb2Player.SUB_LADDER, Pb2Player.SUB_LADDER_ON,
+			Pb2Player.SUB_LADDER_OFF, Pb2Player.SUB_LADDER_MID]:
+		# $94A9 advances anim_i only while moving; a released pad freezes it.
+		var half_step: int = int(q.anims[q.anim_index[2]][0]) / 2
+		var phase: int = (maxi(0, q.anim_i - 1) % 2) * 2
+		h.bridge_frame = 3 + phase + (1 if q.anim_t <= half_step else 0)
+		h._pose(0) # Give _picture a valid base even when mounting at spawn.
 	h._picture()
 	if q.sub not in [Pb2Player.SUB_LADDER, Pb2Player.SUB_LADDER_ON,
 			Pb2Player.SUB_LADDER_OFF, Pb2Player.SUB_LADDER_MID,
 			Pb2Player.SUB_SLIDE, Pb2Player.SUB_CROUCH]:
 		climbers.erase(i)
+		h.bridge_frame = -1
+		h.bridge_slide = false
 		h.vx = _signed16(q.vx) >> 4
 		h.vy = _signed16(q.vy) >> 4
 		h.state = SolPlayer.ST_GROUND if q.sub == Pb2Player.SUB_GROUND else SolPlayer.ST_AIR
@@ -1200,6 +1218,13 @@ func _arms_of_sol(i: int, out: Array, from: Array) -> void:
 		out.append(_arm_from_sol(pool.w_x[k], pool.w_y[k], 0, 1))
 		from.append([0, k])
 	var h: SolPlayer = sol[i]
+	if live_session and game == PB2 and h.bridge_slide:
+		# PB3 rule requested by the user: a moving slide strikes low targets.
+		# Same three damage points as Nova's suit tackle ($B39E); normal
+		# projectile armour, breakable-block and enemy hit-grace rules apply.
+		var feet := screen_of(i)
+		out.append([feet.x + (-10 if h.face_left else 10), feet.y - 7, 6, 3])
+		from.append([2, -1]) # A body strike spends neither satellite nor ammo.
 	for k in range(SolSat.FIRST, SolSat.LAST + 1):
 		if pool.id[k] == 0 or (pool.id[k] & 0x80) != 0:
 			continue                    # $83F7 -- nothing in the slot
@@ -1245,6 +1270,8 @@ func _arm_spent(j: int, cost: int, i: int) -> void:
 	if pool == null or j >= arms_from[i].size():
 		return
 	var src: Array = arms_from[i][j]
+	if int(src[0]) == 2:
+		return
 	var k: int = int(src[1])
 	if int(src[0]) == 0:
 		# $8731 -- it goes through as much as $0770 says and no further.

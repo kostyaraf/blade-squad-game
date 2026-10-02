@@ -3431,7 +3431,7 @@ func _bar_step() -> void:
 
 func _apply() -> void:
 	(bg.material as ShaderMaterial).set_shader_parameter("map_paged", false)
-	(bg.material as ShaderMaterial).set_shader_parameter("compact_guests", false)
+	(bg.material as ShaderMaterial).set_shader_parameter("traversal_guests", false)
 	if pb3 != null:
 		_pb3_apply()
 		return
@@ -5719,6 +5719,7 @@ func _pb3_apply() -> void:
 	m.set_shader_parameter("palette", pal_tex)
 	m.set_shader_parameter("oam", oam_tex)
 	m.set_shader_parameter("sheet2", second)
+	m.set_shader_parameter("traversal_bank", Nes.sol_traversal_bank)
 	m.set_shader_parameter("sheet2_tiles_w",
 			float(int(second.get_size().x) / 8))
 	m.set_shader_parameter("palette2", pal2_tex)
@@ -5740,7 +5741,7 @@ func _pb3_apply() -> void:
 ## both halves, both sets of banks and both sprite tables.
 func _pb3_show() -> void:
 	var m: ShaderMaterial = bg.material
-	m.set_shader_parameter("compact_guests", true)
+	m.set_shader_parameter("traversal_guests", true)
 	var two: Pb3Pair = pb3.two
 	if two.game == Pb3Pair.PB2:
 		var lv: Pb2Level = two.pb2v as Pb2Level

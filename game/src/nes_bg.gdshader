@@ -37,7 +37,9 @@ uniform float sheet2_tiles_w = 128.0;
 // the second guest, keeping the existing number of texture samplers.
 uniform int banks3[8];
 uniform bool sprites3_on = false;
-uniform bool compact_guests = false;
+uniform bool traversal_guests = false;
+// Appended PB3 art, flagged by the otherwise unused NES attribute bit 4.
+uniform int traversal_bank = 0;
 
 // $F52C: vertical PB2 maps retain 16 padding lines per 256-line page.
 uniform bool map_paged = false;
@@ -217,8 +219,8 @@ void fragment() {
     for (int i = 0; sprites2_on && !taken && i < 64; i++) {
         vec4 o = texelFetch(oam2, ivec2(i, 0), 0);
         int line = here_y - (int(o.r * 255.0 + 0.5) + 1);
-        bool compact = compact_guests && (int(o.b * 255.0 + 0.5) & 0x10) != 0;
-        if (line < 0 || line >= (compact ? 8 : 16)) {
+        bool authored = traversal_guests && (int(o.b * 255.0 + 0.5) & 0x10) != 0;
+        if (line < 0 || line >= 16) {
             continue;
         }
         on_line2++;
@@ -231,10 +233,10 @@ void fragment() {
         }
         int attr = int(o.b * 255.0 + 0.5);
         int tile = int(o.g * 255.0 + 0.5);
-        int sample_line = compact ? line * 2 : line;
+        int sample_line = line;
         int fine = (attr & 0x80) != 0 ? 15 - sample_line : sample_line;
         int index = (tile & 0xFE) + (fine >= 8 ? 1 : 0);
-        int bank = banks2[((tile & 1) != 0 ? 4 : 0) + index / 64];
+        int bank = authored ? traversal_bank + index / 64 : banks2[((tile & 1) != 0 ? 4 : 0) + index / 64];
         int c = tile_colour2(bank, index % 64,
                 (attr & 0x40) != 0 ? 7 - col : col, fine & 7);
         if (c == 0) {
@@ -254,8 +256,8 @@ void fragment() {
     for (int i = 0; sprites3_on && !taken && i < 64; i++) {
         vec4 o = texelFetch(oam2, ivec2(i, 1), 0);
         int line = here_y - (int(o.r * 255.0 + 0.5) + 1);
-        bool compact = compact_guests && (int(o.b * 255.0 + 0.5) & 0x10) != 0;
-        if (line < 0 || line >= (compact ? 8 : 16)) {
+        bool authored = traversal_guests && (int(o.b * 255.0 + 0.5) & 0x10) != 0;
+        if (line < 0 || line >= 16) {
             continue;
         }
         on_line3++;
@@ -268,10 +270,10 @@ void fragment() {
         }
         int attr = int(o.b * 255.0 + 0.5);
         int tile = int(o.g * 255.0 + 0.5);
-        int sample_line = compact ? line * 2 : line;
+        int sample_line = line;
         int fine = (attr & 0x80) != 0 ? 15 - sample_line : sample_line;
         int index = (tile & 0xFE) + (fine >= 8 ? 1 : 0);
-        int bank = banks3[((tile & 1) != 0 ? 4 : 0) + index / 64];
+        int bank = authored ? traversal_bank + index / 64 : banks3[((tile & 1) != 0 ? 4 : 0) + index / 64];
         int c = tile_colour2(bank, index % 64,
                 (attr & 0x40) != 0 ? 7 - col : col, fine & 7);
         if (c == 0) {

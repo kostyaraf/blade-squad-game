@@ -88,6 +88,10 @@ const WALL_HIGH_RIGHT_DY := -6 * 16 - 1
 ## PB3 supplies world-space object rectangles; native stages leave these empty.
 var bridge_solids: Array = []
 var bridge_compact := false
+## PB3-only authored traversal frame; -1 retains the original cartridge art.
+var bridge_frame := -1
+var bridge_slide := false
+var bridge_slide_ticks := 0
 
 var lvl: SolLevel
 ## $38:$39 and $3A:$3B -- how far along the area he may go.  The level carries
