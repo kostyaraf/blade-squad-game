@@ -226,8 +226,8 @@ var hatchling_cfg: Dictionary = {}
 var drop_clock := 0  ## $98 -- successive deaths read successive nibbles.
 ## The ten minds themselves, which live in a file of their own.
 var bosses := Pb2Bosses.new()
-## $4A -- the switches of the level; $B5B7 reads bit three of it.
-var switch := 0
+## $4A -- held buttons of the native hero, read by $B5BC and $A61D.
+var pad_held := 0
 ## $5C -- which of the three sets of colours the background is wearing, and in
 ## bit 7 whether the walk through them is stopped at all.  In the three storm
 ## areas (2:3, 2:4 and 3:5) that bit turns itself over every 256 pictures --
@@ -280,7 +280,7 @@ var draw := -1
 var slide := 0
 ## $2B:$2C -- the sixteen collectables taken for good.
 var got := 0
-## $3B -- which of the eight blocks of this area have been knocked out.  It is
+## $3B -- shared bits of destroyed blocks and the level lever ($8B5E/$8B7F). It is
 ## wiped whenever an area is set up ($E3E8, $DFE4), so a new one of these is
 ## a new eight.
 var broken := 0
@@ -752,6 +752,8 @@ var guest_box: Array = []
 ## from the game the level did, both of them are guests in it; the pair puts
 ## the rest here, as `[row, box, suit]` (legacy guests omit suit), and the one named above stays what it is
 ## because it is what Э5.4's stand hands over.
+## PB3 entries: [row, combat_box, suit, held_buttons, standing_for_gate].
+## Legacy contact fixtures may omit the trailing metadata.
 var more_guests: Array = []
 
 ## Э5.8 -- and what a guest of this area is carrying.  One entry a guest,
@@ -839,13 +841,16 @@ func contact() -> void:
 			for g in guests:
 				var row: PackedByteArray = g[0]
 				if row[F_LIFE] != 0 and slots[n][F_TYPE] != 0:
-					_touch(n, row, g[1], int(g[2]) if g.size() > 2 else 0)
+					_touch(n, row, g[1], int(g[2]) if g.size() > 2 else 0,
+						int(g[3]) if g.size() > 3 else 0,
+						bool(g[4]) if g.size() > 4 else true)
 		n += 2
 	Pb2Sound.at_slot = -1
 
 
 ## $B285 -- is this one asked about at all, and does the hero reach it?
-func _touch(n: int, hero: PackedByteArray, mine: Array, actor_suit: int = -1) -> void:
+func _touch(n: int, hero: PackedByteArray, mine: Array, actor_suit: int = -1,
+		actor_pad: int = -1, actor_ready: bool = true) -> void:
 	var s: PackedByteArray = slots[n]
 	if s[F_TYPE] == 0x0C:
 		return                                  # a breakable block is scenery
@@ -880,7 +885,7 @@ func _touch(n: int, hero: PackedByteArray, mine: Array, actor_suit: int = -1) ->
 		_pick_up(n)                             # $B4AF
 		return
 	if (s[F_MARK] & 0x10) != 0:
-		_trip(n)                                # $B5A5
+		_trip(n, hero, pad_held if actor_pad < 0 else actor_pad, actor_ready) # $B5A5
 		return
 	_wound_hero(n, hero, suit if actor_suit < 0 else actor_suit) # $B39E
 	s = slots[n]
@@ -952,12 +957,12 @@ func _pick_up(n: int) -> void:
 
 
 ## $B5A5 -- the ones that go off when he stands on them.
-func _trip(n: int) -> void:
+func _trip(n: int, hero: PackedByteArray, actor_pad: int, actor_ready: bool) -> void:
 	var s: PackedByteArray = slots[n]
 	if s[F_TYPE] == 0x03:
-		if slots[0][F_MARK] != 0:
+		if hero[F_MARK] != 0 or not actor_ready:
 			return
-		if (switch & 0x08) == 0:
+		if (actor_pad & 0x08) == 0:
 			return
 	s[F_STATE] = 0x02
 	s[F_MARK] = 0x80
@@ -5692,14 +5697,14 @@ func _loose_0b(h: PackedByteArray) -> void:
 
 
 ## $A60F -- пока счёт меньше $D0, героя держат: скорость вбок гасят, а дробь
-## места по иксу ставят по переключателям уровня.
+## места по иксу ставят по удерживаемому направлению.
 func _hold_0b(s: PackedByteArray) -> void:
 	if s[F_COUNT] >= 0xD0:                             # $A612
 		return
 	var h: PackedByteArray = slots[0]
 	h[F_VXFR] = 0x00                                   # $0576
 	h[F_VX] = 0x00                                     # $0560
-	h[F_XFR] = 0x00 if (switch & 0x01) != 0 else 0x80  # $051E, $4A
+	h[F_XFR] = 0x00 if (pad_held & 0x01) != 0 else 0x80  # $051E, $4A
 
 
 ## $A62C -- отпустить: щуп пошире, и если герой на ней, ему заводят шаг из
@@ -7219,7 +7224,7 @@ func _shift_by(s: PackedByteArray, side: int, down: int) -> void:
 func _mind_0d(n: int, s: PackedByteArray) -> void:
 	if s[F_STATE] == 0:
 		s[F_MARK] = 0x80                               # $C9AB
-		if (MASK_36[s[F_LIFE]] & switch) != 0:         # $8B5E, $3B
+		if (MASK_36[s[F_LIFE]] & broken) != 0:         # $8B5E, $3B
 			clear(n)                                   # $C810
 			return
 		s[F_SELF] = 0x40                               # $8B62
@@ -7229,7 +7234,7 @@ func _mind_0d(n: int, s: PackedByteArray) -> void:
 	if s[F_SELF] != 0:
 		return
 	Pb2Sound.want(0x41)                                # $8B75 -- он сработал
-	switch = switch ^ MASK_36[s[F_LIFE]]               # $8B7F
+	broken = broken ^ MASK_36[s[F_LIFE]]               # $8B7F
 	clear(n)                                           # $C810
 
 

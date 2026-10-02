@@ -543,7 +543,7 @@ func _raise_flow() -> void:
 			var row := Pb2Objects.empty_row()
 			row[Pb2Objects.F_LIFE] = 0x10
 			guest_row[i] = row
-			guest_at[i] = [row, [0x0F, 6, 13], 0]
+			guest_at[i] = [row, [0x0F, 6, 13], 0, 0, false]
 			host_pb2.more_guests.append(guest_at[i])
 			host_pb2.guest_arms.append([arms[i], _arm_spent.bind(i)])
 		else:
@@ -603,6 +603,13 @@ func step(pads: Array) -> void:
 		turn_pb2.came = came
 		var held: int = int(pads[host]) if host >= 0 else 0
 		var hit: int = held & ~last_pad[host] if host >= 0 else 0
+		# $B5B7/$B5BC belong to the actor touching the gate. Refresh before
+		# contact, so P2 cannot borrow P1's UP or use last frame's buttons.
+		for i in range(who.size()):
+			if guest_at[i] == null:
+				continue
+			guest_at[i][3] = int(pads[i])
+			guest_at[i][4] = _pb2_gate_ready(i)
 		ended = turn_pb2.step(held, hit, true)
 		# With nobody of this game in the room the empty place at $0400 has no
 		# health, and $A17A reads that as a death.  It is not one: the two who
@@ -1029,6 +1036,18 @@ func _mirror_them() -> void:
 			_guest_into_sol(i)
 		# Э5.8 -- and what he is carrying, beside what he is.
 		_arms_of(i)
+
+
+## Translate Solbrain's idle/grounded condition for $B5B7 without changing
+## his combat box or combat state. A climb, slide or punch is not standing.
+func _pb2_gate_ready(i: int) -> bool:
+	if gone[i]:
+		return false
+	if who[i] == PB2:
+		return pb2[i].state == 0
+	var hero: SolPlayer = sol[i]
+	return hero.state == SolPlayer.ST_GROUND and hero.scripted == 0 \
+			and not hero.bridge_slide and not climbers.has(i)
 
 
 ## Native AI reads $0508/$04C6 even when nobody occupies Nova's own slot.

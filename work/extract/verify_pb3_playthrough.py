@@ -14,9 +14,11 @@ def main():
         capture_output=True, text=True, timeout=180)
     print(result.stdout, end='')
     print(result.stderr, end='')
-    return int(result.returncode != 0 or 'FAIL:' in result.stdout
+    bad = int(result.returncode != 0 or 'FAIL:' in result.stdout
                or 'ERROR:' in result.stderr
                or 'recorded playthroughs failed' not in result.stdout)
+    print('%d of 1 playthrough suites differ' % bad)
+    return bad
 
 
 if __name__ == '__main__':

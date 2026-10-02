@@ -110,6 +110,7 @@ func prepare(pressed: int) -> bool:
 
 
 func step(held: int, pressed: int, prepared: bool = false) -> int:
+	world.pad_held = held                         # $4A: this frame, before contact
 	if not prepared:
 		prepare(pressed)
 	if not prepared_play:
