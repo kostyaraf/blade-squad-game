@@ -92,6 +92,8 @@ var bridge_compact := false
 var bridge_frame := -1
 var bridge_slide := false
 var bridge_slide_ticks := 0
+## PB3 artwork phase in the borrowed controller's 1/256-pixel units.
+var bridge_climb_distance := 0
 
 var lvl: SolLevel
 ## $38:$39 and $3A:$3B -- how far along the area he may go.  The level carries

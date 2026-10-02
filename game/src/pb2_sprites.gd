@@ -20,6 +20,19 @@ static var objects: Array = []
 ## the second kilobyte can be.
 static var player_bank: PackedByteArray = PackedByteArray()
 static var suit_bank: PackedByteArray = PackedByteArray()
+static var net_data: Dictionary = {}
+static var net_first := 0
+
+
+static func net_art() -> Dictionary:
+	if net_data.is_empty():
+		net_data = Nes._load_json(Nes.DATA + "/pb3/nova_net.json")
+	return net_data
+
+
+static func net_pose(phase: int, suited: bool) -> int:
+	load_data()
+	return net_first + phase + (int(net_art().animations.variant_frames) if suited else 0)
 
 const SPRITES := 64
 const OAM := 256
@@ -41,6 +54,12 @@ static func load_data() -> void:
 	objects = j["objects"]
 	player_bank = PackedByteArray(j["player_bank"])
 	suit_bank = PackedByteArray(j["suit_bank"])
+	net_first = hero.size()
+	for frame in net_art().frames:
+		var pieces: Array = []
+		for p in frame.parts:
+			pieces.append([int(p[0]), int(p[2]), int(p[3]), int(p[1])])
+		hero.append(pieces)
 
 
 ## $8038 -- one picture's worth of the table.

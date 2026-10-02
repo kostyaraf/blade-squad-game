@@ -34,6 +34,15 @@ var src: SolLevel
 var cam_y := 0
 
 
+## $A043/$A065: Solbrain catches classes $20/$E0 at his centre while falling.
+## Keep the net separate from PB2 ladders and ordinary solid collision.
+func net_at(px: int, py: int) -> bool:
+	if src == null or px < 0 or py + cam_y < 0 \
+			or px >= width_tiles * 8 or py + cam_y >= height_tiles * 8:
+		return false
+	return (src.collision_at(px, py + cam_y) & 0x1C) in [0x04, 0x1C]
+
+
 func _init(stage: SolLevel) -> void:
 	super(-1, -1)
 	src = stage
