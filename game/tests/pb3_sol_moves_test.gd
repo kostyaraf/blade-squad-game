@@ -38,18 +38,27 @@ func run() -> void:
 	for f in range(32):
 		s.advance(s.tick,[Pad.UP])
 		frames[s.two.sol[0].bridge_frame] = true
-	check(frames.size() == 4 and not frames.has(-1),'climbing alternates authored poses')
+	check(frames.size() == 8 and not frames.has(-1),'climbing visits all eight authored poses')
 	var frame: int = s.two.sol[0].bridge_frame
 	var before := s.two.world_of(0)
 	for f in range(10):
 		s.advance(s.tick,[0])
 		check(s.two.sol[0].bridge_frame == frame,'idle ladder holds pose')
 	check(s.two.world_of(0) == before,'idle ladder holds position')
+	# Descending must undo the visual phase by the actual distance travelled.
+	var phase: int = s.two.sol[0].bridge_climb_distance
+	var q: Pb2Player = s.two.climbers[0]
+	var old_y: int = q.y
+	s.advance(s.tick,[Pad.DOWN])
+	var travelled: int = q.y - old_y
+	check(travelled > 0,'ladder reverses to downward motion')
+	check(s.two.sol[0].bridge_climb_distance == posmod(phase - travelled,32*256),
+			'descending reverses distance-driven animation')
 	var draw := Pb3Draw.new(s.two)
 	var parts := 0
 	for n in range(0,256,4):
 		if draw.guest_oam[n] < 240 and (draw.guest_oam[n+2] & 0x10) != 0: parts += 1
-	check(parts == 6,'ladder uses complete 24x32 art')
+	check(parts == 9,'ladder uses complete 24x48 art')
 	s.advance(s.tick,[Pad.A])
 	check(s.two.sol[0].bridge_frame == -1,'jump restores native art')
 	s.leave()

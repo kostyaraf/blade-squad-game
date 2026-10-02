@@ -5722,7 +5722,7 @@ func _pb3_apply() -> void:
 	m.set_shader_parameter("palette", pal_tex)
 	m.set_shader_parameter("oam", oam_tex)
 	m.set_shader_parameter("sheet2", second)
-	m.set_shader_parameter("traversal_bank", Nes.sol_traversal_bank)
+	m.set_shader_parameter("traversal_bank", Nes.nova_net_bank if pb3_draw.guest_sheet == "pb2" else Nes.sol_traversal_bank)
 	m.set_shader_parameter("sheet2_tiles_w",
 			float(int(second.get_size().x) / 8))
 	m.set_shader_parameter("palette2", pal2_tex)

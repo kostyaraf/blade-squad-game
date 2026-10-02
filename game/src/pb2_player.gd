@@ -33,6 +33,8 @@ const SUB_LADDER := 16
 const SUB_LADDER_ON := 17
 const SUB_LADDER_OFF := 18
 const SUB_LADDER_MID := 19
+## PB3-only net grip; none of the cartridge states use 29.
+const SUB_NET := 29
 
 const POSE_STAND := 0x11
 const POSE_IDLE := 0x12
@@ -44,6 +46,11 @@ const WALK_POSES := [0x06, 0x07, 0x08, 0x05]
 
 ## PB3 accepts Down+Jump on the same tick; native cartridge input is unchanged.
 var combo_slide := false
+var net_enabled := false
+var net_ticks := 0
+var net_release_ticks := 0
+## Authored picture phase; pose remains a native physics/weapon table index.
+var net_draw_phase := -1
 
 var lvl: Pb2Level
 var cfg: Dictionary
@@ -166,6 +173,7 @@ func step(buttons: int, pressed: int, camera: int,
 	limit = shot_limit
 	dx = 0
 	dy = 0
+	net_draw_phase = -1
 	touched_sol_hazard = false
 	# $05A2 is his own cell, and $8E49 wipes it at the end of every update, so
 	# what the mud says about him is said afresh each frame.  But the things
@@ -208,7 +216,14 @@ func step(buttons: int, pressed: int, camera: int,
 		SUB_ROOF_OVER: _roof_over()
 		SUB_HAUL: _haul(false)
 		SUB_HAUL_CARRIED: _haul(true)
+		SUB_NET: _net()
 		_: _ground()
+	if net_release_ticks > 0:
+		if sub == SUB_AIR and (state & 0x80) == 0:
+			net_draw_phase = int(Pb2Sprites.net_art().animations.release)
+			net_release_ticks -= 1
+		else:
+			net_release_ticks = 0
 	# $8E49 -- and the cell is wiped, so that the next thing to write into it
 	# writes into an empty one.
 	if world != null:
@@ -295,6 +310,8 @@ func _air() -> void:
 	elif _class_byte((x >> 8) - 6, (y >> 8) - 8) & 0x80:
 		x += 0x100
 	_gravity()
+	if _net_grab():
+		return
 	if dy < 0:
 		if _suit_air(true):
 			return
@@ -318,6 +335,65 @@ func _air() -> void:
 		_ladder_hold()
 		return
 	_move_y()
+
+
+## PB3 adaptation of Solbrain $A043/$A065: Up catches a net while falling.
+func _net_grab() -> bool:
+	if not net_enabled or not (lvl is SolAsPb2) or dy < 0 \
+			or (pad & UP) == 0 or (state & 0x80) != 0 or net_release_ticks > 0:
+		return false
+	var art: Dictionary = Pb2Sprites.net_art().animations
+	if not (lvl as SolAsPb2).net_at(cam + (x >> 8), (y >> 8) - int(cfg.view_top) + int(art.probe_y)):
+		return false
+	vx = 0
+	vy = 0
+	dx = 0
+	dy = 0
+	net_ticks = 0
+	state = 0x04 # Native ladder attack selection, without ladder movement.
+	sub = SUB_NET
+	pose = int(cfg["ladder_pose"])
+	net_draw_phase = 0
+	return true
+
+
+## Solbrain $98A8/$986A: hold the mesh, attack, jump away or Down+Jump to drop.
+## Moving across the mesh is done by jumping and catching it again.
+func _net() -> void:
+	var art: Dictionary = Pb2Sprites.net_art().animations
+	if not net_enabled or not (lvl is SolAsPb2) \
+			or not (lvl as SolAsPb2).net_at(cam + (x >> 8), (y >> 8) - int(cfg.view_top) + int(art.probe_y)):
+		_step_off(0)
+		return
+	vx = 0
+	vy = 0
+	if pad & (LEFT | RIGHT):
+		face_left = (pad & LEFT) != 0
+	if hit & A:
+		state &= 0x7F
+		if pad & DOWN:
+			_step_off(0)
+		else:
+			_jump()
+		net_release_ticks = int(art.reach_ticks)
+		return
+	_a1c2()
+	if state & 0x80:
+		return
+	net_ticks = mini(net_ticks + 1, int(art.reach_ticks) + int(art.catch_ticks))
+	var phase := 0 if net_ticks < int(art.reach_ticks) else 1
+	if net_ticks >= int(art.reach_ticks) + int(art.catch_ticks):
+		phase = int(art.hold)
+	pose = int(cfg["ladder_pose"])
+	net_draw_phase = phase
+
+
+## Only the renderer reads this number; native tables and object mirrors use pose.
+func drawing_pose() -> int:
+	if net_enabled and net_draw_phase >= 0 and (state & 0x80) == 0 \
+			and sub in [SUB_NET, SUB_AIR]:
+		return Pb2Sprites.net_pose(net_draw_phase, suit != 0)
+	return pose
 
 
 ## $8F8C -- crouching.
@@ -1650,6 +1726,7 @@ func _pushed() -> void:
 
 ## $9FE2
 func _jump() -> void:
+	net_draw_phase = -1
 	vy = int(cfg["jump_speed"])
 	if combo_slide and lvl is SolAsPb2:
 		# PB3 compatibility: one extra gravity step clears Solbrain's
@@ -1663,6 +1740,7 @@ func _jump() -> void:
 
 ## $9FDB -- walking off a ledge is a very small jump.
 func _step_off(speed: int = 0x7FFFFFFF) -> void:
+	net_draw_phase = -1
 	vy = int(cfg["step_off_speed"]) if speed == 0x7FFFFFFF else speed
 	_set_pose(POSE_RISE)
 	fall = 0

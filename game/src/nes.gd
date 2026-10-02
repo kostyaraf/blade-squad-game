@@ -12,6 +12,7 @@ const DATA := "res://data"
 
 static var _sheets := {}
 static var sol_traversal_bank := 0
+static var nova_net_bank := 0
 static var nes_rgb: PackedColorArray = PackedColorArray()
 
 
@@ -51,6 +52,8 @@ static func sheet(game: String) -> ImageTexture:
 	img.convert(Image.FORMAT_R8)
 	if game == "sol":
 		img = _sol_traversal_sheet(img)
+	elif game == "pb2":
+		img = _nova_net_sheet(img)
 	var tex := ImageTexture.create_from_image(img)
 	_sheets[game] = tex
 	return tex
@@ -78,6 +81,30 @@ static func _sol_traversal_sheet(native: Image) -> Image:
 						var value: int = 0 if digit == "." else int(digit)
 						out.set_pixel((at % columns) * 8 + col, (at / columns) * 8 + row % 8, Color(value / 3.0, 0, 0))
 				tile += 2
+	return out
+
+
+## PB3 Nova net art is appended, with native palette selection in its OAM.
+static func _nova_net_sheet(native: Image) -> Image:
+	nova_net_bank = native.get_width() * native.get_height() / 4096
+	var frames: Array = Pb2Sprites.net_art().frames
+	var count := 0
+	for frame in frames:
+		count += frame.tiles.size() * 2
+	var columns: int = native.get_width() / 8
+	var rows: int = (count + columns - 1) / columns
+	var out := Image.create(native.get_width(), native.get_height() + rows * 8, false, Image.FORMAT_R8)
+	out.blit_rect(native, Rect2i(0, 0, native.get_width(), native.get_height()), Vector2i.ZERO)
+	var tile: int = native.get_width() * native.get_height() / 64
+	for frame in frames:
+		for piece in frame.tiles:
+			for row in range(16):
+				var at: int = tile + row / 8
+				for col in range(8):
+					var digit: String = piece[row][col]
+					var value: int = 0 if digit == "." else int(digit)
+					out.set_pixel((at % columns) * 8 + col, (at / columns) * 8 + row % 8, Color(value / 3.0, 0, 0))
+			tile += 2
 	return out
 
 
