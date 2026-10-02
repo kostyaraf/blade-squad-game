@@ -85,6 +85,7 @@ STANDS = [
     ('pb3surfaces', 'QA', 'verify_pb3_surfaces.py', []),
     ('pb3contracts', 'QA', 'verify_pb3_contracts.py', []),
     ('pb3environment', 'QA', 'verify_pb3_environment.py', []),
+    ('pb3solenvironment', 'QA', 'verify_pb3_sol_environment.py', []),
     ('pb3solmoves', 'QA', 'verify_pb3_sol_moves.py', []),
     ('pb3geometry', 'PB3', 'verify_pb3_geometry.py', []),
     ('sound',      'Э6.1', 'verify_sound.py',      []),

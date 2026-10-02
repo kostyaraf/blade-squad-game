@@ -765,7 +765,7 @@ var more_guests: Array = []
 ## nothing and flies on.  Stepping them is not this pool's: they are his, and
 ## they are stepped where he is.  See `work/re/pb3_arms.md`.
 var guest_arms: Array = []
-## PB3 only: resolve foreign breakable terrain before a blade is discarded.
+## PB3 only: native foreign terrain destruction, shared by blades, beams and satellites.
 var terrain_strike: Callable = Callable()
 
 
@@ -7741,6 +7741,7 @@ func _orbit_one(n: int) -> void:
 func _orbit_sweep(n: int, s: PackedByteArray) -> void:
 	if (s[F_XHI] | s[F_YHI]) != 0:                     # $AAED
 		return
+	_strike_terrain(s)
 	_orbit_sweep_eight(FIRST_LIVE, marks, s[F_X], s[F_Y])
 	_orbit_sweep_eight(FIRST_PLACED, marks2, s[F_X], s[F_Y])
 
@@ -7910,8 +7911,7 @@ func _blade_step(k: int) -> void:
 		whirr = 0
 		Pb2Sound.want(0x1A)                            # $A58C
 	if ground(s, 0x00, 0x00) >= 0x80:                  # $A591
-		if terrain_strike.is_valid():
-			terrain_strike.call(s[F_X], s[F_Y])
+		_strike_terrain(s)
 		clear(k)
 		return
 	if not _shot_move(k):                              # $A59C -> $A7B9
@@ -8142,10 +8142,33 @@ func _shot_move(k: int) -> bool:
 	return true
 
 
-## $A7FB -- one step of the beam: it gains speed the way it was fired, moves,
-## and counts down the life it was born with.
+## PB3 cross-game rule: all Nova weapons can break the same Solbrain cells.
+## Beams retain their native penetration and lifetime; the foreign level owns
+## eligibility, map changes, debris and drops. High bytes prevent screen wrap.
+func _strike_terrain(s: PackedByteArray) -> void:
+	if terrain_strike.is_valid() and (s[F_XHI] | s[F_YHI]) == 0:
+		terrain_strike.call(s[F_X], s[F_Y])
+
+
+## Sample the path as a fast, downward beam can cross a whole 16px crate
+## between two frames. Screen coordinates remain signed across the edge.
+func _strike_terrain_path(from: Vector2i, s: PackedByteArray) -> void:
+	if not terrain_strike.is_valid():
+		return
+	var dx: int = ((((s[F_XHI] << 8) | s[F_X]) - from.x + 32768) & 65535) - 32768
+	var dy: int = ((((s[F_YHI] << 8) | s[F_Y]) - from.y + 32768) & 65535) - 32768
+	var count: int = maxi(1, maxi(absi(dx), absi(dy)))
+	for i in range(count + 1):
+		var x: int = (from.x + dx * i / count) & 65535
+		var y: int = (from.y + dy * i / count) & 65535
+		if x < 256 and y < 256:
+			terrain_strike.call(x, y)
+
+
+## $A7FB -- accelerate, move, then count down the native lifetime.
 func _beam_step(k: int) -> void:
 	var s: PackedByteArray = slots[k]
+	var from := Vector2i((s[F_XHI] << 8) | s[F_X], (s[F_YHI] << 8) | s[F_Y])
 	var a: Array = beam_a[s[F_SELF]]
 	var ax: int = (a[1] << 8) | a[0]
 	var ay: int = (a[3] << 8) | a[2]
@@ -8159,6 +8182,7 @@ func _beam_step(k: int) -> void:
 	s[F_VY] = v >> 8
 	s[F_VYFR] = v & 0xFF
 	step_both(s)                                       # $C8E8 -> $FA08
+	_strike_terrain_path(from, s)
 	s[F_HOLD] = (s[F_HOLD] - 1) & 0xFF                 # $A84C
 	if s[F_HOLD] == 0:
 		clear(k)                                       # $A852

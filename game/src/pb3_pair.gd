@@ -1176,7 +1176,7 @@ func _box_own_sol(i: int) -> Array:
 ## how long the button has been held before either.  The area's own hero gets
 ## both from the order itself ($CEF0); a guest has no order of his own, so the
 ## two lines of it he needs are here.
-## PB3 rule: Nova's blade may break exactly the cells Solbrain can punch.
+## PB3 rule: Nova's weapons may break exactly the cells Solbrain can punch.
 ## Solbrain owns the map changes, debris, drops and sound ($B933/$B9CD).
 func _break_sol_terrain(sx: int, sy: int) -> void:
 	if host_sol != null:

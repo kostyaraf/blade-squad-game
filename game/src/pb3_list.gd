@@ -98,8 +98,16 @@ func enter(flow: bool = false) -> bool:
 	two = Pb3Pair.new(int(rec[0]), int(rec[1]), int(rec[2]), kinds)
 	var home: Vector2i = two.home()
 	var spots: Array = []
-	for _i in kinds:
-		spots.append(home)
+	for kind in kinds:
+		var spot := home
+		# Native Solbrain feet lie on the support pixel; Nova rests one pixel
+		# above it. Starting him inside a solid floor blocks lateral movement.
+		# Correct only a surface spawn, preserving airborne/water entries.
+		if two.game == SOL and kind == PB2 \
+				and two.solv.collision_at(spot.x, spot.y) >= 0x10 \
+				and two.solv.collision_at(spot.x, spot.y - 1) < 0x10:
+			spot.y -= 1
+		spots.append(spot)
 	two.begin(spots, flow)
 	return true
 

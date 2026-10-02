@@ -2646,6 +2646,12 @@ func _who(pool, hero, view, flow) -> Dictionary:
 
 ## What the engine holds, into the shadow.
 func pack(pool, hero, view, table, flow) -> void:
+	# $40/$41 are the two 2-KiB background mappings. Keep them with the
+	# level so a script's CHR animation reaches every renderer and a newly
+	# entered stage starts with its own banks, including scripts that keep them.
+	if pool.level.banks.size() == 4:
+		p(0x40, pool.level.banks[0])
+		p(0x41, pool.level.banks[2])
 	var who := _who(pool, hero, view, flow)
 	for r in LINKS:
 		var o = who[r[1]]
@@ -2680,6 +2686,11 @@ func pack(pool, hero, view, table, flow) -> void:
 
 ## And back out again.
 func unpack(pool, hero, view, table, flow) -> void:
+	if pool.level.banks.size() == 4:
+		for i in range(2):
+			var bank := g(0x40 + i) & 0xFE
+			pool.level.banks[i * 2] = bank
+			pool.level.banks[i * 2 + 1] = bank + 1
 	var who := _who(pool, hero, view, flow)
 	for r in LINKS:
 		var o = who[r[1]]
