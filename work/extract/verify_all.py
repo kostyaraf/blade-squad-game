@@ -34,6 +34,7 @@ STANDS = [
     ('spawns',     'Э3.2', 'verify_spawns.py',     ['--random=3']),
     ('weapons',    'Э3.3', 'verify_weapons.py',    ['--all-areas', '--random=3']),
     ('pb2shots',   'Э3.2', 'verify_pb2_small_shots.py', []),
+    ('pb2pod33',   'SPB-01', 'verify_pb2_pod_33.py', []),
     ('pb2death',   'Э3.2', 'verify_pb2_death.py', []),
     ('water',      'Э3.2', 'verify_water.py',      []),
     ('orbit',      'Э3.4', 'verify_orbit.py',      []),
