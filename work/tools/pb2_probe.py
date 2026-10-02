@@ -216,6 +216,19 @@ def run(state, script, last, watch=(0x0000, 0x07FF), pokes=()):
         sweep(d)
 
 
+def require_steps(writes, first, last, clock=0x1C):
+    """Reject empty/stationary oracles; `-frames` and pokes are absolute.
+
+    Opt-in: probes of a particular RAM address may legitimately see no writes,
+    but a game-loop differential fixture must observe an advancing clock.
+    """
+    values = [row[clock] for frame, row in writes.items()
+              if first <= frame <= last and clock in row]
+    if len(values) < 2 or len(set(values)) < 2:
+        raise RuntimeError(f'NES oracle executed no observable game steps in '
+                           f'absolute frames {first}..{last}')
+
+
 def table(writes, addrs, first, last):
     """Carry each address forward through the frames that did not write it."""
     cur = {}

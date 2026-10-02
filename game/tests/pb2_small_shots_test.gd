@@ -3,7 +3,17 @@ func _initialize() -> void:
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(OS.get_cmdline_user_args()[0]))
 	var failed := 0
 	var checks := 0
+	if cfg.cases.is_empty():
+		push_error('Empty NES oracle')
+		quit(1)
+		return
 	for case in cfg.cases:
+		var steps := 0
+		for row in case.frames: steps += int(row.turns)
+		if steps == 0:
+			push_error('NES oracle contains no executed steps: '+str(case.name))
+			quit(1)
+			return
 		var w := Pb2Objects.new(Pb2Level.new(0,0))
 		w.cam = int(case.cam)
 		w.clock = int(case.clock)

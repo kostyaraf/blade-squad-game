@@ -8420,7 +8420,9 @@ func _mind_3d(n: int, s: PackedByteArray) -> void:
 		sub_speed_side(s, int(small_shot_cfg["missile_accel"]))
 	else:
 		add_speed_side(s, int(small_shot_cfg["missile_accel"]))
-	step_side(s)
+	# $B68B -> $C8EE/$FA05: animate, then move on both axes.
+	step_anim(s)
+	step_both(s)
 	mark_target(n)
 	_wall_3b(n, s)
 
@@ -8432,12 +8434,12 @@ func _mind_48(n: int, s: PackedByteArray) -> void:
 		s[F_KIND] = int(small_shot_cfg["flame_pic"])
 		s[F_STATE] += 1
 		return
-	if ground(s, 0, 0) < 0x80:
+	if ground_turn_clear(n, s, 0, 0) < 0x80:
 		mark_target(n)
 		step_both(s)
 		return
 	var side: int = int(small_shot_cfg["flame_right" if s[F_VX] >= 0x80 else "flame_left"])
-	if s[F_VY] >= 0x80 or ground(s, side, 0) < 0x80:
+	if s[F_VY] >= 0x80 or ground_turn_clear(n, s, side, 0) < 0x80:
 		clear(n)
 		return
 	snap_down(s)
