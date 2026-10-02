@@ -500,6 +500,8 @@ func _raise_flow() -> void:
 		host_sol = SolObjects.new(solv)
 		host_script = SolScript.new()
 		host_table = SolSprites.Table.new()
+		# $C01B/$C030: flat projectiles draw through the pool, not step(t).
+		host_sol.table = host_table
 		for i in range(4):
 			host_table.banks[i] = solv.spr_banks[i]
 		# $C72D never wipes the first eight entries: that corner of the table
@@ -733,6 +735,9 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 			q.step(held, hit, eye.pos, shots, extra)
 		else:
 			q.step(held, hit, eye.pos, 0, 0)
+			if live_session and game == SOL and q.touched_sol_hazard:
+				# $9FA5: use Solbrain's terrain damage and native grace timer.
+				guest_sol[i]._wound()
 			# $CF41 -- and his numbers into his own pool, where a blade of his
 			# looks for him when it turns round ($A764).
 			if flowing:
@@ -955,8 +960,11 @@ func _mirror_them() -> void:
 	if not flowing:
 		return
 	_harvest()
-	if turn_pb2 != null and host >= 0:
-		turn_pb2._mirror_hero()
+	if turn_pb2 != null:
+		if host >= 0 and (not live_session or not gone[host]):
+			turn_pb2._mirror_hero()
+		elif live_session:
+			_pb2_living_target()
 	for i in range(who.size()):
 		if i == host:
 			continue
@@ -966,6 +974,23 @@ func _mirror_them() -> void:
 			_guest_into_sol(i)
 		# Э5.8 -- and what he is carrying, beside what he is.
 		_arms_of(i)
+
+
+## Native AI reads $0508/$04C6 even when nobody occupies Nova's own slot.
+## Keep that non-colliding slot aimed at a living guest, never the origin.
+func _pb2_living_target() -> void:
+	for i in range(who.size()):
+		if gone[i]:
+			continue
+		var at: Vector2i = screen_of(i)
+		var row: PackedByteArray = host_pb2.slots[0]
+		row[Pb2Objects.F_X] = at.x & 255
+		row[Pb2Objects.F_Y] = at.y & 255
+		row[Pb2Objects.F_XHI] = 0
+		row[Pb2Objects.F_YHI] = 0
+		# Health stays zero: contact and pickups use the actual guest mirror.
+		row[Pb2Objects.F_LIFE] = 0
+		return
 
 
 ## Э5.4 -- what the level took off a guest this picture, said back in his own

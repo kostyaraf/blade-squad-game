@@ -63,7 +63,7 @@ func poll() -> void:
 			trace.append(status())
 			if session.two != null:
 				app.pb3_draw.after_step(app.pb3_gear)
-				app.pb3_board.show_bar(app.pb3_gear)
+				app.pb3_board.show_bar(app.pb3_gear, session.two)
 				app._pb3_show()
 			# Render every simulated frame; waits are not game ticks.
 			if not cmd.get("fast", false) or session.tick % 30 == 0:
@@ -72,7 +72,7 @@ func poll() -> void:
 			replay.steps.append([consumed] + words)
 	if session != null and session.two != null:
 		app.pb3_draw.after_step(app.pb3_gear)
-		app.pb3_board.show_bar(app.pb3_gear)
+		app.pb3_board.show_bar(app.pb3_gear, session.two)
 		app._pb3_show()
 	await process_frame
 	RenderingServer.force_draw()
@@ -111,6 +111,11 @@ func status() -> Dictionary:
 				result.enemies.append({"slot":n,"type":s[Pb2Objects.F_TYPE],"life":s[Pb2Objects.F_LIFE],"stun":s[Pb2Objects.F_STUN],"state":s[Pb2Objects.F_STATE],"x":s[Pb2Objects.F_X],"y":s[Pb2Objects.F_Y]})
 	if pair.host_sol != null:
 		var o := pair.host_sol
+		result["projectiles"] = []
+		result["projectile_render_connected"] = o.table != null
+		for n in range(SolObjects.SHOTS):
+			if o.s_kind[n] != 0:
+				result.projectiles.append({"slot":n,"kind":o.s_kind[n],"x":o.s_x[n] >> 4,"y":o.s_y[n] >> 4})
 		for n in range(16):
 			if o.id[n] != 0:
 				result.enemies.append({"slot":n,"id":o.id[n],"mind":o.mind[n],"life":o.life[n],"x":o.x[n]>>4,"y":o.y[n]>>4})

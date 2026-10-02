@@ -25,10 +25,18 @@ def main():
             ('aimed-delay', 0x2A, 0, 3, 0),
             ('aimed-no-delay', 0x2A, 3, 0, 0),
             ('hatchling', 0x1F, 0, 0, 0),
+            ('heavy-right', 0x46, 3, 0, 0),
+            ('heavy-hit', 0x46, 0, 0, 0),
+            ('missile-right', 0x3D, 2, 0, 0),
+            ('missile-left', 0x3D, 0xFE, 0, 0),
+            ('flame-down', 0x48, 0, 3, 0),
+            ('flame-side', 0x48, 3, 0, 0),
         ]:
             row = [0] * 29
             row[0] = kind; row[1] = 8; row[9] = 80; row[12] = 100
             row[14] = vy; row[16] = vx; row[21] = 20 if kind == 0x18 else (5 if name == 'aimed-delay' else 0)
+            if name == 'heavy-hit':
+                row[18] = 1; row[7] = 0x8E
             pokes = [(P.field(f, 6), v, 2) for f, v in enumerate(row)]
             # Parent placed above the hero, out of contact. Native AI runs normally.
             par = [0] * 29

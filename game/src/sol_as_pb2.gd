@@ -56,9 +56,8 @@ func _init(stage: SolLevel) -> void:
 	auto_wait = 0
 
 
-## $F5A9 -- the four bytes the physics knows.  Solbrain has nothing that is a
-## ladder and nothing that hurts to stand on, so only two of the four are ever
-## answered here.
+## $F5A9 -- the four bytes the physics knows. Solbrain has no PB2 ladders.
+## Harmful tiles keep their solid shape; damage is separate in hurts_at().
 func class_byte(px: int, py: int) -> int:
 	if src == null:
 		return 0x00
@@ -84,3 +83,10 @@ func terrain_at(px: int, py: int) -> int:
 		0x03:
 			return 0x88                 # carried left
 	return 0x00
+
+
+## $D101/$A198: bit 3 becomes the damage bit; $0C..$0F are water/belts,
+## explicitly excluded by the native $60 classifier. Damage is not PB2 death.
+func hurts_at(px: int, py: int) -> bool:
+	var c: int = src.collision_at(px, py + cam_y)
+	return (c & 0x08) != 0 and (c & 0x1C) != 0x0C

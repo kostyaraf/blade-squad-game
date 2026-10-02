@@ -1,6 +1,12 @@
 [
   {
-    "file": "p0.0-sol/replay.json"
+    "file": "p0.0-sol/replay.json",
+    "checkpoints": [
+      {
+        "tick": 929,
+        "all_alive": true
+      }
+    ]
   },
   {
     "file": "s0-nova/replay.json",

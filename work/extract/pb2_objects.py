@@ -190,7 +190,14 @@ def export():
         small_shots=dict(bullet_mark=b15[0x1D7B], bullet_pic=b10[0x1C73],
                          trail_life=b10[0x1D81], trail_mark=b15[0x1D77],
                          trail_anim=b10[0x1D85], trail_ticks=b10[0x1D89],
-                         trail_parent=b10[0x1D99], aimed_pic=rom.bank(11)[0x8A3]),
+                         trail_parent=b10[0x1D99], aimed_pic=rom.bank(11)[0x8A3],
+                         # $AC0D/$B652 and $9A6F: remaining enemy projectiles.
+                         heavy_life=b11[0xC15], heavy_pic=b11[0xC19],
+                         missile_anim=b11[0x165D], missile_accel=b11[0x1676],
+                         missile_right=list(b11[0x1673:0x1675]),
+                         missile_left=list(b11[0x1684:0x1686]),
+                         flame_pic=b10[0x1A7A], flame_left=b10[0x1A92],
+                         flame_right=b10[0x1A99], flame_ticks=b10[0x1AAA]),
         # $A71F: hatchling movement, wall probes and terminal explosion.
         hatchling=dict(life=b11[0x72D], anim=b11[0x731], speed=list(b11[0x738:0x73A]),
                        spawn_wall=list(b11[0x73D:0x740]), floor_probe=list(b11[0x750:0x752]),

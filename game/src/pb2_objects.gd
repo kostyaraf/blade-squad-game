@@ -120,7 +120,7 @@ var cull_rules: Array = []
 
 ## $8080 -- the minds the engine has of its own.  A type that is not in here
 ## is still told what it did; a type that is drives itself and is compared.
-const MINDS := {0x01: "_mind_01", 0x02: "_mind_02", 0x11: "_mind_12", 0x45: "_mind_42", 0x1F: "_mind_1f", 0x2A: "_mind_2a", 0x16: "_mind_16", 0x18: "_mind_18", 0x10: "_mind_10", 0x23: "_mind_23",
+const MINDS := {0x46: "_mind_46", 0x3D: "_mind_3d", 0x48: "_mind_48", 0x01: "_mind_01", 0x02: "_mind_02", 0x11: "_mind_12", 0x45: "_mind_42", 0x1F: "_mind_1f", 0x2A: "_mind_2a", 0x16: "_mind_16", 0x18: "_mind_18", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x12: "_mind_12", 0x17: "_mind_17", 0x19: "_mind_19",
 		0x13: "_mind_13", 0x1D: "_mind_1d",
 		0x2C: "_mind_2c", 0x2D: "_mind_2c",
@@ -8379,3 +8379,63 @@ func _mind_26(n: int, s: PackedByteArray) -> void:
 				clear(n)                               # $C810
 				return
 			step_anim(s)                               # $C837
+
+
+## $AC0D -- heavy projectile: it bursts when its initial health changes.
+func _mind_46(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_LIFE] = int(small_shot_cfg["heavy_life"])
+		s[F_MARK] = int(small_shot_cfg["trail_mark"])
+		s[F_KIND] = int(small_shot_cfg["heavy_pic"])
+		s[F_STATE] += 1
+		return
+	if s[F_LIFE] != int(small_shot_cfg["heavy_life"]):
+		make_burst(n)
+		return
+	mark_target(n)
+	ground_or_die(n, s)
+
+
+## $B652 -- accelerating missile, ending at the edge or in $B487's burst.
+func _mind_3d(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_MARK] = int(small_shot_cfg["bullet_mark"])
+		start_anim(s, int(small_shot_cfg["missile_anim"]))
+		face_by_speed(s)
+		s[F_STATE] += 1
+		return
+	var left: bool = (s[F_BITS] & 0x40) != 0 # $FD54's carry
+	if s[F_XHI] != 0:
+		if (left and s[F_XHI] >= 0x80) or (not left and s[F_XHI] < 0x80):
+			clear(n)
+			return
+		var speed: Array = small_shot_cfg["missile_left" if left else "missile_right"]
+		set_speed_side(s, int(speed[1]), int(speed[0]))
+	if left:
+		sub_speed_side(s, int(small_shot_cfg["missile_accel"]))
+	else:
+		add_speed_side(s, int(small_shot_cfg["missile_accel"]))
+	step_side(s)
+	mark_target(n)
+	_wall_3b(n, s)
+
+
+## $9A6F -- bullet that becomes a ground flame against a lower wall.
+func _mind_48(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_MARK] = int(small_shot_cfg["bullet_mark"])
+		s[F_KIND] = int(small_shot_cfg["flame_pic"])
+		s[F_STATE] += 1
+		return
+	if ground(s, 0, 0) < 0x80:
+		mark_target(n)
+		step_both(s)
+		return
+	var side: int = int(small_shot_cfg["flame_right" if s[F_VX] >= 0x80 else "flame_left"])
+	if s[F_VY] >= 0x80 or ground(s, side, 0) < 0x80:
+		clear(n)
+		return
+	snap_down(s)
+	s[F_STATE] = 0
+	_mind_26(n, s) # $936A: the shared native flame initializer.
+	s[F_SELF] = int(small_shot_cfg["flame_ticks"])

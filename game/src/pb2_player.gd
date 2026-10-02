@@ -127,6 +127,8 @@ var push_x := 0
 var push_y := 0
 ## $0116 -- he has hold of something and the level is told not to move him.
 var cling := 0
+## Foreign terrain damage found by the normal eight body probes.
+var touched_sol_hazard := false
 ## $0C..$0F -- what the two side probes of $9720 last answered, and which
 ## thing standing in the level each of them found.
 var hold_a := 0
@@ -164,6 +166,7 @@ func step(buttons: int, pressed: int, camera: int,
 	limit = shot_limit
 	dx = 0
 	dy = 0
+	touched_sol_hazard = false
 	# $05A2 is his own cell, and $8E49 wipes it at the end of every update, so
 	# what the mud says about him is said afresh each frame.  But the things
 	# take their turn before he does ($CF1C before $CF20), and one of them --
@@ -2262,6 +2265,8 @@ func _feel(ox: int, oy: int) -> int:
 				return 2
 	if lvl.vertical:
 		return lvl.terrain_at(sx, Pb2Level.map_row(cam, sy & 0xFF))
+	if lvl is SolAsPb2 and lvl.hurts_at(cam + sx, sy - int(cfg["view_top"])):
+		touched_sol_hazard = true
 	return lvl.terrain_at(cam + sx, sy - int(cfg["view_top"]))
 
 

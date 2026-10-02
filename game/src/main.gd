@@ -5537,7 +5537,7 @@ func _step_pb3() -> void:
 	pb3_draw.after_step(pb3_gear)
 	if pb3_extra != null:
 		pb3_extra.after_step(pb3_gear)
-	pb3_board.show_bar(pb3_gear)
+	pb3_board.show_bar(pb3_gear, pb3.two)
 
 
 func _step_pb3_setup() -> void:
@@ -5600,7 +5600,7 @@ func _pb3_enter() -> void:
 	if two.host < 0 and two.who.size() == 2:
 		pb3_extra = Pb3Draw.new(two, 1)
 		pb3_extra.after_step(pb3_gear)
-	pb3_board.show_bar(pb3_gear)
+	pb3_board.show_bar(pb3_gear, pb3.two)
 	_apply()
 
 

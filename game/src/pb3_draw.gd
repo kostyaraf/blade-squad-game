@@ -274,9 +274,20 @@ func _host_table() -> void:
 func _guest_table() -> void:
 	if guest < 0:
 		return
-	if two.live_session and two.gone[guest]:
-		guest_oam.fill(Pb2Sprites.HIDDEN)
-		return
+	if two.live_session:
+		var grace := false
+		var tick := 0
+		if two.game == SOL and two.guest_sol[guest] != null:
+			# $8381: native contact grace lasts until timer reaches $70.
+			grace = two.guest_sol[guest].timer < 0x70
+			tick = two.host_sol.clock
+		elif two.game == PB2 and two.guest_row[guest] != null:
+			# $B248: the host counts down the guest's native PB2 grace.
+			grace = two.guest_row[guest][Pb2Objects.F_STUN] != 0
+			tick = two.host_pb2.frame
+		if two.gone[guest] or (grace and (tick & 1) != 0):
+			guest_oam.fill(Pb2Sprites.HIDDEN)
+			return
 	if two.who[guest] == PB2:
 		guest_oam = Pb2Sprites.build((two.things[guest] as Pb2Objects).slots,
 				guest_rot, guest_oam)

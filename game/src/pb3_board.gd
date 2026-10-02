@@ -127,21 +127,30 @@ func show_message(text: String) -> void:
 
 ## And the one bar of a record being played: what the two of them are spending
 ## and what each of them is holding.  The level's own picture is behind it, so
-## nothing but the one line is drawn.
-func show_bar(gear: Pb3Gear) -> void:
+## health is shown separately from the shared equipment energy.
+func show_bar(gear: Pb3Gear, pair: Pb3Pair = null) -> void:
 	for row in _rows:
 		(row as Label).visible = false
 	_hint.visible = false
 	_name.visible = false
 	(get_node("back") as ColorRect).visible = false
 	_strip.visible = true
-	var say := "E %02d  T %d" % [gear.energy, gear.tanks]
+	var say := "ENERGY %02d  TANKS %d" % [gear.energy, gear.tanks]
+	if pair != null:
+		say += "\n"
 	for i in range(gear.who.size()):
+		say += ("   " if i > 0 or pair == null else "") + "P%d" % (i + 1)
+		if pair != null:
+			var hp: int = pair.sol[i].suit if pair.who[i] == SOL \
+					else pair.things[i].slots[0][Pb2Objects.F_LIFE]
+			if pair.gone[i]:
+				hp = 0
+			say += " HP %d" % hp
 		if gear.who[i] == SOL:
-			say += "   P%d GUN %d" % [i + 1, gear.gun[i]]
+			say += " GUN %d" % gear.gun[i]
 		else:
 			var s: Pb2Status = gear.st[i] as Pb2Status
-			say += "   P%d SUIT %d" % [i + 1, s.suit]
+			say += " SUIT %d" % s.suit
 		if gear.menu_open(i):
 			say += "*"
 	_strip.text = say
