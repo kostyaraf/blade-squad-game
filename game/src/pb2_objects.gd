@@ -750,7 +750,7 @@ var guest_row := PackedByteArray()
 var guest_box: Array = []
 ## Э5.7 -- and more than one of them.  When neither of a pair's two heroes came
 ## from the game the level did, both of them are guests in it; the pair puts
-## the rest here, as `[row, box]`, and the one named above stays what it is
+## the rest here, as `[row, box, suit]` (legacy guests omit suit), and the one named above stays what it is
 ## because it is what Э5.4's stand hands over.
 var more_guests: Array = []
 
@@ -829,7 +829,7 @@ func contact() -> void:
 		Pb2Sound.at_slot = n
 		if s[F_TYPE] != 0 and (s[F_XHI] | s[F_YHI]) == 0:
 			if slots[0][F_LIFE] != 0:
-				_touch(n, slots[0], own_box(slots[0]))
+				_touch(n, slots[0], own_box(slots[0]), suit)
 				_shots(n)
 			# Э5.8 -- and what the guests are carrying, over the same thing
 			# and in the same order.  Their own hero need not be here at all
@@ -839,13 +839,13 @@ func contact() -> void:
 			for g in guests:
 				var row: PackedByteArray = g[0]
 				if row[F_LIFE] != 0 and slots[n][F_TYPE] != 0:
-					_touch(n, row, g[1])
+					_touch(n, row, g[1], int(g[2]) if g.size() > 2 else 0)
 		n += 2
 	Pb2Sound.at_slot = -1
 
 
 ## $B285 -- is this one asked about at all, and does the hero reach it?
-func _touch(n: int, hero: PackedByteArray, mine: Array) -> void:
+func _touch(n: int, hero: PackedByteArray, mine: Array, actor_suit: int = -1) -> void:
 	var s: PackedByteArray = slots[n]
 	if s[F_TYPE] == 0x0C:
 		return                                  # a breakable block is scenery
@@ -882,7 +882,7 @@ func _touch(n: int, hero: PackedByteArray, mine: Array) -> void:
 	if (s[F_MARK] & 0x10) != 0:
 		_trip(n)                                # $B5A5
 		return
-	_wound_hero(n, hero)                        # $B39E
+	_wound_hero(n, hero, suit if actor_suit < 0 else actor_suit) # $B39E
 	s = slots[n]
 	if s[F_MARK] == 0x80 or s[F_TYPE] == 0:
 		return                                  # $B33D -- it is already gone
@@ -900,9 +900,10 @@ func _touch(n: int, hero: PackedByteArray, mine: Array) -> void:
 
 
 ## $B39E -- the suit strikes back, and what is left of the blow reaches him.
-func _wound_hero(n: int, hero: PackedByteArray) -> void:
+func _wound_hero(n: int, hero: PackedByteArray, actor_suit: int = -1) -> void:
 	var s: PackedByteArray = slots[n]
-	if (hero[F_MARK] & 0x10) != 0 and suit != 0:
+	# Native callers use the pool suit; PB3 contacts supply the actual actor.
+	if (hero[F_MARK] & 0x10) != 0 and (suit if actor_suit < 0 else actor_suit) != 0:
 		if (s[F_MARK] & 0x02) != 0:
 			clear(n)
 			return

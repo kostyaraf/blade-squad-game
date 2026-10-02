@@ -543,7 +543,7 @@ func _raise_flow() -> void:
 			var row := Pb2Objects.empty_row()
 			row[Pb2Objects.F_LIFE] = 0x10
 			guest_row[i] = row
-			guest_at[i] = [row, [0x0F, 6, 13]]
+			guest_at[i] = [row, [0x0F, 6, 13], 0]
 			host_pb2.more_guests.append(guest_at[i])
 			host_pb2.guest_arms.append([arms[i], _arm_spent.bind(i)])
 		else:
@@ -1060,6 +1060,9 @@ func _guest_into_pb2(i: int) -> void:
 	row[Pb2Objects.F_LIFE] = _health_pb2(i)
 	if gone[i]:
 		row[Pb2Objects.F_LIFE] = 0
+	# Contact reads both the native state and this actor's equipment.
+	row[Pb2Objects.F_MARK] = pb2[i].state if who[i] == PB2 else 0
+	guest_at[i][2] = pb2[i].suit if who[i] == PB2 else 0
 	guest_at[i][1] = _box_pb2(i)
 
 

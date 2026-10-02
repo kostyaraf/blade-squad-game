@@ -81,6 +81,7 @@ STANDS = [
     ('pb3play',    'PB3',  'verify_pb3_playthrough.py', []),
     ('pb3combat', 'QA', 'verify_pb3_combat.py', []),
     ('pb3surfaces', 'QA', 'verify_pb3_surfaces.py', []),
+    ('pb3contracts', 'QA', 'verify_pb3_contracts.py', []),
     ('pb3environment', 'QA', 'verify_pb3_environment.py', []),
     ('pb3solmoves', 'QA', 'verify_pb3_sol_moves.py', []),
     ('pb3geometry', 'PB3', 'verify_pb3_geometry.py', []),

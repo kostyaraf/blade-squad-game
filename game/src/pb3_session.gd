@@ -119,7 +119,7 @@ func resolve() -> String:
 					world.area, world.phase, world.boss)
 		if two.ended == Pb2Turn.INTERLUDE:
 			return _travel(Pb3Pair.PB2, two.stage, world.area,
-					world.phase, world.boss)
+					world.phase, world.boss, true)
 	else:
 		# $CAA0 / $ACB1 name the destination in $55. The free-level
 		# mode uses an immediate transition instead of the solo cutscene.
@@ -138,7 +138,7 @@ func _cleared() -> String:
 
 
 func _travel(game: int, stage: int, area: int, phase: int = 0,
-		boss: int = 0) -> String:
+		boss: int = 0, restart_clock: bool = false) -> String:
 	var rec: Array = [game, stage, area]
 	var index: int = records().find(rec)
 	if index < 0:
@@ -146,6 +146,7 @@ func _travel(game: int, stage: int, area: int, phase: int = 0,
 		leave()
 		return "list"
 	var came: int = two.came
+	var old_clock: Pb2Status = two.host_status
 	two.release()
 	two = Pb3Pair.new(game, stage, area, kinds)
 	two.came = came if game == Pb3Pair.PB2 else stage
@@ -156,7 +157,12 @@ func _travel(game: int, stage: int, area: int, phase: int = 0,
 	if two.host_pb2 != null:
 		two.host_pb2.phase = phase
 		two.host_pb2.boss = boss
-		two.host_status.restart_time(two.came, phase)
+		if restart_clock or old_clock == null:
+			two.host_status.restart_time(two.came, phase)
+		else:
+			# $CE45 is not called by ordinary doors, including boss entrances.
+			for field in ["time_hi", "time_lo", "warn", "out_of_time", "clock"]:
+				two.host_status.set(field, old_clock.get(field))
 	at = index
 	came_from = index
 	prepare()
