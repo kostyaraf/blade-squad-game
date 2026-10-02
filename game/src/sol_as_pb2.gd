@@ -2,14 +2,14 @@ extends Pb2Level
 class_name SolAsPb2
 
 ## Э5.1 -- a Solbrain stage seen the way the Power Blade 2 hero asks about it.
-## The other half of `Pb2AsSol`, and the same table read backwards.
+## The other half of `Pb2AsSol`; decode properties before selecting a PB2 code.
 ##
 ## | Solbrain code   | Power Blade 2   | what the Power Blade hero then does |
 ## |-----------------|-----------------|-------------------------------------|
 ## | `>= $10`, solid | class $80       | a wall                              |
 ## | `$0D`, water    | terrain 4       | `$ABA6` -> he wades and swims       |
-## | `$0E`, belt     | terrain $87     | `$B47C` -> carried right            |
-## | `$0F`, belt     | terrain $88     | carried left                        |
+## | `$16`, belt     | terrain $87     | `$B47C` -> carried right            |
+## | `$17`, belt     | terrain $88     | carried left                        |
 ## | anything else   | class $00       | nothing                             |
 ##
 ## The magnitudes agree of their own accord, which is the reason the belts can
@@ -73,19 +73,20 @@ func terrain_at(px: int, py: int) -> int:
 	if src == null:
 		return 0x00
 	var c: int = src.collision_at(px, py + cam_y)
-	if c >= Pb2AsSol.SOLID or (c & 0x0C) != 0x0C:
-		return 0x00
-	match c & 0x03:
-		0x01:
+	# $A198/$963D: solid $B0/$B8 after the Solbrain property shift.
+	# $0E is a speed-dependent current and $0F only sets OUT_OF_WATER;
+	# neither is a directional conveyor. Ice/current policy is GAP-12.
+	match c:
+		0x0D:
 			return 0x04                 # water
-		0x02:
-			return 0x87                 # carried right
-		0x03:
-			return 0x88                 # carried left
+		Pb2AsSol.BELT_RIGHT:
+			return 0x87
+		Pb2AsSol.BELT_LEFT:
+			return 0x88
 	return 0x00
 
 
-## $D101/$A198: bit 3 becomes the damage bit; $0C..$0F are water/belts,
+## $D101/$A198: bit 3 becomes the damage bit; $0C..$0F are non-harmful media,
 ## explicitly excluded by the native $60 classifier. Damage is not PB2 death.
 func hurts_at(px: int, py: int) -> bool:
 	var c: int = src.collision_at(px, py + cam_y)
