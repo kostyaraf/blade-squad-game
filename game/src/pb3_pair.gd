@@ -795,9 +795,18 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 ## The foreign map has thin ledges that fall between Solbrain's two side
 ## probes ($A411). Sweep the whole standing body so a jump cannot start with
 ## his chest inside a ledge. One substep is at most one pixel, in integers.
+##
+## Crouched, the body is his own crouching box ($80DE: middle ten above his
+## feet, ten each way), so its top is twenty above his feet, not thirty-two.
+## A PB2 hero crouches under a low ledge on a lift (p0.4); so must he.
+const SOL_STANDING_DY := [-15, -8, 0, 8, 15]
+const SOL_CROUCHED_DY := [-4, 0, 8, 15]
+
 func _sol_clear(h: SolPlayer, at: Vector2i) -> bool:
+	var body: Array = SOL_CROUCHED_DY if h.state == SolPlayer.ST_CROUCH \
+			else SOL_STANDING_DY
 	for dx in [-5, 0, 5]:
-		for dy in [-15, -8, 0, 8, 15]:
+		for dy in body:
 			var p := at + Vector2i(dx, dy) * 16
 			if solv.collision_at(p.x >> 4, p.y >> 4) >= Pb2AsSol.SOLID:
 				return false
