@@ -83,7 +83,7 @@ func cube_item_is_the_stages() -> void:
 ## ITM-02 -- a door keeps $2B:$2C (capsules already taken) and $98 (which
 ## drop the next death gives): only a new game wipes them ($86C5, $D06C).
 func door_keeps_taken_and_drops() -> void:
-	for kinds in [[0], [1], [0, 1], [0, 0]]:
+	for kinds in [[0], [1], [0, 1], [0, 0], [1, 1]]:
 		var s := Pb3Session.new(kinds)
 		s.at = 0
 		s.enter()
