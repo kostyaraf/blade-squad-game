@@ -127,7 +127,7 @@ const MINDS := {0x46: "_mind_46", 0x3D: "_mind_3d", 0x48: "_mind_48", 0x01: "_mi
 		0x42: "_mind_42",
 		0x2E: "_mind_2c",
 		0x22: "_mind_22", 0x37: "_mind_37", 0x2F: "_mind_2f", 0x33: "_mind_33",
-		0x30: "_mind_30", 0x31: "_mind_31",
+		0x30: "_mind_30", 0x31: "_mind_31", 0x32: "_mind_32",
 		0x1E: "_mind_1e", 0x38: "_mind_38", 0x24: "_mind_24",
 		0x3C: "_mind_3c", 0x1B: "_mind_1b", 0x1A: "_mind_1a", 0x15: "_mind_15",
 		0x27: "_mind_27", 0x28: "_mind_28",
@@ -4551,6 +4551,52 @@ func _hop_31(n: int, s: PackedByteArray) -> void:
 		set_speed_side(s, 0x00, 0x00)                  # $94CB
 		return
 	step_side(s)                                       # $C8F7
+
+
+## $9524 -- the third: flies out, makes one hop of the second's, and then
+## walks at him at one and a half, turning at walls and at edges, with a rest
+## of $28 between walks of a random length.
+func _mind_32(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0:
+			start_anim(s, 0x1C)                        # $BEAD 1C
+			_launch_33(s)                              # $959D
+		1:
+			if not _fly_33(n, s):                      # $95AF
+				step_anim(s)                           # $C837
+				return
+			s[F_SELF] = 0                              # $9540
+			set_speed_down(s, 0x00, 0x00)              # $C909
+			set_speed_side(s, 0x00, 0x00)              # $C906
+			s[F_STATE] += 1                            # $C966
+		2:
+			_hop_31(n, s)                              # $949A
+			if s[F_TYPE] == 0 or s[F_SELF] == 0:
+				return
+			start_anim(s, 0x1C)                        # $BEAD 1C
+			set_speed_down(s, 0x00, 0x00)              # $BEB9 00 00
+			set_speed_side_at_hero(s, 0xFE, 0x80)      # $BEBF 80 FE
+			s[F_SELF] = 0x80                           # $BE75 80
+			s[F_STATE] += 1                            # $C966
+		3:
+			if _gone_33(n, s):                         # $95E8
+				return
+			s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+			if s[F_SELF] == 0:
+				s[F_SELF] = 0x28                       # $BE75 28
+				s[F_STATE] += 1                        # $C966
+				return
+			walled_ahead_turn_about(n, s, 0xF8, 0xFF, 0xF9)   # $BF12 F8 F9 FF
+			ground_turn_edge(n, s, 0xF8, 0x04)         # $BEE9 04 F8
+			step_anim(s)                               # $C8EE
+			step_both(s)
+		4:
+			s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+			if s[F_SELF] != 0:
+				return
+			var r: int = random() & 0x1F               # $C939
+			s[F_SELF] = (r + 0x1F + (1 if rng_carry else 0)) & 0xFF   # $9594 ADC
+			s[F_STATE] -= 1                            # $C969
 
 
 ## $959D -- off at sixteen along its own start, looking the way it goes, for

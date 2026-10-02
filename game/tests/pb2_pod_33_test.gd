@@ -1,5 +1,5 @@
 extends SceneTree
-## The pod $33 and its children $30/$31 against NES RAM taken before every
+## The pod $33 and its children $30/$31/$32 against NES RAM taken before every
 ## turn of the things.  Each step starts from the cartridge's own RAM: hero,
 ## clock, view, seed and the child places, so one wrong field does not spread.
 

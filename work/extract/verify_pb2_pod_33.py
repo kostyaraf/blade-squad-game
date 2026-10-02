@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Compare the pod $33 that the hatch $2F lets out, and the children it
-breaks into ($30, $31), with an unmodified NES cartridge.
+breaks into ($30, $31, $32), with an unmodified NES cartridge.
 
 A pod is poked into the first child place of the first area, high above the
 floor and far from the hero; the cartridge then plays it with no change to its
@@ -38,7 +38,8 @@ def main():
         state = P.make_state(os.path.join(tmp, 'start.state'), stage=0, area=0)
         first = P.IN_LEVEL + 2
         cases = []
-        for name, rec, x, y in [('pod-homing', 0, 200, 40), ('pod-hopping', 1, 200, 40)]:
+        for name, rec, x, y in [('pod-homing', 0, 200, 40), ('pod-hopping', 1, 200, 40),
+                                  ('pod-walking', 2, 200, 40)]:
             pokes = []
             # Everything else in the room is taken away, so that nothing but
             # the pod and its own children ever stands in a child place.
