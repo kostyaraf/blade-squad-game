@@ -1727,8 +1727,9 @@ static func _9a42(o: SolObjects, s: int) -> void:
 
 ## $AC73 -- it drops: the fall gets a touch quicker every eighth picture until
 ## it is going $20 a picture, and once it is past the hero it turns into
-## behaviour $0C and stops.  What $AED9 draws is not the pool's business.
+## behaviour $0C. Its numbered picture is deliberately invisible; $AED9 draws it.
 static func _ac73(o: SolObjects, s: int) -> void:
+	_aed9(o, s, 0xFF)                   # $AC73 -- fixed tail while falling
 	var v: int = o.a[s]
 	o.carry = 1
 	o._sbc(v, 0x20)                         # $AC7B -- and the borrow is read on
@@ -4643,7 +4644,7 @@ static func _8cc9(o: SolObjects, s: int) -> void:
 ## the turn is flipped.  Its step along is a flat $14, either way by the side
 ## it faces.
 static func _ae7b(o: SolObjects, s: int) -> void:
-	# $AED7 -- the trail it draws behind itself is not modelled.
+	_aed9(o, s, o.clock)                            # $AED7 -- animated tail
 	var flip := false
 	if o.kind[s] == 0x00 and o.d[s] == 0x00:            # $AE7E, $AE83
 		o.d[s] = o.y[s] & 0xFF                          # $AE8A
@@ -4756,3 +4757,21 @@ static func _8ee6(o: SolObjects, s: int) -> void:
 			_8f05(o, s, y)
 	SolSound.want_noise = 0x21          # $8EF9 -- $F1
 	_8f68(o, s)                                     # $8EFD
+
+
+## $AED9/$AF0E -- the ceiling hatch's falling/hovering children are a flat
+## sprite pair, not a numbered picture. Draw at $5C..$5F before moving them,
+## through the same OAM table as all other objects and enemy projectiles.
+static func _aed9(o: SolObjects, s: int, phase: int) -> void:
+	if o.table == null or (o.at_x[s] >> 8) >= 0x10:
+		return
+	var paint := o.hatch_paint
+	var left: int = int(paint.body)
+	var right: int = int(paint.tail) + (phase & int(paint.phase_mask))
+	var attr: int = int(paint.attr)
+	if (o.face[s] & 0x80) == 0:
+		var swap := left
+		left = right
+		right = swap
+		attr = int(paint.flipped_attr)
+	SolSprites.pair(o.table, o.at_x[s], o.at_y[s], left, right, attr, attr)

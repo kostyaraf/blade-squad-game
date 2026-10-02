@@ -313,6 +313,7 @@ var _anims3: Array
 var _anims1: Array
 var _anim_base := {}                ## $801C -- where each set's table stands
 var _anim_ptrs := {}                ## $8038 -- where each id's steps stand
+var hatch_paint: Dictionary
 var _hatch: PackedByteArray
 var _hatch2: PackedByteArray
 var _steps: PackedByteArray
@@ -356,6 +357,7 @@ func _init(lvl: SolLevel) -> void:
 	_anim_base = t["anim_base"]
 	_anim_ptrs = t["anim_ptrs"]
 	_hatch = PackedByteArray(t["hatch"])
+	hatch_paint = t["hatch_paint"]
 	_hatch2 = PackedByteArray(t["hatch2"])
 	_steps = PackedByteArray(t["steps"])
 	_arctan = PackedByteArray(t["arctan"])

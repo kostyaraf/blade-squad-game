@@ -130,6 +130,10 @@ def export():
         # $AB77 -- nine bytes apiece, but reached by a plain byte offset, so
         # they are kept as bytes and read out where a behaviour asks.
         hatch=[int(v) for v in at(rom, HATCH, N_HATCH)],
+        # $AED9: the ceiling hatch's children bypass numbered pictures.
+        hatch_paint={name: at(rom, (3, addr), 1)[0] for name, addr in (
+            ('body', 0xAEF0), ('tail', 0xAEF8), ('phase_mask', 0xAEF6),
+            ('attr', 0xAF00), ('flipped_attr', 0xAF0C))},
         # $8D14 -- the same nine bytes in the same order, but read by $8CAA,
         # which takes the first free slot counting up from nought.
         hatch2=[int(v) for v in at(rom, HATCH2, N_HATCH2)],

@@ -132,3 +132,16 @@ the stage keeps in `$75`.
 
 The shot pool's own map is the same shape and is written out in the port
 (`game/src/sol_shots.gd`), site by site, against these addresses.
+
+## Restored object-pool exception: `$AED9` (2026-10-03)
+
+The `$0600` pool also has a direct flat emitter: types `$0E/$0C` call
+`$AED9` from `$AC75/$AE7B`. Their numbered picture `$01B2` intentionally
+has CHR `$FF`; it supplies contact metadata but no OAM. `$AED9` uses the
+pre-movement screen coordinates `$5C..$5F`, body tile `$B1`, tail
+`$B3 + (Y & 2)`, and attributes `$02` or mirrored `$42`. Falling passes
+`Y=$FF`; hovering passes the frame counter. `$AF0E` emits the pair through
+`$C01B`. Both calls now share the live level's `SolObjects.table`.
+
+`verify_pb3_hatch_render.py` compares original NES RAM immediately before
+`$AED9` and at `$AF11`, including the entire OAM and its cursors.
