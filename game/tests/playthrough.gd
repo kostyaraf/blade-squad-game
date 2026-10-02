@@ -123,6 +123,8 @@ func status() -> Dictionary:
 				result.enemies.append({"slot":n,"type":s[Pb2Objects.F_TYPE],"life":s[Pb2Objects.F_LIFE],"stun":s[Pb2Objects.F_STUN],"state":s[Pb2Objects.F_STATE],"x":s[Pb2Objects.F_X],"y":s[Pb2Objects.F_Y]})
 	if pair.host_sol != null:
 		var o := pair.host_sol
+		result["sol_bonus"] = o.hero_bonus
+		result["sol_letters"] = o.letters
 		result["projectiles"] = []
 		result["projectile_render_connected"] = o.table != null
 		for n in range(SolObjects.SHOTS):

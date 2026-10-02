@@ -499,7 +499,7 @@ func _dry(was: int, now: int) -> void:
 	# own place but on the row above him, and $8C6E counts the slots upward.
 	SolSound.want_noise = 0x09          # $9638 -- $F1
 	if pool != null:
-		pool.hatch_up(x, y & 0xFF00, 0x36)
+		pool.stage_side().hatch_up(x, y & 0xFF00, 0x36)
 
 
 ## $95AD -- under water: a tenth of the gravity and a hold that lasts five
@@ -1265,10 +1265,11 @@ func _buy_try(held: int) -> int:
 ## the puff of it is hatched between them.
 func _panel_used() -> void:
 	var below: int = (y & 0xFFFF) + 0x0100
-	pool.break_panel((x & 0xFE00), below)               # $9E71 -- $81 & $FE
-	pool.break_panel((x & 0xFF00) | 0x0100, below)      # $9E7E -- $81 | $01
+	var t: SolObjects = pool.stage_side()        # PB3: the stage's, for a guest
+	t.break_panel((x & 0xFE00), below)                  # $9E71 -- $81 & $FE
+	t.break_panel((x & 0xFF00) | 0x0100, below)         # $9E7E -- $81 | $01
 	# $9E92 -- and the thing itself stands between the two, on his own row.
-	pool.hatch_up((x & 0xFE00) | 0x0100, y & 0xFF00,
+	t.hatch_up((x & 0xFE00) | 0x0100, y & 0xFF00,
 			SolPanels.one("spawn"))
 
 

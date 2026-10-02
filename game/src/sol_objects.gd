@@ -264,6 +264,16 @@ var hero_bonus := 0                 # $05C6:$05C7 -- points still to be counted
 ## The hero himself, because being touched writes back into him.  A stand that
 ## has no hero simply never touches anything.
 var hero: SolPlayer = null
+## PB3: a guest's own pool keeps only what he carries.  What the stage gives
+## up when he breaks it -- the item out of a cube, the rubble, the splash, the
+## puff of a panel -- belongs to the stage and goes into the stage's pool, the
+## one that is stepped, drawn and touched.  Left empty, that is this pool.
+var stage_pool: SolObjects = null
+
+
+## Where things the stage gives up are put.
+func stage_side() -> SolObjects:
+	return stage_pool if stage_pool != null else self
 
 ## Э4.5 -- where the two flat pools put their sprites, or nothing at all.  A
 ## stand that runs the pool for the numbers alone hands no table over and then
