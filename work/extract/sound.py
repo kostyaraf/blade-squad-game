@@ -48,8 +48,18 @@ def main():
         nbanks = len(prg) // BANK
         dmc_bank = nbanks - 2
         dmc = prg[dmc_bank * BANK:(dmc_bank + 1) * BANK]
+        # Reset code outside the sound banks: PB2 $E5DA, Solbrain $F911.
+        fixed = prg[-BANK:]
+        start = 0xE5DA if game == 'pb2' else 0xF911
+        boot = []
+        for offset in (0, 5, 10):
+            at = start - 0xE000 + offset
+            assert fixed[at] in (0xA9, 0xA0)
+            assert fixed[at + 2] in (0x8D, 0x8C)
+            boot.append([fixed[at + 3] | fixed[at + 4] << 8, fixed[at + 1]])
         path = os.path.join(C.outdir(game), 'sound.json')
         n = C.write_json(path, {
+            'boot': boot,
             'base': 0x8000,
             'banks': [DRIVER[game], DRIVER[game] + 1],
             'rom': list(window),

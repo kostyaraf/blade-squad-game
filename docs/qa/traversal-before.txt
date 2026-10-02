@@ -1,0 +1,120 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+
+COVER p0.0 sites=3 cases=30 ticks=5400 failures=0
+COVER p0.1 sites=3 cases=30 ticks=5400 failures=0
+COVER p0.2 sites=3 cases=30 ticks=4856 failures=0
+COVER p0.3 sites=3 cases=30 ticks=5400 failures=0
+COVER p0.4 sites=3 cases=30 ticks=3912 failures=0
+FAIL p0.5 start=(40, 398) slot=1 hero=1 frame=98 pos=(167, 512) mode=1
+FAIL p0.5 start=(40, 398) slot=1 hero=1 frame=98 pos=(167, 512) mode=3
+FAIL p0.5 start=(40, 398) slot=0 hero=1 frame=98 pos=(167, 512) mode=1
+FAIL p0.5 start=(40, 398) slot=0 hero=1 frame=98 pos=(167, 512) mode=3
+COVER p0.5 sites=3 cases=30 ticks=4812 failures=4
+COVER p0.6 sites=3 cases=30 ticks=3868 failures=0
+COVER p1.0 sites=3 cases=30 ticks=1248 failures=0
+FAIL p1.1 start=(184, 462) slot=1 hero=1 frame=93 pos=(192, 455) mode=3
+FAIL p1.1 start=(184, 462) slot=0 hero=1 frame=93 pos=(192, 455) mode=3
+COVER p1.1 sites=3 cases=30 ticks=5228 failures=2
+COVER p1.2 sites=3 cases=30 ticks=5400 failures=0
+COVER p1.3 sites=3 cases=30 ticks=4920 failures=0
+COVER p1.4 sites=3 cases=30 ticks=5400 failures=0
+COVER p1.5 sites=3 cases=30 ticks=2918 failures=0
+COVER p1.6 sites=3 cases=30 ticks=5400 failures=0
+COVER p1.7 sites=3 cases=30 ticks=5400 failures=0
+COVER p2.0 sites=3 cases=30 ticks=5400 failures=0
+COVER p2.1 sites=3 cases=30 ticks=5400 failures=0
+COVER p2.2 sites=3 cases=30 ticks=5400 failures=0
+COVER p2.3 sites=3 cases=30 ticks=1544 failures=0
+COVER p2.4 sites=3 cases=30 ticks=5052 failures=0
+COVER p2.5 sites=3 cases=30 ticks=5400 failures=0
+COVER p2.6 sites=3 cases=30 ticks=5400 failures=0
+COVER p3.0 sites=3 cases=30 ticks=5400 failures=0
+COVER p3.1 sites=3 cases=30 ticks=5400 failures=0
+COVER p3.2 sites=3 cases=30 ticks=4624 failures=0
+FAIL p3.3 start=(40, 62) slot=1 hero=1 frame=157 pos=(215, 256) mode=1
+FAIL p3.3 start=(40, 62) slot=1 hero=1 frame=151 pos=(215, 256) mode=3
+FAIL p3.3 start=(40, 62) slot=0 hero=1 frame=157 pos=(215, 256) mode=1
+FAIL p3.3 start=(40, 62) slot=0 hero=1 frame=151 pos=(215, 256) mode=3
+COVER p3.3 sites=3 cases=30 ticks=5300 failures=4
+COVER p3.4 sites=3 cases=30 ticks=5400 failures=0
+COVER p3.5 sites=3 cases=30 ticks=3130 failures=0
+COVER p3.6 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.0 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.1 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.2 sites=3 cases=30 ticks=4694 failures=0
+COVER p4.3 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.4 sites=3 cases=30 ticks=3454 failures=0
+COVER p4.5 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.6 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.7 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.8 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.9 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.0 sites=0 cases=0 ticks=0 failures=0
+COVER p5.1 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.2 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.3 sites=3 cases=30 ticks=4178 failures=0
+COVER p5.4 sites=3 cases=30 ticks=3560 failures=0
+COVER p5.5 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.6 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.7 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.8 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.9 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.10 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.11 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.12 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.13 sites=3 cases=30 ticks=5176 failures=0
+COVER p6.0 sites=3 cases=30 ticks=5400 failures=0
+COVER p6.1 sites=0 cases=0 ticks=0 failures=0
+COVER p6.2 sites=0 cases=0 ticks=0 failures=0
+COVER p6.3 sites=0 cases=0 ticks=0 failures=0
+COVER p6.4 sites=0 cases=0 ticks=0 failures=0
+COVER p6.5 sites=0 cases=0 ticks=0 failures=0
+COVER p6.6 sites=0 cases=0 ticks=0 failures=0
+COVER p6.7 sites=0 cases=0 ticks=0 failures=0
+COVER p6.8 sites=0 cases=0 ticks=0 failures=0
+COVER p6.9 sites=0 cases=0 ticks=0 failures=0
+COVER s0.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s1.0 sites=3 cases=30 ticks=5400 failures=0
+FAIL s2.0 start=(696, 3566) slot=0 hero=0 frame=11 pos=(696, 3576) mode=0
+FAIL s2.0 start=(696, 3566) slot=0 hero=0 frame=11 pos=(684, 3576) mode=2
+FAIL s2.0 start=(696, 3566) slot=0 hero=0 frame=11 pos=(684, 3576) mode=4
+FAIL s2.0 start=(696, 3566) slot=1 hero=0 frame=11 pos=(696, 3576) mode=0
+FAIL s2.0 start=(696, 3566) slot=1 hero=0 frame=11 pos=(684, 3576) mode=2
+FAIL s2.0 start=(696, 3566) slot=1 hero=0 frame=11 pos=(684, 3576) mode=4
+COVER s2.0 sites=3 cases=30 ticks=4392 failures=6
+FAIL s3.0 start=(1896, 478) slot=0 hero=0 frame=11 pos=(1896, 488) mode=0
+FAIL s3.0 start=(1896, 478) slot=0 hero=0 frame=11 pos=(1898, 488) mode=1
+FAIL s3.0 start=(1896, 478) slot=0 hero=0 frame=11 pos=(1884, 488) mode=2
+FAIL s3.0 start=(1896, 478) slot=0 hero=0 frame=11 pos=(1898, 488) mode=3
+FAIL s3.0 start=(1896, 478) slot=0 hero=0 frame=11 pos=(1884, 488) mode=4
+FAIL s3.0 start=(1896, 478) slot=1 hero=0 frame=11 pos=(1896, 488) mode=0
+FAIL s3.0 start=(1896, 478) slot=1 hero=0 frame=11 pos=(1898, 488) mode=1
+FAIL s3.0 start=(1896, 478) slot=1 hero=0 frame=11 pos=(1884, 488) mode=2
+FAIL s3.0 start=(1896, 478) slot=1 hero=0 frame=11 pos=(1898, 488) mode=3
+FAIL s3.0 start=(1896, 478) slot=1 hero=0 frame=11 pos=(1884, 488) mode=4
+COVER s3.0 sites=3 cases=30 ticks=3720 failures=10
+COVER s4.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s5.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s6.0 sites=3 cases=30 ticks=5400 failures=0
+FAIL s7.0 start=(568, 1150) slot=0 hero=0 frame=172 pos=(730, 1545) mode=3
+FAIL s7.0 start=(568, 1150) slot=1 hero=0 frame=172 pos=(730, 1545) mode=3
+COVER s7.0 sites=3 cases=30 ticks=5386 failures=2
+COVER s8.0 sites=3 cases=30 ticks=5400 failures=0
+FAIL s9.0 start=(952, 1246) slot=0 hero=0 frame=11 pos=(952, 1256) mode=0
+FAIL s9.0 start=(952, 1246) slot=0 hero=0 frame=11 pos=(950, 1256) mode=2
+FAIL s9.0 start=(952, 1246) slot=0 hero=0 frame=11 pos=(950, 1256) mode=4
+FAIL s9.0 start=(952, 1246) slot=1 hero=0 frame=11 pos=(952, 1256) mode=0
+FAIL s9.0 start=(952, 1246) slot=1 hero=0 frame=11 pos=(950, 1256) mode=2
+FAIL s9.0 start=(952, 1246) slot=1 hero=0 frame=11 pos=(950, 1256) mode=4
+COVER s9.0 sites=3 cases=30 ticks=4392 failures=6
+COVER s10.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s11.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s12.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s13.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s14.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s15.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s16.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s17.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s18.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s19.0 sites=3 cases=30 ticks=5400 failures=0
+34 of 2190 traversal cases failed; 365764 ticks, 83 level records

@@ -33,6 +33,14 @@ uniform int banks2[8];
 uniform bool sprites2_on = false;
 uniform float sheet2_tiles_w = 128.0;
 
+// Both foreign heroes share a sheet. Row one of oam2/palette2 holds
+// the second guest, keeping the existing number of texture samplers.
+uniform int banks3[8];
+uniform bool sprites3_on = false;
+uniform bool compact_guests = false;
+
+// $F52C: vertical PB2 maps retain 16 padding lines per 256-line page.
+uniform bool map_paged = false;
 uniform vec2 scroll = vec2(0.0);               // world pixel at the top left
 uniform vec2 map_size = vec2(1.0);             // the map, in tiles
 uniform vec2 sheet_size = vec2(1024.0, 512.0); // the sheet, in pixels
@@ -112,6 +120,7 @@ int tile_colour2(int bank, int index, int px, int py) {
     return int(texelFetch(sheet2, ivec2(sp), 0).r * 255.0 / 85.0 + 0.5);
 }
 
+
 void fragment() {
     // Outside the level's window is the status bar's business.
     bool outside = FRAGCOORD.y < view_top || FRAGCOORD.y >= view_bottom;
@@ -119,6 +128,9 @@ void fragment() {
                        + FRAGCOORD.xy);
     if (wrap.x > 0.0) {
         world = mod(mod(world, wrap) + wrap, wrap);
+    }
+    if (map_paged) {
+        world.y = floor(world.y / 240.0) * 256.0 + mod(world.y, 240.0);
     }
     vec2 cell = floor(world / 8.0);
     int bg_c = 0;
@@ -205,7 +217,8 @@ void fragment() {
     for (int i = 0; sprites2_on && !taken && i < 64; i++) {
         vec4 o = texelFetch(oam2, ivec2(i, 0), 0);
         int line = here_y - (int(o.r * 255.0 + 0.5) + 1);
-        if (line < 0 || line >= 16) {
+        bool compact = compact_guests && (int(o.b * 255.0 + 0.5) & 0x10) != 0;
+        if (line < 0 || line >= (compact ? 8 : 16)) {
             continue;
         }
         on_line2++;
@@ -218,7 +231,8 @@ void fragment() {
         }
         int attr = int(o.b * 255.0 + 0.5);
         int tile = int(o.g * 255.0 + 0.5);
-        int fine = (attr & 0x80) != 0 ? 15 - line : line;
+        int sample_line = compact ? line * 2 : line;
+        int fine = (attr & 0x80) != 0 ? 15 - sample_line : sample_line;
         int index = (tile & 0xFE) + (fine >= 8 ? 1 : 0);
         int bank = banks2[((tile & 1) != 0 ? 4 : 0) + index / 64];
         int c = tile_colour2(bank, index % 64,
@@ -232,6 +246,44 @@ void fragment() {
         if ((attr & 0x20) == 0 || bg_c == 0) {
             COLOR = texelFetch(palette2, ivec2(16 + (attr & 3) * 4 + c, 0), 0);
         }
+        taken = true;
+        break;
+    }
+    // Independent sprite banks and palette for player two.
+    int on_line3 = 0;
+    for (int i = 0; sprites3_on && !taken && i < 64; i++) {
+        vec4 o = texelFetch(oam2, ivec2(i, 1), 0);
+        int line = here_y - (int(o.r * 255.0 + 0.5) + 1);
+        bool compact = compact_guests && (int(o.b * 255.0 + 0.5) & 0x10) != 0;
+        if (line < 0 || line >= (compact ? 8 : 16)) {
+            continue;
+        }
+        on_line3++;
+        if (on_line3 > 8) {
+            break;
+        }
+        int col = here_x - int(o.a * 255.0 + 0.5);
+        if (col < 0 || col >= 8) {
+            continue;
+        }
+        int attr = int(o.b * 255.0 + 0.5);
+        int tile = int(o.g * 255.0 + 0.5);
+        int sample_line = compact ? line * 2 : line;
+        int fine = (attr & 0x80) != 0 ? 15 - sample_line : sample_line;
+        int index = (tile & 0xFE) + (fine >= 8 ? 1 : 0);
+        int bank = banks3[((tile & 1) != 0 ? 4 : 0) + index / 64];
+        int c = tile_colour2(bank, index % 64,
+                (attr & 0x40) != 0 ? 7 - col : col, fine & 7);
+        if (c == 0) {
+            continue;
+        }
+        // The bit that says "behind the background" is read against the
+        // level's own background, because there is only one background and it
+        // is the level's.
+        if ((attr & 0x20) == 0 || bg_c == 0) {
+            COLOR = texelFetch(palette2, ivec2(16 + (attr & 3) * 4 + c, 1), 0);
+        }
+        taken = true;
         break;
     }
     if (FRAGCOORD.x < clip_left) {

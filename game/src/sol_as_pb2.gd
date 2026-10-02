@@ -7,7 +7,7 @@ class_name SolAsPb2
 ## | Solbrain code   | Power Blade 2   | what the Power Blade hero then does |
 ## |-----------------|-----------------|-------------------------------------|
 ## | `>= $10`, solid | class $80       | a wall                              |
-## | `$0D`, water    | terrain 2       | `$ABA6` -> he wades and swims       |
+## | `$0D`, water    | terrain 4       | `$ABA6` -> he wades and swims       |
 ## | `$0E`, belt     | terrain $87     | `$B47C` -> carried right            |
 ## | `$0F`, belt     | terrain $88     | carried left                        |
 ## | anything else   | class $00       | nothing                             |
@@ -64,7 +64,7 @@ func class_byte(px: int, py: int) -> int:
 		return 0x00
 	if py + cam_y >= height_tiles * 8:
 		return 0x00
-	if px < 0 or py < 0 or px >= width_tiles * 8:
+	if px < 0 or py + cam_y < 0 or px >= width_tiles * 8:
 		return 0x80
 	return 0x80 if src.collision_at(px, py + cam_y) >= Pb2AsSol.SOLID else 0x00
 
@@ -78,7 +78,7 @@ func terrain_at(px: int, py: int) -> int:
 		return 0x00
 	match c & 0x03:
 		0x01:
-			return 0x02                 # water
+			return 0x04                 # water
 		0x02:
 			return 0x87                 # carried right
 		0x03:

@@ -80,7 +80,17 @@ static func load_data() -> void:
 static func hero(p: SolPlayer, x: int, y: int, t: Table) -> void:
 	if p.draw_id < 0:
 		return
+	var before: PackedByteArray = t.oam.duplicate() if p.bridge_compact else PackedByteArray()
 	_place(p.draw_id, p.draw_mark, x, y, t)
+	if p.bridge_compact:
+		# PB3-only slide: the existing crouch art is drawn at half height.
+		# Bit 4 is unused by the NES renderer and marks only these parts.
+		var feet: int = (y >> 4) + 16
+		for n in range(0, 256, 4):
+			if t.oam[n] >= 240 or t.oam[n] == before[n]:
+				continue
+			t.oam[n] = clampi(feet - (feet - int(t.oam[n]) + 1) / 2 - 1, 0, 239)
+			t.oam[n + 2] |= 0x10
 
 
 ## $CF73 -- any picture at all, which is how an object puts itself in.

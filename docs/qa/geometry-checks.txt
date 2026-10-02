@@ -1,0 +1,184 @@
+=== Geometry and visual captures ===
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+OpenGL API 4.1 Metal - 90.5 - Compatibility - Using Device: Apple - Apple M1 Pro
+
+0 of 175 geometry checks failed
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+
+0 of 47 obstacle checks failed
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+
+COVER p0.0 sites=3 cases=30 ticks=5400 failures=0
+COVER p0.1 sites=3 cases=30 ticks=5400 failures=0
+COVER p0.2 sites=3 cases=30 ticks=4856 failures=0
+COVER p0.3 sites=3 cases=30 ticks=5400 failures=0
+COVER p0.4 sites=3 cases=30 ticks=4178 failures=0
+COVER p0.5 sites=3 cases=30 ticks=5136 failures=0
+COVER p0.6 sites=3 cases=30 ticks=3868 failures=0
+COVER p1.0 sites=3 cases=30 ticks=1248 failures=0
+COVER p1.1 sites=3 cases=30 ticks=5400 failures=0
+COVER p1.2 sites=3 cases=30 ticks=5400 failures=0
+COVER p1.3 sites=3 cases=30 ticks=5056 failures=0
+COVER p1.4 sites=3 cases=30 ticks=5400 failures=0
+COVER p1.5 sites=3 cases=30 ticks=2918 failures=0
+COVER p1.6 sites=3 cases=30 ticks=5400 failures=0
+COVER p1.7 sites=3 cases=30 ticks=5400 failures=0
+COVER p2.0 sites=3 cases=30 ticks=5400 failures=0
+COVER p2.1 sites=3 cases=30 ticks=5400 failures=0
+COVER p2.2 sites=3 cases=30 ticks=5400 failures=0
+COVER p2.3 sites=3 cases=30 ticks=1544 failures=0
+COVER p2.4 sites=3 cases=30 ticks=5052 failures=0
+COVER p2.5 sites=3 cases=30 ticks=5400 failures=0
+COVER p2.6 sites=3 cases=30 ticks=5400 failures=0
+COVER p3.0 sites=3 cases=30 ticks=5400 failures=0
+COVER p3.1 sites=3 cases=30 ticks=5400 failures=0
+COVER p3.2 sites=3 cases=30 ticks=4624 failures=0
+COVER p3.3 sites=3 cases=30 ticks=5400 failures=0
+COVER p3.4 sites=3 cases=30 ticks=5400 failures=0
+COVER p3.5 sites=3 cases=30 ticks=3130 failures=0
+COVER p3.6 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.0 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.1 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.2 sites=3 cases=30 ticks=4972 failures=0
+COVER p4.3 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.4 sites=3 cases=30 ticks=3454 failures=0
+COVER p4.5 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.6 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.7 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.8 sites=3 cases=30 ticks=5400 failures=0
+COVER p4.9 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.0 sites=0 cases=0 ticks=0 failures=0
+COVER p5.1 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.2 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.3 sites=3 cases=30 ticks=4178 failures=0
+COVER p5.4 sites=3 cases=30 ticks=3560 failures=0
+COVER p5.5 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.6 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.7 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.8 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.9 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.10 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.11 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.12 sites=3 cases=30 ticks=5400 failures=0
+COVER p5.13 sites=3 cases=30 ticks=5176 failures=0
+COVER p6.0 sites=3 cases=30 ticks=5400 failures=0
+COVER p6.1 sites=0 cases=0 ticks=0 failures=0
+COVER p6.2 sites=0 cases=0 ticks=0 failures=0
+COVER p6.3 sites=0 cases=0 ticks=0 failures=0
+COVER p6.4 sites=0 cases=0 ticks=0 failures=0
+COVER p6.5 sites=0 cases=0 ticks=0 failures=0
+COVER p6.6 sites=0 cases=0 ticks=0 failures=0
+COVER p6.7 sites=0 cases=0 ticks=0 failures=0
+COVER p6.8 sites=0 cases=0 ticks=0 failures=0
+COVER p6.9 sites=0 cases=0 ticks=0 failures=0
+COVER s0.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s1.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s2.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s3.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s4.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s5.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s6.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s7.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s8.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s9.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s10.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s11.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s12.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s13.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s14.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s15.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s16.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s17.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s18.0 sites=3 cases=30 ticks=5400 failures=0
+COVER s19.0 sites=3 cases=30 ticks=5400 failures=0
+0 of 2190 traversal cases failed; 370750 ticks, 83 level records
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+OpenGL API 4.1 Metal - 90.5 - Compatibility - Using Device: Apple - Apple M1 Pro
+
+VISUAL tunnel [0, 1] positions=(137, 303),(110, 304) compact=true
+VISUAL tunnel [1, 0] positions=(138, 304),(109, 303) compact=true
+Visual captures complete
+0 of 4 geometry suites differ
+
+
+=== Live session final ===
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+
+Played 498 entries without invulnerability: 58151 ticks
+0 of 59493 session checks failed
+0 of 1 live session suites differ
+
+
+=== Native Nova comparison ===
+suit0 0:0  random-00      ok   406 frames
+suit0 0:0  random-01      ok   591 frames
+suit0 0:0  random-02      ok   591 frames
+suit0 0:1  random-00      ok   22 frames
+suit0 0:1  random-01      ok   581 frames
+suit0 0:1  random-02      ok   86 frames
+suit0 3:1  random-00      ok   246 frames
+suit0 3:1  random-01      ok   246 frames
+suit0 3:1  random-02      ok   430 frames
+0 of 9 scripts differ, 3199 frames matched
+
+
+=== Native Solbrain comparison ===
+s0     duck        ok, 96 frames
+s0     right       ok, 96 frames
+s0     run jump    ok, 96 frames
+s0     still       ok, 96 frames
+water  duck        ok, 96 frames
+water  right       ok, 96 frames
+water  run jump    ok, 96 frames
+water  still       ok, 96 frames
+0 of 8 scripts differ
+
+
+=== pb3floor ===
+1037 walks to the right, 1031 of them got at least a cell along; the deepest one picture ever dropped anybody is 8 lines
+5185 walks: 3185 of Solbrain's hero in Power Blade 2, 2000 of Power Blade's hero in Solbrain
+0 fell further in one picture than a cell is tall, 0 stood inside something solid, 0 would not walk (528 walked off the end, which is no fault)
+0 of 5185 walks in a borrowed level differ from what a floor has to do
+
+
+=== pb3pair ===
+2460 walks of two, 492 of them with both walking; 492 of those carried the middle at least a cell, and the furthest the two ever got apart is 240 pixels
+  pb2 and sol: 615
+  sol and pb2: 615
+  pb2 and pb2: 615
+  sol and sol: 615
+the furthest the edge ever had to reach to hold somebody on the screen is 0 lines
+0 let somebody off the screen, 0 stood inside something solid, 0 leapt further in one picture than a cell is tall; 63 walks had one of the two leave the level and 0 of those stopped early
+0 of 2460 walks of two differ from what a shared screen has to do
+
+
+=== build ===
+exporting macOS...
+the build is /var/folders/ly/jcxs0wwn58jfygyd9_rlr4n40000gn/T/pb2work/buildm7cbqlnj/pb3.app/Contents/MacOS/PB3
+text:
+    still     ok    41 lines
+    cleared   ok    41 lines
+    ride      ok    133 lines
+pictures:
+    still     ok    picture 2
+    still     ok    picture 30
+    cleared   ok    picture 2
+    cleared   ok    picture 30
+219 lines and pictures judged
+0 of 7 runs differ from the sources
+
+
+=== pb3draw ===
+83 records raised, played 90 pictures each, 0 never came up or stopped short, 0 were handed the wrong half of a picture
+    p0.0   solo 0, pass 0, order 0, level 229 points, guest 551, both 556, hidden 245, line 4
+    p0.0   had something in the air on 79 of the 90 pictures, 158 sprites of it altogether; the piece taken 1 pictures on had 2 of them in it, worth 208 points
+    s0.0   solo 0, pass 0, order 0, level 811 points, guest 381, both 1140, hidden 62, line 6
+    p0.1   solo 0, pass 0, order 0, level 626 points, guest 542, both 919, hidden 249, line 4
+    p0.1   had something in the air on 79 of the 90 pictures, 158 sprites of it altogether; the piece taken 1 pictures on had 2 of them in it, worth 208 points
+    p5.13  solo 0, pass 0, order 0, level 748 points, guest 600, both 1132, hidden 216, line 17
+    p5.13  had something in the air on 70 of the 90 pictures, 140 sprites of it altogether; the piece taken 1 pictures on had 2 of them in it, worth 208 points
+    s13.0  solo 0, pass 0, order 0, level 1291 points, guest 357, both 1613, hidden 55, line 10
+5 records photographed in 10 pieces each (3 of them in two more): 0 points differ from the single game's own road, 0 between the two passes, 0 break the order, 827 of the guest were taken from him by the level's own table
+2 of the photographed records fill a line with more than eight of the level's own and keep the guest all the same
+3 of them were taken twice over, with what the guest had thrown and without: 624 points of the two are the beams
+0 of 8 promises break the promise

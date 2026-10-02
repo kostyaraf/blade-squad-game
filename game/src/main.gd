@@ -35,6 +35,9 @@ var pads: Array[Pad] = []
 ## left null there and every seam below falls through.
 var snd: SndPlay = null
 var snd_out: AudioStreamPlayer = null
+var snd_guest: SndPlay = null
+var snd_guest_out: AudioStreamPlayer = null
+var pb3_tune := -1
 
 
 func _ready() -> void:
@@ -347,6 +350,8 @@ func _ready() -> void:
 		return
 	if game == "pb2":
 		_start_play(stage, area)
+	elif game == "pb3":
+		_start_pb3()
 	elif solboot:
 		_start_sol_boot()
 	else:
@@ -3293,16 +3298,21 @@ func _run_replay(path: String) -> void:
 ## back nothing, the chip goes on counting, and the samples simply pile up and
 ## are dropped -- which is what `SndPlay.dropped` is for.
 func _snd_raise() -> void:
-	snd = SndPlay.new(game)
+	snd = SndPlay.new("pb2" if game == "pb3" else game)
+	snd_out = _snd_output()
+
+
+func _snd_output() -> AudioStreamPlayer:
 	var gen := AudioStreamGenerator.new()
 	gen.mix_rate = SndPlay.RATE
 	# A twelfth of a second of room.  Less and a picture that took too long on
 	# the monitor's side is heard as a hole; more and a sound lags its picture.
 	gen.buffer_length = 0.08
-	snd_out = AudioStreamPlayer.new()
-	snd_out.stream = gen
-	add_child(snd_out)
-	snd_out.play()
+	var output := AudioStreamPlayer.new()
+	output.stream = gen
+	add_child(output)
+	output.play()
+	return output
 
 
 ## The level's game changed, so the driver does.  A driver holds a tune in its
@@ -3420,6 +3430,8 @@ func _bar_step() -> void:
 
 
 func _apply() -> void:
+	(bg.material as ShaderMaterial).set_shader_parameter("map_paged", false)
+	(bg.material as ShaderMaterial).set_shader_parameter("compact_guests", false)
 	if pb3 != null:
 		_pb3_apply()
 		return
@@ -3490,9 +3502,14 @@ func _apply() -> void:
 		_show()
 	elif sol_hero != null:
 		_show_sol()
-	m.set_shader_parameter("scroll", Vector2(scroll - origin))
+	m.set_shader_parameter("scroll", Vector2(scroll if (world != null and level_pb2 != null and level_pb2.vertical) else scroll - origin))
 	m.set_shader_parameter("view_top", float(origin.y))
 	m.set_shader_parameter("view_bottom", float(origin.y + view_h))
+
+
+func _input(event: InputEvent) -> void:
+	for pad in pads:
+		pad.capture(event)
 
 
 func _process(dt: float) -> void:
@@ -3520,6 +3537,8 @@ func _process(dt: float) -> void:
 		_step()
 	if snd != null and snd_out != null:
 		snd.pump(snd_out.get_stream_playback())
+	if snd_guest != null and snd_guest_out != null:
+		snd_guest.pump(snd_guest_out.get_stream_playback())
 	# The menu is a node and draws itself; there is no level under it to draw.
 	if menu != null:
 		return
@@ -3598,6 +3617,11 @@ func _menu_took(which: String) -> void:
 	menu.queue_free()
 	menu = null
 	game = which
+	if which != "pb3":
+		if snd == null:
+			snd = SndPlay.new(which)
+		else:
+			_snd_use(which)
 	keeping = true
 	if which == "pb2":
 		# $ED7B -- Power Blade 2 opens on its own screen, and what it kept is
@@ -4028,6 +4052,11 @@ func _step() -> void:
 	_step_game()
 	if snd != null:
 		snd.step()
+	if snd_guest != null:
+		# The guest contributes effects; only the level selects music.
+		if snd_guest.sol != null:
+			SolSound.want_tune = 0
+		snd_guest.step()
 	_progress_watch()
 
 
@@ -4320,6 +4349,7 @@ func _sol_dark() -> void:
 	m.set_shader_parameter("sprites_on", false)
 	# Э7.5 -- and the guest's own table, which only the PB3 mode ever has.
 	m.set_shader_parameter("sprites2_on", false)
+	m.set_shader_parameter("sprites3_on", false)
 	m.set_shader_parameter("bands_on", false)
 	m.set_shader_parameter("bar_on", false)
 	m.set_shader_parameter("split_at", 1000.0)
@@ -5373,7 +5403,8 @@ func _show() -> void:
 		map_tex.update(level_pb2.map_image)
 	var w: int = world._world(view.pos)
 	scroll = Vector2i(0, w) if level_pb2.vertical else Vector2i(w, 0)
-	m.set_shader_parameter("scroll", Vector2(scroll - origin))
+	m.set_shader_parameter("map_paged", level_pb2.vertical)
+	m.set_shader_parameter("scroll", Vector2(scroll if level_pb2.vertical else scroll - origin))
 	m.set_shader_parameter("banks", PackedInt32Array(level_pb2.banks
 			+ Pb2Sprites.banks_for(level_pb2, hero.pose, world.suit)))
 	m.set_shader_parameter("sprites_on", true)
@@ -5431,36 +5462,54 @@ func _pass_show() -> void:
 ## a hero of the other in it, and until a record is settled on there is no
 ## level.  `work/re/pb3_draw.md`.
 func _start_pb3() -> void:
-	# Neither game's driver is here yet, so what both of them ask for is
-	# dropped rather than piled up.
-	Pb2Sound.forget()
-	SolSound.forget()
-	pb3 = Pb3List.new([Pb3Pair.PB2, Pb3Pair.SOL])
+	_pb3_sound_stop()
+	pb3_session = Pb3Session.new([Pb3Pair.PB2, Pb3Pair.SOL])
+	pb3 = pb3_session
+	pb3_setup = true
+	pb3_setup_row = 0
 	pb3_gear = null
 	pb3_draw = null
 	pb3_board = Pb3Board.new()
 	add_child(pb3_board)
-	pb3_board.show_list(pb3.at)
+	pb3_board.show_setup(pb3_players, pb3_heroes, pb3_setup_row)
 	# The board is the port's own writing and stands over the picture.
 	bg.z_index = -1
 	_apply()
+
+
+func _exit_tree() -> void:
+	if pb3_session != null:
+		pb3_session.leave()
 
 
 ## One picture of the mode: the list until a record is settled on, and the
 ## record itself after that.
 func _step_pb3() -> void:
 	var p: Pad = pads[0]
+	if pb3_setup:
+		_step_pb3_setup()
+		return
 	if pb3.two == null:
 		# A is the way in, and it is taken here rather than left to the list:
 		# `Pb3List.step` raises a record with the level's own game left out,
 		# which is Э5.6's empty room, and what is wanted here is Э5.7's whole
 		# one.
-		if (p.pressed & Pad.A) != 0:
+		if (p.pressed & Pad.B) != 0:
+			pb3_setup = true
+			pb3_board.show_setup(pb3_players, pb3_heroes, pb3_setup_row)
+			return
+		if (p.pressed & (Pad.A | Pad.START)) != 0:
 			if pb3.enter(true):
 				_pb3_enter()
 			return
-		pb3.step(p.held)
+		if (p.pressed & (Pad.DOWN | Pad.RIGHT)) != 0:
+			pb3.at = (pb3.at + 1) % Pb3List.records().size()
+		elif (p.pressed & (Pad.UP | Pad.LEFT)) != 0:
+			pb3.at = (pb3.at + Pb3List.records().size() - 1) \
+					% Pb3List.records().size()
 		pb3_board.show_list(pb3.at)
+		if pb3_session != null:
+			pb3_board.show_message(pb3_session.message)
 		return
 	# SELECT -- back to the list.  Neither game knows a way out of a level
 	# like this: it is the port's own road, and it is named in the разбор.
@@ -5471,19 +5520,73 @@ func _step_pb3() -> void:
 	SolSound.forget()
 	# Э5.5 -- the bar first, because a suit put on or a gun chosen is what the
 	# picture after it is played with.
-	pb3_gear.step([pads[0].pressed, pads[1].pressed])
-	pb3.two.step([pads[0].held, pads[1].held])
+	if pb3_session != null:
+		var words: Array = []
+		for i in range(pb3.kinds.size()):
+			words.append(pads[i].held)
+		var event: String = pb3_session.advance(pb3_session.tick, words)
+		if event == "list":
+			_pb3_leave()
+			return
+		if event == "changed":
+			_pb3_enter()
+			return
+	else:
+		pb3_gear.step([pads[0].pressed, pads[1].pressed])
+		pb3.two.step([pads[0].held, pads[1].held])
 	pb3_draw.after_step(pb3_gear)
+	if pb3_extra != null:
+		pb3_extra.after_step(pb3_gear)
 	pb3_board.show_bar(pb3_gear)
+
+
+func _step_pb3_setup() -> void:
+	var hit: int = pads[0].pressed
+	if (hit & Pad.B) != 0:
+		pb3_board.queue_free()
+		pb3_board = null
+		pb3 = null
+		pb3_session = null
+		pb3_setup = false
+		_start_menu()
+		return
+	if (hit & Pad.DOWN) != 0:
+		pb3_setup_row = (pb3_setup_row + 1) % 4
+	elif (hit & Pad.UP) != 0:
+		pb3_setup_row = (pb3_setup_row + 3) % 4
+	elif (hit & (Pad.LEFT | Pad.RIGHT | Pad.A)) != 0:
+		if pb3_setup_row == 0:
+			pb3_players = 3 - pb3_players
+		elif pb3_setup_row < 3:
+			pb3_heroes[pb3_setup_row - 1] = \
+					1 - int(pb3_heroes[pb3_setup_row - 1])
+	# Player two may choose directly using their own controller.
+	if pb3_players == 2 and (pads[1].pressed & (Pad.LEFT | Pad.RIGHT)) != 0:
+		pb3_heroes[1] = 1 - int(pb3_heroes[1])
+	if (hit & Pad.START) != 0 or (pb3_setup_row == 3
+			and (hit & Pad.A) != 0):
+		var at: int = pb3.at
+		pb3_session = Pb3Session.new(pb3_heroes.slice(0, pb3_players))
+		pb3 = pb3_session
+		pb3.at = at
+		pb3_setup = false
+		pb3_board.show_list(pb3.at)
+		return
+	pb3_board.show_setup(pb3_players, pb3_heroes, pb3_setup_row)
 
 
 ## A record raised: the pair, the bar both of them spend, and the laying out of
 ## the picture.  The arming is the same three lines Э5.8's own run uses.
 func _pb3_enter() -> void:
 	var two: Pb3Pair = pb3.two
+	if pb3_session != null:
+		for i in range(two.who.size()):
+			pb3_session.previous[i] = pads[i].held
+	_pb3_sound_enter(two)
 	# $92CD -- the satellite a finished combination gives him, and the one
 	# place in the engine that hands one over.
-	pb3_gear = Pb3Gear.new(pb3.kinds)
+	pb3_gear = pb3_session.gear if pb3_session != null \
+			else Pb3Gear.new(pb3.kinds)
 	for i in range(two.who.size()):
 		if two.who[i] != Pb3Pair.SOL:
 			continue
@@ -5493,16 +5596,79 @@ func _pb3_enter() -> void:
 			pb3_gear.arm(two.guest_pool[i], i)
 	pb3_draw = Pb3Draw.new(two)
 	pb3_draw.after_step(pb3_gear)
+	pb3_extra = null
+	if two.host < 0 and two.who.size() == 2:
+		pb3_extra = Pb3Draw.new(two, 1)
+		pb3_extra.after_step(pb3_gear)
 	pb3_board.show_bar(pb3_gear)
 	_apply()
 
 
+## PB3 mixes two native chips: level music/effects and the other hero's effects.
+## The native request numbers never cross into the other game's driver.
+func _pb3_sound_enter(two: Pb3Pair) -> void:
+	var source := "pb2" if two.game == Pb3Pair.PB2 else "sol"
+	var changed := snd == null or snd.game != source
+	if snd == null:
+		snd = SndPlay.new(source)
+	else:
+		_snd_use(source)
+	if changed:
+		pb3_tune = -1
+	var guest_source := "sol" if source == "pb2" else "pb2"
+	if snd_guest == null or snd_guest.game != guest_source:
+		snd_guest = SndPlay.new(guest_source)
+	if snd_guest_out == null:
+		snd_guest_out = _snd_output()
+	# Reserve headroom for simultaneous attacks from both games.
+	snd_out.volume_db = -6.0
+	snd_guest_out.volume_db = -6.0
+	var tune: int
+	if two.game == Pb3Pair.SOL:
+		# $E776: byte 19 of the stage record, already extracted from ROM.
+		tune = int(two.solv._data["music"])
+	else:
+		# $CE25/$CF42/$CF9F: reuse the native flow's stage and boss selection.
+		Pb2Flow.stage_tune(two.came, two.area)
+		Pb2Flow.area_again(two.came, two.area, two.host_pb2.phase,
+				1 if two.stage == Pb2Objects.BOSS_STAGE else two.host_pb2.boss)
+		tune = int(Pb2Sound.asked.back())
+		Pb2Sound.forget()
+	if tune != pb3_tune:
+		if snd.pb2 != null:
+			snd.ask(0)
+		snd.ask(tune)
+		pb3_tune = tune
+
+
+func _pb3_sound_stop() -> void:
+	snd = null
+	snd_guest = null
+	pb3_tune = -1
+	Pb2Sound.forget()
+	SolSound.forget()
+	# Flush queued samples too, so a retry never starts with the previous hit.
+	for output in [snd_out, snd_guest_out]:
+		if output != null:
+			output.stop()
+			output.play()
+	if snd_guest_out != null:
+		snd_guest_out.queue_free()
+		snd_guest_out = null
+	if snd_out != null:
+		snd_out.volume_db = 0.0
+
+
 ## And out again, back to the record it was entered from.
 func _pb3_leave() -> void:
+	_pb3_sound_stop()
 	pb3.leave()
 	pb3_gear = null
 	pb3_draw = null
+	pb3_extra = null
 	pb3_board.show_list(pb3.at)
+	if pb3_session != null:
+		pb3_board.show_message(pb3_session.message)
 	_apply()
 
 
@@ -5540,11 +5706,12 @@ func _pb3_apply() -> void:
 		origin = Vector2i.ZERO
 		view_h = 224
 	pal_tex = Nes.palette_texture(pb3_draw.palette)
-	pal2_tex = Nes.palette_texture(pb3_draw.guest_palette)
+	pal2_tex = ImageTexture.create_from_image(_pb3_guest_palette())
 	map_tex = ImageTexture.create_from_image(img)
 	oam_tex = ImageTexture.create_from_image(_oam_image(pb3_draw.oam))
-	oam2_tex = ImageTexture.create_from_image(_oam_image(pb3_draw.guest_oam))
-	var second: Texture2D = Nes.sheet(pb3_draw.guest_sheet)
+	oam2_tex = ImageTexture.create_from_image(_pb3_guest_oam())
+	var second: Texture2D = Nes.sheet(pb3_draw.guest_sheet
+			if pb3_draw.guest >= 0 else game)
 	m.set_shader_parameter("sheet", Nes.sheet(game))
 	m.set_shader_parameter("sheet_size", Nes.sheet(game).get_size())
 	m.set_shader_parameter("map", map_tex)
@@ -5556,6 +5723,7 @@ func _pb3_apply() -> void:
 			float(int(second.get_size().x) / 8))
 	m.set_shader_parameter("palette2", pal2_tex)
 	m.set_shader_parameter("oam2", oam2_tex)
+	m.set_shader_parameter("sprites3_on", pb3_extra != null)
 	# Nothing of a screen outside a level: the picture is one level's the whole
 	# frame, and the bar over it is the board's writing and not a map.
 	m.set_shader_parameter("bands_on", false)
@@ -5572,6 +5740,7 @@ func _pb3_apply() -> void:
 ## both halves, both sets of banks and both sprite tables.
 func _pb3_show() -> void:
 	var m: ShaderMaterial = bg.material
+	m.set_shader_parameter("compact_guests", true)
 	var two: Pb3Pair = pb3.two
 	if two.game == Pb3Pair.PB2:
 		var lv: Pb2Level = two.pb2v as Pb2Level
@@ -5590,15 +5759,44 @@ func _pb3_show() -> void:
 			sl.map_dirty = false
 			map_tex.update(sl.map_image)
 		scroll = Vector2i(two.sol_eye.x >> 4, two.sol_eye.y >> 4)
-	m.set_shader_parameter("scroll", Vector2(scroll - origin))
+	var paged: bool = two.game == Pb3Pair.PB2 and two.pb2v.vertical
+	m.set_shader_parameter("map_paged", paged)
+	m.set_shader_parameter("scroll", Vector2(scroll if paged else scroll - origin))
 	Nes.update_palette(pal_tex, pb3_draw.palette)
-	Nes.update_palette(pal2_tex, pb3_draw.guest_palette)
+	pal2_tex.update(_pb3_guest_palette())
 	m.set_shader_parameter("banks", PackedInt32Array(pb3_draw.banks))
 	m.set_shader_parameter("banks2", PackedInt32Array(pb3_draw.guest_banks))
 	m.set_shader_parameter("sprites_on", true)
 	m.set_shader_parameter("sprites2_on", pb3_draw.guest >= 0)
 	oam_tex.update(_oam_image(pb3_draw.oam))
-	oam2_tex.update(_oam_image(pb3_draw.guest_oam))
+	oam2_tex.update(_pb3_guest_oam())
+	if pb3_extra != null:
+		m.set_shader_parameter("banks3", PackedInt32Array(pb3_extra.guest_banks))
+
+
+## The two foreign heroes use the same sheet, but may wear different suits.
+## Pack their palettes and sprite tables into rows of the existing textures
+## instead of requiring three more texture samplers from Compatibility GL.
+func _pb3_guest_palette() -> Image:
+	var rows: Array = [pb3_draw.guest_palette]
+	if pb3_extra != null:
+		rows.append(pb3_extra.guest_palette)
+	var img := Image.create(32, rows.size(), false, Image.FORMAT_RGBA8)
+	for y in range(rows.size()):
+		for x in range(32):
+			img.set_pixel(x, y, Nes.colour(rows[y][x]))
+	return img
+
+
+func _pb3_guest_oam() -> Image:
+	var first: Image = _oam_image(pb3_draw.guest_oam)
+	if pb3_extra == null:
+		return first
+	var img := Image.create(Pb2Sprites.SPRITES, 2, false, Image.FORMAT_RGBA8)
+	var rect := Rect2i(0, 0, Pb2Sprites.SPRITES, 1)
+	img.blit_rect(first, rect, Vector2i.ZERO)
+	img.blit_rect(_oam_image(pb3_extra.guest_oam), rect, Vector2i(0, 1))
+	return img
 
 
 ## A console sprite table as the shader reads it: one point a sprite, its four
@@ -5647,6 +5845,13 @@ func _run_pb3_draw(path: String) -> void:
 	for one in pads:
 		(one as Pad).handed = 0
 	_start_pb3()
+	# This renderer fixture holds one area for its pixel comparisons. The
+	# live session (selection, deaths and transitions) is tested separately
+	# by pb3_session_test.gd, without keeping a completed area alive.
+	pb3_session = null
+	pb3 = Pb3List.new([Pb3Pair.PB2, Pb3Pair.SOL])
+	pb3_setup = false
+	pb3_board.show_list(0)
 	var recs: Array = Pb3List.records()
 	var out := PackedStringArray()
 	for n in range(recs.size()):
@@ -6582,6 +6787,12 @@ var secret: Pb2Pass = null
 ## raised, the one bar the two of them spend, the laying out of the picture
 ## both games go into, and the port's own writing over it.
 var pb3: Pb3List = null
+var pb3_session: Pb3Session = null
+var pb3_setup := false
+var pb3_setup_row := 0
+var pb3_players := 1
+var pb3_heroes: Array = [Pb3Pair.PB2, Pb3Pair.SOL]
+var pb3_extra: Pb3Draw = null
 var pb3_gear: Pb3Gear = null
 var pb3_draw: Pb3Draw = null
 var pb3_board: Pb3Board = null

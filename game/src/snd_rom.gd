@@ -19,6 +19,7 @@ const TOP := 0xC000
 
 static var _rom := {}
 static var _dmc := {}
+static var _boot := {}
 
 
 ## The window of `game`, read once and kept.
@@ -28,6 +29,7 @@ static func window(game: String) -> PackedByteArray:
 	var f := FileAccess.open("res://data/%s/sound.json" % game, FileAccess.READ)
 	assert(f != null, "no sound.json for %s -- run work/extract/sound.py" % game)
 	var d: Dictionary = JSON.parse_string(f.get_as_text())
+	_boot[game] = d["boot"]
 	var out := PackedByteArray()
 	out.resize(TOP - BASE)
 	var rom: Array = d["rom"]
@@ -49,3 +51,10 @@ static func dmc(game: String) -> PackedByteArray:
 	if not _dmc.has(game):
 		window(game)
 	return _dmc[game]
+
+
+## Reset code outside the driver banks ($E5DA / $F911).
+static func boot(game: String) -> Array:
+	if not _boot.has(game):
+		window(game)
+	return _boot[game]

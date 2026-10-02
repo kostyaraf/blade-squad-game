@@ -1,0 +1,32 @@
+2026-10-02: latest results, combining the targeted run and reruns.
+The renderer fixture was updated for the new session menu;
+session, rendering and macOS export were rerun after the final fix.
+
+solrun     Э4.6  ok      0 of 20 stages of the run differ                        20 s
+pb3floor   Э5.1  ok      0 of 5185 walks in a borrowed level differ from what a floor has to do    16 s
+pb3pair    Э5.2  ok      0 of 2460 walks of two differ from what a shared screen has to do    42 s
+pb3pick    Э5.3  ok      0 of 44 questions of the choosing screen differ from what it has to do     1 s
+pb3hits    Э5.4  ok      0 of 49488 placements differ from what a foreign blow has to do     3 s
+pb3gear    Э5.5  ok      0 of 43 questions of the shared arsenal differ from what it has to do     1 s
+pb3list    Э5.6  ok      0 of 336 raisings of the list differ from what it has to do     7 s
+pb3run     Э5.7  ok      0 of 332 playings of the list differ from what a level running under two has to do    75 s
+pb3session PB3   ok      0 of 1 live session suites differ                       24 s
+build      Э7.1  ok      0 of 7 runs differ from the sources                     23 s
+ask        Э7.2  ok      0 of 12 walks break the promise                         15 s
+keep       Э7.3  ok      0 of 9 runs break the promise                           20 s
+pb3draw    Э7.5  ok      0 of 8 promises break the promise                       11 s
+
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+
+Played 498 entries without invulnerability: 58563 ticks
+0 of 59906 session checks failed
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2641)
+0 of 1 live session suites differ
+
+Rendered integration run:
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+OpenGL API 4.1 Metal - 90.5 - Compatibility - Using Device: Apple - Apple M1 Pro
+
+Played 0 entries without invulnerability: 0 ticks
+0 of 373 session checks failed

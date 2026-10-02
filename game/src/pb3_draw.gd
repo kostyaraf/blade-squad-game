@@ -102,7 +102,7 @@ static func sol_own() -> SolLevel:
 	return _sol_own
 
 
-func _init(pair: Pb3Pair) -> void:
+func _init(pair: Pb3Pair, guest_index: int = -2) -> void:
 	two = pair
 	Pb2Sprites.load_data()
 	SolSprites.load_data()
@@ -110,6 +110,8 @@ func _init(pair: Pb3Pair) -> void:
 		if i != two.host:
 			guest = i
 			break
+	if guest_index >= -1:
+		guest = guest_index
 	oam = PackedByteArray()
 	oam.resize(Pb2Sprites.OAM)
 	oam.fill(Pb2Sprites.HIDDEN)
@@ -135,6 +137,8 @@ func _init(pair: Pb3Pair) -> void:
 func _level_palette() -> PackedByteArray:
 	if two.game == PB2:
 		return (two.pb2v as Pb2Level).palette
+	if two.host_fade != null:
+		return two.host_fade.out
 	return (two.solv as SolLevel).palette
 
 
@@ -157,6 +161,9 @@ func _guest_colours() -> void:
 			if two.who[guest] == PB2 else sol_own().palette)
 	for i in range(OWN_PAINT):
 		guest_palette[SPRITE_PAINT + i] = own[SPRITE_PAINT + i]
+	if two.host_fade != null:
+		for i in range(SPRITE_PAINT + OWN_PAINT, 32):
+			guest_palette[i] = two.host_fade.table[i]
 
 
 ## $8080 -- a suit is three colours over sprite palette one.  The level's own
@@ -211,6 +218,11 @@ func after_step(gear: Pb3Gear = null) -> void:
 	guest_palette = PackedByteArray(palette)
 	_guest_colours()
 	_wear(gear)
+	if guest >= 0 and two.host_fade != null:
+		# The guest keeps his own hues, but shares the stage's fade clock.
+		for i in range(SPRITE_PAINT, 32):
+			guest_palette[i] = SolFade._one(guest_palette[i],
+					two.host_fade.level[i >> 2])
 	banks = _host_banks()
 	guest_banks = _guest_banks()
 
@@ -232,7 +244,12 @@ func _host_table() -> void:
 	# on either, so what stood there stands there still.
 	if two.ended == Pb2Turn.HELD:
 		return
-	oam = Pb2Sprites.build(two.host_pb2.slots, rot, oam)
+	var slots: Array = two.host_pb2.slots
+	if two.live_session and (two.host < 0 or two.gone[two.host]):
+		slots = slots.duplicate()
+		slots[0] = (slots[0] as PackedByteArray).duplicate()
+		slots[0][Pb2Objects.F_KIND] = 0 # $8068 checks the picture, not the object type.
+	oam = Pb2Sprites.build(slots, rot, oam)
 	rot = (rot + Pb2Sprites.ROTATE) & 0xFF
 
 
@@ -257,6 +274,9 @@ func _host_table() -> void:
 func _guest_table() -> void:
 	if guest < 0:
 		return
+	if two.live_session and two.gone[guest]:
+		guest_oam.fill(Pb2Sprites.HIDDEN)
+		return
 	if two.who[guest] == PB2:
 		guest_oam = Pb2Sprites.build((two.things[guest] as Pb2Objects).slots,
 				guest_rot, guest_oam)
@@ -265,13 +285,11 @@ func _guest_table() -> void:
 	var h: SolPlayer = two.sol[guest]
 	var pool: SolObjects = two.guest_pool[guest]
 	var s: Vector2i = two.screen_of(guest)
-	var vx: int = PRETEND_X << 4
-	var vy: int = PRETEND_Y << 4
-	if pool != null:
-		vx = pool.cam_x
-		vy = pool.cam_y
-	vx = (vx - ((s.x - PRETEND_X) << 4)) & 0xFFFF
-	vy = (vy - ((s.y - PRETEND_Y) << 4)) & 0xFFFF
+	# Derive the render camera from the actual hero and screen position.
+	# A same-game guest pool already has the real camera; applying the
+	# foreign pool's PRETEND offset to it used to translate him twice.
+	var vx: int = (h.x - (s.x << 4)) & 0xFFFF
+	var vy: int = (h.y + SolPlayer.FOOT_DY - (s.y << 4)) & 0xFFFF
 	SolSprites.reset(guest_table, pool.clock if pool != null else 0)
 	SolSprites.hero(h, (h.x - vx) & 0xFFFF, (h.y - vy) & 0xFFFF, guest_table)
 	guest_arms = 0

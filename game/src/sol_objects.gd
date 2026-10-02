@@ -1586,6 +1586,34 @@ func blow(dmg: int) -> void:
 ## all, and only while the hero is old enough to be hurt ($05A3 >= $70).  The
 ## first slot that reaches him ends the walk, so no more than one shot lands.
 func shots_hit_hero() -> void:
+	_shots_hit_current_hero()
+	# Guests use the same $8866 sweep and consume the same projectiles.
+	# As with touch(), preserve the native hero and his box after each sweep.
+	var over: Array = more_guests.duplicate()
+	if guest != null and guest_box.size() == 5:
+		over.push_front([guest, guest_box])
+	if over.is_empty():
+		return
+	var was: SolPlayer = hero
+	var box_before: Array = [hero_box_flags, hero_bx, hero_by, hero_bw, hero_bh]
+	for g in over:
+		var box: Array = g[1]
+		hero = g[0]
+		hero_box_flags = int(box[0])
+		hero_bx = int(box[1])
+		hero_by = int(box[2])
+		hero_bw = int(box[3])
+		hero_bh = int(box[4])
+		_shots_hit_current_hero()
+	hero = was
+	hero_box_flags = int(box_before[0])
+	hero_bx = int(box_before[1])
+	hero_by = int(box_before[2])
+	hero_bw = int(box_before[3])
+	hero_bh = int(box_before[4])
+
+
+func _shots_hit_current_hero() -> void:
 	if hero == null or hero_box_flags == 0 or hero.timer < 0x70:
 		return
 	# $CDC8's compare is the last thing to touch the carry before the walk,

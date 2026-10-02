@@ -60,6 +60,8 @@ var owed := false
 ## Every routine this picture went through, so that an acceptance can say how
 ## much of the script it has actually seen run.
 var trail := PackedInt32Array()
+## $9E73 can remove input even when the host runs several heroes.
+var controls_locked := false
 
 ## $BDCA -- the nine bytes of every kind of thing, in bank nine.
 const TEMPLATES := 0xBDCA
@@ -95,6 +97,7 @@ func w(lo: int, hi: int) -> int:
 ## $93B5 -- one picture of the stage's own script.
 func step() -> void:
 	cf = 0
+	controls_locked = false
 	var col: int = ((g(0x31) + 0x08) & 0xFF) >> 4          # $93B6
 	var room: int = (((g(0x33) + 0x08) & 0xF0) + col) & 0xFF
 	if room != g(0x05EB):                                  # $93CB
@@ -211,6 +214,7 @@ func _wipe_weapons() -> void:
 ## $9E73 -- hold the hero still: while he is in a suit he is given the longest
 ## wait there is, and either way the buttons he is handed are taken away.
 func _hold_hero() -> void:
+	controls_locked = true
 	if g(0x05C5) != 0:
 		p(0x05A3, 0x1F)
 	p(0x06, 0)

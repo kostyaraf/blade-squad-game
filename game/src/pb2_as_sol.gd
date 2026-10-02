@@ -16,7 +16,7 @@ class_name Pb2AsSol
 ## | Power Blade 2        | Solbrain code | what the Solbrain hero then does |
 ## |----------------------|---------------|----------------------------------|
 ## | class $80, a wall    | `$10`         | `>= $80`, solid                  |
-## | terrain 2, water     | `$0D`         | `$9505` -> `_wet`                |
+## | terrain 4, water     | `$0D`         | `$9505` -> `_wet`                |
 ## | terrain 3, mud       | `$0D`         | the nearest thing he has         |
 ## | terrain $87, belt    | `$0E`         | `$963D` -> `vx + 8`              |
 ## | terrain $88, belt    | `$0F`         | `$963D` -> `vx - 8`              |
@@ -25,10 +25,12 @@ class_name Pb2AsSol
 ## Two of Power Blade 2's own classes have no Solbrain answer at all and are
 ## handed to the mode instead of being pretended at: a ladder (class $01),
 ## which the Solbrain hero cannot climb, and what hurts -- class $02 and
-## terrain 4, the fall that kills.  `hurts_at` is what the mode asks.
+## terrain 2, the fall that kills.  `hurts_at` is what the mode asks.
 
 ## What is underneath, in the class the borrowed area keeps.
 var src: Pb2Level
+## PB3 uses continuous hero coordinates across the 16 padding rows of each page.
+var continuous_vertical := false
 
 ## $0C -- a wall.  Shifted up by three this is the $80 the hero tests.
 const SOLID := 0x10
@@ -66,10 +68,21 @@ func _init(area: Pb2Level) -> void:
 	start = Vector2i(area.start_x << 4, area.start_y << 4)
 
 
+func map_y(y: int) -> int:
+	return (y / 240) * 256 + posmod(y, 240) if continuous_vertical and src.vertical else y
+
+
+func hero_y(y: int) -> int:
+	return (y >> 8) * 240 + mini(y & 255, 239) if continuous_vertical and src.vertical else y
+
+
 ## $D0FD and $D010 -- what the probes read, in Solbrain's own five bits.
 func collision_at(px: int, py: int) -> int:
 	if src == null:
 		return 0
+	if px < 0 or py < 0:
+		return SOLID
+	py = map_y(py)
 	# Outside the area is walled on three sides.  Power Blade 2 never has to
 	# say so -- his own hero is held on the screen and the screen is held in
 	# the area -- but the Solbrain hero jumps higher than a Power Blade area is
@@ -83,7 +96,7 @@ func collision_at(px: int, py: int) -> int:
 	if src.class_byte(px, py) == 0x80:
 		return SOLID
 	match src.terrain_at(px, py):
-		0x02, 0x03:
+		0x04, 0x03:
 			return WATER
 		0x87:
 			return BELT_RIGHT
@@ -104,7 +117,7 @@ func raw_at(_px: int, _py: int) -> int:
 func hurts_at(px: int, py: int) -> bool:
 	if src == null:
 		return false
-	return src.class_byte(px, py) == 0x02 or src.terrain_at(px, py) == 0x04
+	return src.class_byte(px, map_y(py)) == 0x02 or src.terrain_at(px, map_y(py)) == 0x02
 
 
 ## And the other one: a ladder, which the Solbrain hero cannot climb.  He walks
@@ -113,4 +126,15 @@ func hurts_at(px: int, py: int) -> bool:
 func ladder_at(px: int, py: int) -> bool:
 	if src == null:
 		return false
-	return src.class_byte(px, py) == 0x01
+	return src.class_byte(px, map_y(py)) == 0x01
+
+
+## PB3: PB2's ladder top supports feet from above ($9ED2/$A003).
+## It remains passable from below and from the sides; climbing uses Pb3Pair.
+func ladder_floor(px: int, py: int, old_feet: int) -> int:
+	var map_line := map_y(py)
+	var top := map_line & ~15
+	if src.class_byte(px, map_line) != 1 or src.class_byte(px, top - 1) == 1:
+		return -1
+	var line := hero_y(top)
+	return line if old_feet <= line else -1

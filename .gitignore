@@ -23,3 +23,11 @@ work/tools/e0_ramemu
 
 # what an export leaves behind in the project: build output, not sources
 game/.godot/exported/
+
+# Interactive QA mailbox; reviewed recordings live in named subdirectories.
+docs/qa/playthrough/command.json
+docs/qa/playthrough/current.png
+docs/qa/playthrough/state.json
+docs/qa/playthrough/trace.json
+docs/qa/playthrough/replay.json
+docs/qa/playthrough/trimmed.json

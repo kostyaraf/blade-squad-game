@@ -120,7 +120,7 @@ var cull_rules: Array = []
 
 ## $8080 -- the minds the engine has of its own.  A type that is not in here
 ## is still told what it did; a type that is drives itself and is compared.
-const MINDS := {0x02: "_mind_02", 0x10: "_mind_10", 0x23: "_mind_23",
+const MINDS := {0x01: "_mind_01", 0x02: "_mind_02", 0x11: "_mind_12", 0x45: "_mind_42", 0x1F: "_mind_1f", 0x2A: "_mind_2a", 0x16: "_mind_16", 0x18: "_mind_18", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x12: "_mind_12", 0x17: "_mind_17", 0x19: "_mind_19",
 		0x13: "_mind_13", 0x1D: "_mind_1d",
 		0x2C: "_mind_2c", 0x2D: "_mind_2c",
@@ -220,6 +220,10 @@ var boss_here := 0
 var beat := false
 ## data/pb2/bosses.json -- who the two triggers put out, and how it dies.
 var cfg_boss: Dictionary = {}
+var death_cfg: Dictionary = {}
+var small_shot_cfg: Dictionary = {}
+var hatchling_cfg: Dictionary = {}
+var drop_clock := 0  ## $98 -- successive deaths read successive nibbles.
 ## The ten minds themselves, which live in a file of their own.
 var bosses := Pb2Bosses.new()
 ## $4A -- the switches of the level; $B5B7 reads bit three of it.
@@ -294,6 +298,8 @@ var whirr := 0
 ## solid this frame.  The hero works them out; a throw aimed down asks them
 ## whether there is floor under the place it would go.
 var solids: Array = []
+## PB3 guests need each platform even when the native hero does not touch it.
+var guest_surfaces: Array = []
 ## $011A -- thirty-six to the hero's pose: where in the table of answers
 ## ($B990) his own six rows begin.
 var hero_block := 0
@@ -352,6 +358,9 @@ func _init(level: Pb2Level) -> void:
 	# Every number that comes back from JSON is a float, and a float will not
 	# even be compared with a word without complaint, so they are put back into
 	# the shape the code below expects once, here.
+	death_cfg = t["death"]
+	small_shot_cfg = t["small_shots"]
+	hatchling_cfg = t["hatchling"]
 	pickup_bit = PackedByteArray(t["pickup_bit"])
 	pickup_pic = PackedByteArray(t["pickup_pic"])
 	cull_class = PackedByteArray(t["cull_class"])
@@ -754,6 +763,8 @@ var more_guests: Array = []
 ## nothing and flies on.  Stepping them is not this pool's: they are his, and
 ## they are stepped where he is.  See `work/re/pb3_arms.md`.
 var guest_arms: Array = []
+## PB3 only: resolve foreign breakable terrain before a blade is discarded.
+var terrain_strike: Callable = Callable()
 
 
 ## Everyone in the room who is not the row at $0400, as `[row, box]`.
@@ -1393,6 +1404,7 @@ func turns() -> Array:
 	# when the frame opened, and every thing of this frame is measured by it.
 	hero_look()                                        # $BF18 -> $BA44
 	solids = []                                        # $011F
+	guest_surfaces.clear()
 	claimed = 0                                        # $0167
 	# $F163 -- the spare byte of the fifteenth place read as a request for a
 	# noise: one asks for it once, two asks for it over and over.  The once is
@@ -2004,6 +2016,11 @@ func ground(s: PackedByteArray, side_off: int, down_off: int,
 		force_far := false) -> int:
 	var sx: int = (((s[F_XHI] << 8) | s[F_X]) + _signed(side_off)) & 0xFFFF
 	var sy: int = (((s[F_YHI] << 8) | s[F_Y]) + _signed(down_off)) & 0xFFFF
+	if lvl is SolAsPb2:
+		# PB2 clamps its ordinary playfield to $10..$AF. Solbrain uses the
+		# full moving viewport, so that clamp tests a different world cell.
+		return lvl.class_byte(cam + (sx - 65536 if sx >= 32768 else sx),
+				(sy - 65536 if sy >= 32768 else sy) - VIEW_TOP)
 	var xhi: int = sx >> 8
 	var xlo: int = sx & 0xFF
 	var yhi: int = sy >> 8
@@ -2745,6 +2762,10 @@ func ride_apply(s: PackedByteArray, side: int, down: int) -> void:
 	var b: Array = _thing_solid(s, side, down)         # $B793
 	if b.is_empty():                                   # $B91F
 		return
+	if not more_guests.is_empty():
+		var dx: int = (int(s[F_X]) - int(ridden[0]) + 128) % 256 - 128
+		var dy: int = (int(s[F_Y]) - int(ridden[1]) + 128) % 256 - 128
+		guest_surfaces.append([b, dx, dy])
 	if claimed != 0:                                   # $B921 -> $B987
 		_add_solid(b)
 		return
@@ -3155,6 +3176,67 @@ func _open_cell(s: PackedByteArray) -> void:
 
 
 
+## $826C -- a defeated enemy animates, then disappears or becomes a pickup.
+## The cartridge shares $8279/$82A8 with the crawling projectile.
+func _mind_01(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0: _start_crawl(s)
+		1: _crawl_step(s)
+		2: _drop_01(n, s)
+		3:
+			s[F_SELF] = int(death_cfg["lifetime"])
+			set_speed_down(s, 0, 0)
+			s[F_COUNT] = 0
+			s[F_GROUND] = 0
+			if ground(s, 0, int(death_cfg["head_probe"])) >= 0x80:
+				s[F_COUNT] += 1
+			s[F_STATE] += 1
+		4:
+			s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+			if s[F_SELF] == 0:
+				clear(n)
+				return
+			var falling := false
+			if s[F_COUNT] != 0:
+				if ground_turn_wall(n, s, 0, int(death_cfg["head_probe"])) >= 0x80:
+					falling = true
+				else:
+					s[F_COUNT] -= 1
+					falling = s[F_COUNT] == 0
+			if not falling:
+				ground_stand(s)
+				if s[F_GROUND] != 0:
+					return
+			add_speed_down(s, int(death_cfg["gravity"]))
+			if s[F_VY] == int(death_cfg["fall_limit"]):
+				set_speed_down(s, int(death_cfg["fall_speed"]), 0)
+			step_down(s)
+
+
+## $82F3 / $833A -- deterministic loot sequence and duplicate upgrade gates.
+func _drop_01(n: int, s: PackedByteArray) -> void:
+	if s[F_KEEP] != 0:
+		clear(n)
+		return
+	var choice: int = int(death_cfg["drop_table"][drop_clock >> 1])
+	var low: bool = (drop_clock & 1) != 0
+	drop_clock = (drop_clock + 1) & int(death_cfg["drop_mask"])
+	choice = (choice if low else choice >> 4) & 15
+	if choice == 0:
+		clear(n)
+		return
+	var pic: int = int(death_cfg["drop_pic"][choice])
+	if (pic == 6 and extra == int(death_cfg["max_extra"])) \
+			or (pic == 12 and second == int(death_cfg["max_second"])) \
+			or (pic == 5 and power == int(death_cfg["max_power"])):
+		clear(n)
+		return
+	s[F_KIND] = pic
+	s[F_LIFE] = int(death_cfg["drop_item"][choice])
+	s[F_MARK] = 0x40
+	s[F_STATE] += 1
+
+
 ## $83EA -- a collectable.  It does nothing at all: on its first turn it says
 ## what it is (the mark $40, which is what makes the hero pick it up rather
 ## than be hurt by it) and picks its picture out of the record's own byte, and
@@ -3165,6 +3247,51 @@ func _mind_02(_n: int, s: PackedByteArray) -> void:
 	s[F_MARK] = 0x40                       # $C9A8 -> $FD82
 	s[F_KIND] = pickup_pic[s[F_LIFE] & 0x0F]
 	s[F_STATE] += 1                        # $C966 -> $FCEE
+
+
+## $9C68 -- straight enemy bullet: move until the native terrain test clears it.
+func _mind_16(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_MARK] = int(small_shot_cfg["bullet_mark"])
+		s[F_KIND] = int(small_shot_cfg["bullet_pic"])
+		s[F_STATE] += 1
+		return
+	mark_target(n)
+	ground_or_die(n, s)
+
+
+## $A893 -- aimed turret bullet; the first few ticks leave its muzzle.
+func _mind_2a(n: int, s: PackedByteArray) -> void:
+	if s[F_SELF] != 0:
+		s[F_SELF] -= 1
+		if s[F_SELF] != 0:
+			mark_target(n)
+			step_both(s)
+			return
+		s[F_MARK] = int(small_shot_cfg["bullet_mark"])
+		s[F_KIND] = int(small_shot_cfg["aimed_pic"])
+	if ground_turn_clear(n, s, 0, 0) >= 0x80:
+		clear(n)
+		return
+	mark_target(n)
+	step_both(s)
+
+
+## $9D79 -- stationary trail left by $17; expires or disappears with its parent.
+func _mind_18(n: int, s: PackedByteArray) -> void:
+	if s[F_STATE] == 0:
+		s[F_LIFE] = int(small_shot_cfg["trail_life"])
+		s[F_MARK] = int(small_shot_cfg["trail_mark"])
+		start_anim(s, int(small_shot_cfg["trail_anim"]))
+		s[F_COUNT] = int(small_shot_cfg["trail_ticks"])
+		s[F_STATE] += 1
+		return
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] == 0 or slots[s[F_SELF]][F_TYPE] != int(small_shot_cfg["trail_parent"]):
+		clear(n)
+		return
+	mark_target(n)
+	step_anim(s)
 
 
 ## $9DA5 -- the one that walks to and fro and drops something behind it.
@@ -4198,6 +4325,54 @@ func _shut_1e(s: PackedByteArray) -> void:
 		return
 	s[F_SELF] = 0x78 if s[F_COUNT] & 0x80 else 0x28
 	s[F_STATE] = 1                                     # $C96F
+
+
+## $A71F -- the hatch's walking child: cross floor, fall off edges, burst at a wall.
+func _mind_1f(n: int, s: PackedByteArray) -> void:
+	var c := hatchling_cfg
+	match s[F_STATE]:
+		0:
+			s[F_LIFE] = int(c.life)
+			s[F_MARK] = int(small_shot_cfg.trail_mark)
+			start_anim(s, int(c.anim))
+			face_by_speed(s)
+			set_speed_side_facing(s, int(c.speed[1]), int(c.speed[0]))
+			if walled_ahead(s, int(c.spawn_wall[0]), int(c.spawn_wall[1]), int(c.spawn_wall[2])) >= 0x80:
+				turn_about(s)
+			s[F_STATE] += 1
+			return
+		1, 2:
+			# $9BC7: floating on the water line counts as support.
+			var wet := in_water(s)
+			if wet:
+				s[F_Y] = water
+			if s[F_STATE] == 1:
+				if not wet and walled_either_turn(n, s, int(c.floor_probe[0]), int(c.floor_probe[1]), 0x80) < 0x80:
+					set_speed_down(s, 0, 0)
+					s[F_STATE] += 1
+			else:
+				if wet or walled_either_turn(n, s, int(c.floor_probe[0]), int(c.floor_probe[1]), 0) >= 0x80:
+					if not wet:
+						snap_down(s)
+					s[F_STATE] -= 1
+				else:
+					add_speed_down(s, int(c.gravity))
+					if s[F_VY] == int(c.fall_limit):
+						set_speed_down(s, int(c.fall_limit), 0)
+					step_down(s)
+			step_anim(s)
+			if walled_ahead_turn(n, s, int(c.walk_wall[0]), int(c.walk_wall[1]), int(c.walk_wall[2]), 0) < 0x80:
+				step_side(s)
+			else:
+				s[F_COUNT] = int(c.burst_ticks)
+				start_anim(s, int(c.burst_anim))
+				s[F_STATE] = 3
+		3:
+			s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+			if s[F_COUNT] == 0:
+				clear(n)
+			else:
+				step_anim(s)
 
 
 ## $93A8 -- the one that opens up and lets one out.  It plays one run of
@@ -6993,7 +7168,7 @@ func _crawl_noise(s: PackedByteArray) -> void:
 
 ## $82A8 (банк 10) -- шаг раз в шестнадцать ходов; после четвёртого ход
 ## кончается, и $B4F5 убирает то, что осталось.
-func _crawl_3f(n: int, s: PackedByteArray) -> void:
+func _crawl_step(s: PackedByteArray) -> void:
 	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
 	if s[F_COUNT] != 0:
 		step_anim(s)                                   # $C837
@@ -7007,6 +7182,10 @@ func _crawl_3f(n: int, s: PackedByteArray) -> void:
 			s[F_COUNT] = 0x10
 			start_anim(s, 0x01)                        # $C83A
 			_crawl_noise(s)                            # $82D6
+
+
+func _crawl_3f(n: int, s: PackedByteArray) -> void:
+	_crawl_step(s)
 	if s[F_STATE] != 0x02:                             # $B4F5
 		clear(n)                                       # $C810
 
@@ -7716,6 +7895,8 @@ func _blade_step(k: int) -> void:
 		whirr = 0
 		Pb2Sound.want(0x1A)                            # $A58C
 	if ground(s, 0x00, 0x00) >= 0x80:                  # $A591
+		if terrain_strike.is_valid():
+			terrain_strike.call(s[F_X], s[F_Y])
 		clear(k)
 		return
 	if not _shot_move(k):                              # $A59C -> $A7B9

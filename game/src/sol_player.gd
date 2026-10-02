@@ -85,6 +85,10 @@ const WALL_HIGH_DY := -6 * 16
 ## because $A430 subtracts with the borrow $C00F left behind.
 const WALL_HIGH_RIGHT_DY := -6 * 16 - 1
 
+## PB3 supplies world-space object rectangles; native stages leave these empty.
+var bridge_solids: Array = []
+var bridge_compact := false
+
 var lvl: SolLevel
 ## $38:$39 and $3A:$3B -- how far along the area he may go.  The level carries
 ## them as the view's own limits, which is where the cartridge gets them too.
@@ -1733,6 +1737,17 @@ func _wound() -> void:
 ## The property byte of the metatile at a point, shifted up three the way the
 ## cartridge shifts it ($D101): bit 7 solid, bit 6 hurts, bit 5 a second kind.
 func _probe(px: int, py: int) -> int:
+	if lvl is Pb2AsSol and vy >= 0 and py >= y + FOOT_DY:
+		var line: int = lvl.ladder_floor(px >> 4, py >> 4, (y + FOOT_DY) >> 4)
+		if line >= 0:
+			z9d = py - (line << 4)
+			return 0x80
+	for box in bridge_solids:
+		if px >= box[0] and px <= box[1] and py >= box[2] and py <= box[3]:
+			# $A221/$A29E need penetration into this surface, not the tile
+			# grid remainder. Platforms can stop between two tile rows.
+			z9d = py - int(box[2]) if py >= y else 255 - (int(box[3]) + 1 - py)
+			return 0x80
 	# $D035 -- the stage that carries has no tile map under him at all.  Its
 	# floor is the one line the lift keeps: $75 sixteen times over, taken from
 	# the top of the view, and a point between that line and two hundred and
@@ -1758,6 +1773,9 @@ func _probe(px: int, py: int) -> int:
 ## still in hand, so both walls read $3C, which is neither a block nor anything
 ## to react to.
 func _probe_side(px: int, py: int) -> int:
+	for box in bridge_solids:
+		if px >= box[0] and px <= box[1] and py >= box[2] and py <= box[3]:
+			return 0x80
 	if map_kind == 0x3C:
 		return 0x3C                                                 # $D014
 	z9d = px & 0xFF                                                 # $D01D

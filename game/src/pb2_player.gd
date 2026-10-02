@@ -42,6 +42,9 @@ const POSE_RISE := 0x18
 const POSE_FALL := 0x19
 const WALK_POSES := [0x06, 0x07, 0x08, 0x05]
 
+## PB3 accepts Down+Jump on the same tick; native cartridge input is unchanged.
+var combo_slide := false
+
 var lvl: Pb2Level
 var cfg: Dictionary
 var body: Dictionary
@@ -262,7 +265,10 @@ func _ground_exits() -> void:
 		if hit & A:
 			_jump()
 		return
-	if _jump_wanted():
+	if combo_slide and (pad & DOWN) and (hit & A) and _slide_wanted():
+		_crouch_start()
+		_slide_start()
+	elif _jump_wanted():
 		_jump()
 	elif pad & DOWN:
 		# $8F77: down over a ladder takes the ladder, not a crouch.
@@ -1642,6 +1648,10 @@ func _pushed() -> void:
 ## $9FE2
 func _jump() -> void:
 	vy = int(cfg["jump_speed"])
+	if combo_slide and lvl is SolAsPb2:
+		# PB3 compatibility: one extra gravity step clears Solbrain's
+		# 64-pixel risers. Native Nova peaks at 62 pixels and cannot pass.
+		vy -= int(cfg["gravity"])
 	_set_pose(POSE_RISE)
 	fall = 0
 	state = 0x01
@@ -2103,6 +2113,10 @@ func _ceiling_free(pose_index: int) -> bool:
 
 ## $AC35 -- what is the ground made of, this far from him?
 func _class_byte(sx: int, sy: int) -> int:
+	if lvl is SolAsPb2:
+		# Solbrain's floor may lie below PB2's HUD boundary. Query the
+		# actual world, including rows above/below the borrowed screen.
+		return lvl.class_byte(cam + sx, sy - int(cfg["view_top"]))
 	if sx < 0 or sx > 0xFF:
 		return 0x80
 	var top: int = int(cfg["view_top"])
@@ -2232,7 +2246,7 @@ func _b3d2(p: Array) -> void:
 func _feel(ox: int, oy: int) -> int:
 	var sx: int = (x >> 8) + ox
 	var sy: int = (y >> 8) + oy
-	if not lvl.vertical:
+	if not lvl.vertical and not lvl is SolAsPb2:
 		sy = clampi(sy, 0x10, 0xAF)
 	# $B34A: a few areas have a line across them -- water below it, or a fall
 	# that kills -- and there the map underneath does not matter.
@@ -2256,7 +2270,9 @@ func _feel(ox: int, oy: int) -> int:
 ## In a level that scrolls downwards his own line means nothing on its own: the
 ## cells are the map's and the map has slid past him, so the camera goes in too.
 func _grid_y(v: int) -> int:
-	if lvl.vertical:
+	if lvl is SolAsPb2:
+		v += (lvl as SolAsPb2).cam_y - int(cfg["view_top"])
+	elif lvl.vertical:
 		v += cam & 0xFF
 	return v & 0x0F
 

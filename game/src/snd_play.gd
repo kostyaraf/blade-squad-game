@@ -11,7 +11,8 @@ class_name SndPlay
 ## **Whose driver.**  One picture, one driver.  A single game runs its own; a
 ## pair (Э5) runs the driver of the game whose level is being played, the same
 ## choice as Э5.4 and Э5.8 -- the rhythm belongs to the level.  The guest's
-## numbers mean nothing in the host's driver, so the guest asks for nothing.
+## numbers mean nothing in the host's driver. PB3 runs a second instance
+## for guest effects and mixes the two outputs.
 ##
 ## **How many cycles.**  An NTSC picture is 29780.5 cycles of the processor.
 ## The half is kept, not thrown away: three pictures are 89341 cycles and not
@@ -65,6 +66,12 @@ func _init(g: String) -> void:
 		sol.boot()
 	chip = SndChip.new(SndRom.dmc(g))
 	chip.reset()
+	# The cartridge enables its voices in reset code outside the driver.
+	for write in SndRom.boot(g):
+		chip.write(int(write[0]), int(write[1]))
+	for write in apu.writes:
+		chip.write(int(write[0]), int(write[1]))
+	apu.clear()
 	var w := TAU / RATE
 	_k90 = w * 90.0 / (w * 90.0 + 1.0)
 	_k440 = w * 440.0 / (w * 440.0 + 1.0)
@@ -123,8 +130,10 @@ func drive() -> void:
 ## picture and this does not.  A register written a fiftieth of a millisecond
 ## early is not a thing anybody hears; a picture a cycle short is.
 func step() -> void:
+	# Direct ask() calls can write registers before the interrupt tick.
+	var pending: Array = apu.writes.duplicate()
 	drive()
-	for w in apu.writes:
+	for w in pending + apu.writes:
 		chip.write(int(w[0]), int(w[1]))
 	apu.writes.clear()
 	var want := CYCLES + _carry

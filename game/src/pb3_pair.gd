@@ -125,6 +125,7 @@ var flowing := false
 var host_pb2: Pb2Objects = null
 var host_sol: SolObjects = null
 var host_script: SolScript = null
+var host_fade: SolFade = null
 var host_table: SolSprites.Table = null
 var host_status: Pb2Status = null
 ## The order of one picture: the level's own, $CEF0 or $CDB3, and the very
@@ -167,6 +168,37 @@ var ended := 0
 ## The pads of the picture being played, because the order calls back into
 ## here to step the heroes and has no pads of its own to hand over.
 var pads_now: Array = []
+## Enabled by the playable session; isolated cartridge stands keep their
+## original inputs. A dead host must not block a surviving guest's script.
+var live_session := false
+## A Solbrain guest borrows the native ladder controller only while on a
+## PB2 ladder. Speeds, mounting and dismounting come from $94A9/$A003.
+var climbers: Dictionary = {}
+
+
+## Break RefCounted cycles when the session leaves an area. The callbacks
+## point back to this pair, and a Solbrain hero and pool own each other.
+func release() -> void:
+	if turn_pb2 != null:
+		turn_pb2.walk = Callable()
+	if turn_sol != null:
+		turn_sol.walk = Callable()
+	if host_pb2 != null:
+		host_pb2.guest_arms.clear()
+	if host_sol != null:
+		host_sol.guest_arms.clear()
+		host_sol.hero = null
+	for pool in things:
+		if pool != null:
+			pool.terrain_strike = Callable()
+	for p in sol:
+		if p != null:
+			p.pool = null
+	for pool in guest_pool:
+		if pool != null:
+			pool.hero = null
+	if spare_sol != null:
+		spare_sol.pool = null
 
 
 ## `kinds` is one of `PB2`/`SOL` a hero, in the order their pads come.
@@ -256,12 +288,20 @@ func screen_line(ly: int) -> int:
 
 # ---- where a hero is ------------------------------------------------------
 
+func _map_y(y: int) -> int:
+	return (solv as Pb2AsSol).map_y(y) if game == PB2 else y
+
+
+func _hero_y(y: int) -> int:
+	return (solv as Pb2AsSol).hero_y(y) if game == PB2 else y
+
+
 ## His feet, in the level's own pixels.
 func world_of(i: int) -> Vector2i:
 	if who[i] == SOL:
 		var p: SolPlayer = sol[i]
 		return Vector2i((p.x >> 4) & 0xFFFF,
-				(((p.y >> 4) & 0xFFFF) + SolPlayer.FOOT_DY / 16))
+				_map_y(((p.y >> 4) & 0xFFFF) + SolPlayer.FOOT_DY / 16))
 	var q: Pb2Player = pb2[i]
 	return Vector2i(view_x() + ((q.x >> 8) & 0xFF),
 			line_at((q.y >> 8) & 0xFF))
@@ -271,7 +311,7 @@ func world_of(i: int) -> Vector2i:
 func place_at(i: int, w: Vector2i) -> void:
 	if who[i] == SOL:
 		var p: SolPlayer = sol[i]
-		p.place(w.x << 4, (w.y - SolPlayer.FOOT_DY / 16) << 4)
+		p.place(w.x << 4, (_hero_y(w.y) - SolPlayer.FOOT_DY / 16) << 4)
 		# $948D -- under two and thirty the pad does not reach him at all
 		# ($94A5), and `place` puts the count back to nought.  He is meant to
 		# be already standing here, not to have just arrived.
@@ -552,11 +592,24 @@ func step(pads: Array) -> void:
 		if ended == Pb2Turn.HELD:
 			_walk_them()
 	elif turn_sol != null:
+		if host_fade != null:
+			_sol_fade_tick()
 		_stand_in()
 		turn_sol.step(int(pads[host]) if host >= 0 else 0)
 	else:
 		_walk_them()
 	for i in range(who.size()):
+		if live_session and who[i] == PB2 and pb2[i].dead:
+			gone[i] = true
+		if live_session and game == PB2 and who[i] == SOL:
+			var p: SolPlayer = sol[i]
+			var feet: int = (p.y >> 4) + 16
+			for dx in [-6, 5]:
+				for dy in [0, -4, -14, -30]:
+					if p.bridge_compact and dy < -14:
+						continue
+					if (solv as Pb2AsSol).hurts_at((p.x >> 4) + dx, feet + dy):
+						gone[i] = true
 		if world_of(i).y >= solv.height_tiles * 8:
 			gone[i] = true
 
@@ -571,7 +624,19 @@ func step(pads: Array) -> void:
 ## reason: it is the one place in the room that belongs to both of them.  He
 ## still has no suit, so nothing ever touches him ($CFDB).
 func _stand_in() -> void:
-	if host >= 0 or spare_sol == null:
+	if host >= 0 and (not live_session or not gone[host]):
+		return
+	if spare_sol == null:
+		spare_sol = SolPlayer.new(solv)
+	if live_session:
+		spare_sol.pool = host_sol
+		turn_sol.hero = spare_sol
+		host_sol.hero = spare_sol
+		turn_sol.script_proxy = true
+	# $AC1C hands the actor to $96FF. Keep that native animation alive:
+	# replacing it with a fresh standing proxy would stall the boss entrance.
+	if live_session and spare_sol.state == 0x11:
+		spare_sol.suit = 8
 		return
 	var mid := Vector2i.ZERO
 	var n := 0
@@ -584,7 +649,18 @@ func _stand_in() -> void:
 		return
 	mid /= n
 	spare_sol.place(mid.x << 4, (mid.y - SolPlayer.FOOT_DY / 16) << 4)
-	spare_sol.suit = 0
+	# $A87C and other exits require a living script actor. Contact still
+	# uses the real guest mirrors; SolTurn clears this after the script.
+	spare_sol.suit = 8 if live_session else 0
+	if live_session:
+		var grounded := true
+		for i in range(who.size()):
+			if not gone[i] and who[i] == PB2:
+				grounded = grounded and pb2[i].sub in [Pb2Player.SUB_GROUND,
+						Pb2Player.SUB_CROUCH, Pb2Player.SUB_LANDED]
+		spare_sol.state = SolPlayer.ST_GROUND if grounded else SolPlayer.ST_AIR
+		# $AB6A checks the native standing picture, not merely coordinates.
+		spare_sol._pose(0x00 if grounded else 0x06)
 
 
 ## The two of them and the view, which is where the level's own order calls
@@ -599,6 +675,13 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 		shoved[i] = Vector2i.ZERO
 		if gone[i]:
 			continue
+		if live_session and game == SOL and i != host and (hold == 0 or hold >= 0x30):
+			# $948D normally advances this in the hero's own step. The contact
+			# proxy does not move, but must recover from $8354's hit cooldown.
+			guest_sol[i].timer = mini(255, guest_sol[i].timer + 1)
+		if live_session and game == PB2 and host_pb2 != null:
+			_supply_surfaces(i)
+
 		if who[i] == SOL:
 			# Solbrain's hero works out for himself what was newly pressed
 			# ($C882 keeps the picture before), so he is handed the pad whole.
@@ -606,10 +689,15 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 			# $91AC -- and in his own stage, while the wait for a satellite is
 			# between one and $2F, $9477 is not called at all.  A guest of the
 			# stage waits with it: the wait is the stage's and not his own.
-			if game == SOL and hold != 0 and hold < 0x30:
+			if live_session and game == PB2 and _sol_traversal(i, int(pads[i])):
+				pass
+			elif game == SOL and hold != 0 and hold < 0x30:
 				sol[i].skip(int(pads[i]))
 			else:
+				var before := Vector2i(sol[i].x, sol[i].y)
 				sol[i].step(int(pads[i]))
+				if live_session and game == PB2:
+					_sweep_sol(sol[i], before, int(pads[i]))
 			# Э5.8 -- and then his own weapons, because that is the order his
 			# own game keeps them in: he moves at $91B5, what he threw at
 			# $B168, and his own four at $9156.
@@ -617,6 +705,7 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 				_arms_turn_sol(i, int(pads[i]))
 			continue
 		var q: Pb2Player = pb2[i]
+		q.combo_slide = live_session
 		var v: Pb2Objects = things[i]
 		v.cam = eye.pos
 		# Э5.8 -- and his, in his own game's order the other way about: what
@@ -653,6 +742,159 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 	_mirror_them()
 
 
+## The foreign map has thin ledges that fall between Solbrain's two side
+## probes ($A411). Sweep the whole standing body so a jump cannot start with
+## his chest inside a ledge. One substep is at most one pixel, in integers.
+func _sol_clear(h: SolPlayer, at: Vector2i) -> bool:
+	for dx in [-5, 0, 5]:
+		for dy in [-15, -8, 0, 8, 15]:
+			var p := at + Vector2i(dx, dy) * 16
+			if solv.collision_at(p.x >> 4, p.y >> 4) >= Pb2AsSol.SOLID:
+				return false
+			for b in h.bridge_solids:
+				if p.x >= b[0] and p.x <= b[1] and p.y >= b[2] and p.y <= b[3]:
+					return false
+	return true
+
+
+func _sweep_sol(h: SolPlayer, before: Vector2i, pad: int) -> void:
+	if not _sol_clear(h, before):
+		return
+	var wanted := Vector2i(h.x, h.y)
+	var at := before
+	for axis in range(2):
+		var remaining: int = wanted[axis] - at[axis]
+		# Wrapped coordinates are an exit, not a 4096-pixel sweep.
+		if absi(remaining) > 256:
+			return
+		while remaining != 0:
+			var delta: int = clampi(remaining, -16, 16)
+			var next := at
+			next[axis] += delta
+			if not _sol_clear(h, next):
+				if axis == 0:
+					h.vx = 0
+					h.speed = 0
+				else:
+					h.vy = 0
+					h.rise = 0
+					if delta > 0:
+						h._settle(pad)
+				break
+			at = next
+			remaining -= delta
+	h.x = at.x
+	h.y = at.y
+
+
+## $B91C exposes both the box and the motion of a platform to every guest.
+## A native hero's push cannot be reused: each player can ride a different one.
+func _platform_boxes() -> Array:
+	var boxes: Array = host_pb2.solids.duplicate()
+	for surface in host_pb2.guest_surfaces:
+		if not boxes.has(surface[0]):
+			boxes.append(surface[0])
+	return boxes
+
+
+func _supply_surfaces(i: int) -> void:
+	var boxes := _platform_boxes()
+	var carry := Vector2i.ZERO
+	var feet: Vector2i = screen_of(i)
+	for surface in host_pb2.guest_surfaces:
+		var box: Array = surface[0]
+		var dx: int = surface[1]
+		var dy: int = surface[2]
+		if i != host and feet.x >= int(box[0]) - dx - 5 and feet.x <= int(box[1]) - dx + 5 \
+				and absi(feet.y - (int(box[2]) - dy)) <= 1:
+			carry = Vector2i(dx, dy)
+	if who[i] == PB2:
+		pb2[i].solids = boxes
+		if i != host:
+			pb2[i].push_x = carry.x
+			pb2[i].push_y = carry.y
+	else:
+		var h: SolPlayer = sol[i]
+		h.bridge_solids.clear()
+		for box in boxes:
+			h.bridge_solids.append([(view_x() + int(box[0])) << 4,
+					((view_x() + int(box[1]) + 1) << 4) - 1,
+					_hero_y(line_at(int(box[2]))) << 4, ((_hero_y(line_at(int(box[3]))) + 1) << 4) - 1])
+		h.push_x = carry.x << 4
+		if climbers.has(i):
+			var q: Pb2Player = climbers[i]
+			q.push_x = carry.x
+			q.push_y = carry.y
+		else:
+			h.y += carry.y << 4
+
+
+## PB3 traversal bridge: $94A9 ladders and $9036 slides use the native
+## level's probes and ROM speeds, while Solbrain keeps his own art/weapons.
+func _sol_traversal(i: int, pad: int) -> bool:
+	var h: SolPlayer = sol[i]
+	h.bridge_compact = false
+	if h.state >= 0x0C:
+		climbers.erase(i)
+		return false
+	var q: Pb2Player = climbers.get(i)
+	var hit: int = pad & ~h.pad_held
+	if q == null:
+		if (pad & (Pad.UP | Pad.DOWN)) == 0:
+			return false
+		q = Pb2Player.new(pb2v)
+		var s: Vector2i = screen_of(i)
+		q.place(s.x, s.y, eye.pos)
+		q.face_left = h.face_left
+		if host_pb2 != null:
+			q.solids = _platform_boxes()
+		if (pad & Pad.DOWN) != 0 and (hit & Pad.A) != 0 and h.state in [SolPlayer.ST_GROUND, SolPlayer.ST_CROUCH, SolPlayer.ST_LAND]:
+			# Solbrain's feet are on the surface; Nova stands one pixel above.
+			q.y -= 256
+			if not q._floor_solid(8) or not q._slide_wanted():
+				return false
+			q._crouch_start()
+			q._slide_start()
+		elif (pad & Pad.UP) != 0 and q._class_byte(s.x,
+				s.y + int(q.cfg["ladder_air"])) == 1:
+			q._ladder_hold()
+		elif (pad & Pad.DOWN) == 0 or not q._ladder_grab():
+			return false
+		climbers[i] = q
+	else:
+		q.shift = slid.y if pb2v.vertical else slid.x
+	if host_pb2 != null:
+		q.solids = _platform_boxes()
+	q.step(pad & ~Pad.B, hit & ~Pad.B, eye.pos)
+	h.x = ((view_x() << 4) + (q.x >> 4)) & 0xFFFF
+	var low: bool = q.sub in [Pb2Player.SUB_SLIDE, Pb2Player.SUB_CROUCH]
+	h.y = ((_hero_y(line_at((q.y >> 8) & 0xFF)) << 4)
+			+ ((q.y & 0xFF) >> 4) - SolPlayer.FOOT_DY + (16 if low else 0)) & 0xFFFF
+	h.face_left = q.face_left
+	h.vx = 0
+	h.vy = 0
+	h.skip(pad)
+	if low:
+		h.state = SolPlayer.ST_CROUCH
+		h._pose(0x03)
+		h.bridge_compact = true
+	h._picture()
+	if q.sub not in [Pb2Player.SUB_LADDER, Pb2Player.SUB_LADDER_ON,
+			Pb2Player.SUB_LADDER_OFF, Pb2Player.SUB_LADDER_MID,
+			Pb2Player.SUB_SLIDE, Pb2Player.SUB_CROUCH]:
+		climbers.erase(i)
+		h.vx = _signed16(q.vx) >> 4
+		h.vy = _signed16(q.vy) >> 4
+		h.state = SolPlayer.ST_GROUND if q.sub == Pb2Player.SUB_GROUND else SolPlayer.ST_AIR
+		if q.sub == Pb2Player.SUB_GROUND:
+			# Native Nova rests one pixel above the surface; Solbrain probes
+			# at the surface itself. Without this, his step-off skips the lip.
+			h.y += 16
+			h.rise = 0
+			h._pose(0)
+	return true
+
+
 ## $CF3B -- where a Power Blade area calls back in.
 func _walk_pb2(take_pad: bool, shots: int, extra: int) -> void:
 	_walk_them(take_pad, shots, extra)
@@ -661,13 +903,44 @@ func _walk_pb2(take_pad: bool, shots: int, extra: int) -> void:
 ## $91B5 -- and where a Solbrain stage does, with the wait a satellite leaves
 ## behind it ($91AC).
 func _walk_sol(hold: int) -> void:
+	if turn_sol.script_proxy and spare_sol.state == 0x11:
+		spare_sol.suit = 8
+		spare_sol.step(0)
+		spare_sol.suit = 0
+	var saved_pads := pads_now
+	if live_session and host_script.controls_locked:
+		pads_now = []
+		pads_now.resize(who.size())
+		pads_now.fill(0)
 	_walk_them(false, 0, 0, hold)
+	pads_now = saved_pads
 	# $91C0 -- and the stage's own hero into the table, where the order has it,
 	# before the pools go in.  A guest is drawn by his own game and not here.
-	if host >= 0:
+	if host >= 0 and not gone[host]:
 		var h: SolPlayer = sol[host]
 		SolSprites.hero(h, (h.x - sol_eye.x) & 0xFFFF,
 				(h.y - sol_eye.y) & 0xFFFF, host_table)
+
+
+## $CA9A / $F806: palette requests are a clock used by room scripts too.
+## Running the existing native fade lets $ACCE observe completion normally.
+func _sol_fade_tick() -> void:
+	host_fade.kind = host_sol.z26
+	host_fade.mask = host_script.g(0x27)
+	for i in range(8):
+		var v: int = host_script.g(0x05BA + i)
+		host_fade.level[i] = v - 256 if v >= 128 else v
+	var ptr: int = host_script.w(0x20, 0x21)
+	if ptr >= 0x100 and ptr + 32 <= host_script.m.size():
+		host_fade.table = host_script.m.slice(ptr, ptr + 32)
+	elif SolFade.tables.has("%04X" % ptr):
+		host_fade.name_table(ptr)
+	host_fade.tick()
+	host_sol.z26 = host_fade.kind
+	host_script.p(0x26, host_fade.kind)
+	host_script.p(0x27, host_fade.mask)
+	for i in range(8):
+		host_script.p(0x05BA + i, host_fade.level[i])
 
 
 ## Everyone in the room said in the numbers the level's own game keeps a hero
@@ -778,6 +1051,8 @@ func _box_pb2(i: int) -> Array:
 
 
 func _box_own_sol(i: int) -> Array:
+	if sol[i].bridge_compact:
+		return [7, 6, 7]
 	var pool: SolObjects = guest_pool[i]
 	pool.hero = sol[i]
 	pool.hero_box()
@@ -799,6 +1074,13 @@ func _box_own_sol(i: int) -> Array:
 ## how long the button has been held before either.  The area's own hero gets
 ## both from the order itself ($CEF0); a guest has no order of his own, so the
 ## two lines of it he needs are here.
+## PB3 rule: Nova's blade may break exactly the cells Solbrain can punch.
+## Solbrain owns the map changes, debris, drops and sound ($B933/$B9CD).
+func _break_sol_terrain(sx: int, sy: int) -> void:
+	if host_sol != null:
+		SolSat.break_at(host_sol, (view_x() + sx) << 4, line_at(sy) << 4)
+
+
 func _arms_turn_pb2(i: int) -> void:
 	var w: Pb2Objects = things[i]
 	w.frame = (w.frame + 1) & 0xFF
@@ -831,7 +1113,7 @@ func _arms_turn_sol(i: int, pad: int) -> void:
 	else:
 		var w: Vector2i = world_of(i)
 		pool.cam_x = (w.x - 0x80) << 4
-		pool.cam_y = (w.y - 0x78) << 4
+		pool.cam_y = (_hero_y(w.y) - 0x78) << 4
 	SolTurn.hero_into(pool, h)
 	# $B862 -- one step of a handful of his animations strikes, and what it
 	# strikes with goes into slot fifteen.
@@ -923,7 +1205,7 @@ func _arm_from_sol(wx: int, wy: int, reach: int, power: int) -> Array:
 	if game == SOL:
 		return [wx, wy, reach, power]
 	return [((wx >> 4) & 0xFFFF) - view_x(),
-			screen_line((wy >> 4) & 0xFFFF), reach >> 4, power]
+			screen_line(_map_y((wy >> 4) & 0xFFFF)), reach >> 4, power]
 
 
 ## Э5.8 -- the level says what that thing cost arm `j` of his, and his own game
@@ -1161,6 +1443,11 @@ func _hold_them_in() -> void:
 		if gone[i]:
 			continue
 		var s: Vector2i = screen_of(i)
+		if live_session and world_of(i).y >= solv.height_tiles * 8:
+			# A fall out of the map must be consumed before screen clamping
+			# pins him at its last pixel forever.
+			gone[i] = true
+			continue
 		var push := Vector2i(clampi(s.x, EDGE, 0x100 - EDGE) - s.x,
 				clampi(s.y, 0, 0xEF) - s.y)
 		if push == Vector2i.ZERO:
@@ -1198,7 +1485,7 @@ func _shove(i: int, by: Vector2i) -> void:
 
 ## Is that pixel inside something, asked in the level's own terms.
 func _solid(w: Vector2i) -> bool:
-	return solv.collision_at(w.x, w.y - 8) >= Pb2AsSol.SOLID
+	return solv.collision_at(w.x, _hero_y(w.y) - 8) >= Pb2AsSol.SOLID
 
 
 ## Э5.4 -- a blow struck in one game's numbers, said in the other's.

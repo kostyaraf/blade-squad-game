@@ -33,6 +33,9 @@ var pad_was := 0
 ## which is what the single game leaves them -- the order is what it was.
 var slid_already := false
 var walk: Callable = Callable()
+## PB3 can have no living native hero. Its script follows the survivors,
+## while damage is delivered through their own guest mirrors.
+var script_proxy := false
 
 
 func _init(h: SolPlayer, po: SolObjects, v: SolCamera, sc: SolScript,
@@ -76,6 +79,8 @@ func step(held: int) -> void:
 	# bubbles it leaves come from ($A7B0): the script calls them, so nothing
 	# here does.
 	script_.run(pool, hero, view, table, flow)
+	if script_proxy:
+		hero.suit = 0
 	pool.scrolled(view.x, view.y)
 	pool.room = pool.room_of(view.x, view.y)
 	hero_into(pool, hero)

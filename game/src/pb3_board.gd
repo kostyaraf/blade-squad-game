@@ -81,6 +81,10 @@ static func name_of(rec: Array) -> String:
 ## The list, with the cursor where `Pb3List` has it.  The list comes back round
 ## at both ends, so the window round the cursor does too.
 func show_list(at: int) -> void:
+	_name.text = "CHOOSE LEVEL"
+	_name.add_theme_font_size_override("font_size", 14)
+	_hint.text = "ARROWS  X/ENTER PLAY  Z BACK"
+	_hint.position.y = 214
 	var recs: Array = Pb3List.records()
 	var n: int = recs.size()
 	for i in range(SHOWN):
@@ -94,6 +98,31 @@ func show_list(at: int) -> void:
 	_name.visible = true
 	_strip.visible = false
 	(get_node("back") as ColorRect).visible = true
+
+
+func show_setup(players: int, heroes: Array, at: int) -> void:
+	show_list(0)
+	_name.text = "POWER BLADE 3"
+	var names := ["NOVA", "SOLBRAIN"]
+	var lines: Array = ["PLAYERS: %d" % players,
+			"PLAYER 1: " + names[int(heroes[0])],
+			"PLAYER 2: " + (names[int(heroes[1])] if players == 2
+			else "OFF"), "CHOOSE LEVEL"]
+	for i in range(_rows.size()):
+		var row: Label = _rows[i]
+		row.visible = i < lines.size()
+		if row.visible:
+			row.text = ("> " if i == at else "  ") + str(lines[i])
+			row.add_theme_color_override("font_color",
+					Color.WHITE if i == at else Color(0.5, 0.5, 0.5))
+	_hint.text = "ARROWS CHANGE  ENTER NEXT  Z BACK\nP1 ARROWS Z/X  P2 WASD ;/'\nDOWN + JUMP: SLIDE"
+	_hint.position.y = 184
+
+
+func show_message(text: String) -> void:
+	if text != "":
+		_name.text = text
+		_name.add_theme_font_size_override("font_size", 9)
 
 
 ## And the one bar of a record being played: what the two of them are spending

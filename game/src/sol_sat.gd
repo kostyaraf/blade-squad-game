@@ -403,7 +403,12 @@ const WALL := [0x05, 0x04, 0x80, 0x07, 0x04, 0x04, 0x05, 0x06]
 
 
 static func _break(o: SolObjects, x: int) -> void:
-	var v: int = o.break_wall(o.x[x], o.y[x])           # $B93F
+	break_at(o, o.x[x], o.y[x])
+
+
+## Same $B933 path for a foreign weapon, without borrowing a satellite slot.
+static func break_at(o: SolObjects, px: int, py: int) -> void:
+	var v: int = o.break_wall(px, py)           # $B93F
 	if v < 0:
 		return                                          # $B942
 	var f := -1
@@ -429,8 +434,8 @@ static func _break(o: SolObjects, x: int) -> void:
 				m = 0x06                                # $B980
 	o.mind[f] = m                                       # $B986
 	o.life[f] = 0x10                                    # $B98B
-	o.x[f] = (o.x[x] & 0xFF00) | 0x80                   # $B98E
-	o.y[f] = (o.y[x] & 0xFF00) | 0x80
+	o.x[f] = (px & 0xFF00) | 0x80                   # $B98E
+	o.y[f] = (py & 0xFF00) | 0x80
 	o.cool[f] = 0x80                                    # $B99C
 	o.id[f] = 0x80
 	o.left[f] = 0                                       # $8DCA

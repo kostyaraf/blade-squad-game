@@ -145,6 +145,7 @@ def anims(rom):
 def export():
     rom = pb2_spawns.Rom()
     b10 = rom.bank(10)
+    b11 = rom.bank(11)
     b15 = rom.bank(15)
     b7 = rom.bank(7)
     b9 = rom.bank(9)
@@ -176,6 +177,25 @@ def export():
     runs = anims(rom)
     d = outdir('pb2')
     size = write_json(os.path.join(d, 'objects.json'), dict(
+        # $826C-$83E9: killed enemy -> burst -> optional pickup -> expiry.
+        death=dict(drop_table=list(b10[0x369:0x389]),
+                   drop_pic=list(b10[0x389:0x38F]),
+                   drop_item=list(b10[0x38F:0x395]),
+                   drop_mask=b10[0x301], lifetime=b10[0x396],
+                   head_probe=b10[0x3A7], gravity=b10[0x3D7],
+                   fall_limit=b10[0x3DC], fall_speed=b10[0x3E0],
+                   max_extra=b10[0x34C], max_second=b10[0x355],
+                   max_power=b10[0x35E]),
+        # $9C68/$9D79 and shared mark helpers $FD7A/$BE5A.
+        small_shots=dict(bullet_mark=b15[0x1D7B], bullet_pic=b10[0x1C73],
+                         trail_life=b10[0x1D81], trail_mark=b15[0x1D77],
+                         trail_anim=b10[0x1D85], trail_ticks=b10[0x1D89],
+                         trail_parent=b10[0x1D99], aimed_pic=rom.bank(11)[0x8A3]),
+        # $A71F: hatchling movement, wall probes and terminal explosion.
+        hatchling=dict(life=b11[0x72D], anim=b11[0x731], speed=list(b11[0x738:0x73A]),
+                       spawn_wall=list(b11[0x73D:0x740]), floor_probe=list(b11[0x750:0x752]),
+                       walk_wall=list(b11[0x78E:0x791]), gravity=b11[0x775],
+                       fall_limit=b11[0x77D], burst_ticks=b11[0x799], burst_anim=b11[0x79B]),
         cull_class=classes,
         # Read in pairs, one pair per Y of 0, 2, 4 and 6.  Off the near side
         # a thing is kept while its low byte is >= the first of the pair; off

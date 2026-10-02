@@ -23,6 +23,18 @@ var pressed: int = 0          # newly down this frame
 var handed: int = -1
 var _keys: Dictionary
 var _device: int
+var _tapped := 0
+
+
+## Keep a short key tap until the next simulation tick. A press and release
+## can both arrive between ticks; polling the held state alone loses it.
+func capture(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		var key: int = event.physical_keycode if event.physical_keycode != 0 \
+				else event.keycode
+		for bit in _keys:
+			if key == _keys[bit]:
+				_tapped |= bit
 
 
 func _init(keys: Dictionary, device: int) -> void:
@@ -32,12 +44,14 @@ func _init(keys: Dictionary, device: int) -> void:
 
 func poll() -> void:
 	if handed >= 0:
+		_tapped = 0
 		pressed = handed & ~held
 		held = handed
 		return
-	var now := 0
+	var now := _tapped
+	_tapped = 0
 	for bit in _keys:
-		if Input.is_key_pressed(_keys[bit]):
+		if Input.is_physical_key_pressed(_keys[bit]):
 			now |= bit
 	if _device >= 0 and Input.get_connected_joypads().has(_device):
 		if Input.is_joy_button_pressed(_device, JOY_BUTTON_A): now |= A

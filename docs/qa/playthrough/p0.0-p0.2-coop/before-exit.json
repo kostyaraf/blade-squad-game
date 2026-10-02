@@ -1,0 +1,1 @@
+{"ended": 0, "enemies": [{"life": 0, "slot": 20, "state": 5, "stun": 0, "type": 4, "x": 239, "y": 128}], "entry": 2, "message": "", "players": [{"alive": true, "life": 9, "state": 2, "sub": 4, "vy": 0, "x": 1196, "y": 63}, {"alive": true, "life": 2, "state": 0, "x": 1255, "y": 128}], "tick": 4701, "view": [1024, 0]}
