@@ -1,0 +1,1 @@
+{"ended":0,"enemies":[{"id":1,"life":16,"mind":0,"slot":12,"x":390,"y":382}],"entry":66,"id":3,"message":"","players":[{"alive":true,"life":8,"slide_attack":false,"state":0,"traversal_frame":-1,"x":407,"y":432}],"projectile_render_connected":true,"projectiles":[],"tick":120,"view":[279,256]}
