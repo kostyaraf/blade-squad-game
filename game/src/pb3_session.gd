@@ -173,10 +173,7 @@ func _travel(game: int, stage: int, area: int, phase: int = 0,
 	two.release()
 	two = Pb3Pair.new(game, stage, area, kinds)
 	two.came = came if game == Pb3Pair.PB2 else stage
-	var spots: Array = []
-	for _hero in kinds:
-		spots.append(two.home())
-	two.begin(spots, true)
+	two.begin(entry_spots(), true)
 	if two.host_pb2 != null:
 		two.host_pb2.phase = phase
 		two.host_pb2.boss = boss

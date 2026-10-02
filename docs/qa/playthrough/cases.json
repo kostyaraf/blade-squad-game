@@ -162,5 +162,23 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "s3-nova/replay.json"
+  },
+  {
+    "file": "s3-s18-nova/replay.json"
+  },
+  {
+    "file": "s9-s18-nova/replay.json"
+  },
+  {
+    "file": "s12-nova/replay.json"
+  },
+  {
+    "file": "s13-nova/replay.json"
+  },
+  {
+    "file": "s14-nova/replay.json"
   }
 ]

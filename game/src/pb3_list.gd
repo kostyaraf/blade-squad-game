@@ -96,6 +96,12 @@ func enter(flow: bool = false) -> bool:
 	var rec: Array = records()[at]
 	came_from = at
 	two = Pb3Pair.new(int(rec[0]), int(rec[1]), int(rec[2]), kinds)
+	two.begin(entry_spots(), flow)
+	return true
+
+
+## Shared by a menu start and a native room transition ($E70C).
+func entry_spots() -> Array:
 	var home: Vector2i = two.home()
 	var spots: Array = []
 	for kind in kinds:
@@ -108,8 +114,7 @@ func enter(flow: bool = false) -> bool:
 				and two.solv.collision_at(spot.x, spot.y - 1) < 0x10:
 			spot.y -= 1
 		spots.append(spot)
-	two.begin(spots, flow)
-	return true
+	return spots
 
 
 ## And out again, back to the record it was entered from.

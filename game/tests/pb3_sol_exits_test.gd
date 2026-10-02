@@ -35,6 +35,22 @@ func placed(stage: int, x: int, feet: int, kinds: Array) -> Pb3Session:
 
 
 func run() -> void:
+	# NSB-01: native transitions and menu starts must share the same spawn.
+	# Diagnostic transition only; input-only routes prove traversal separately.
+	for stage in range(20):
+		for kinds in [[0], [1], [0, 0], [1, 1], [0, 1], [1, 0]]:
+			var fresh := Pb3Session.new(kinds)
+			fresh.at = 63 + stage
+			fresh.enter()
+			var via := Pb3Session.new(kinds)
+			via.at = 63
+			via.enter()
+			via._travel(Pb3Pair.SOL, stage, 0)
+			for i in range(kinds.size()):
+				check(via.two.world_of(i) == fresh.two.world_of(i),
+						"NSB-01 same spawn " + str([stage, kinds, i]))
+			via.leave()
+			fresh.leave()
 	# Six equality-based standing-height entrances. Stage indices are zero-based.
 	# stage, platform x, support y, first ROM routine, destination stage
 	var sites := [
