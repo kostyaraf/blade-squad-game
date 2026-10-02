@@ -628,7 +628,7 @@ func step(pads: Array) -> void:
 						continue
 					if (solv as Pb2AsSol).hurts_at((p.x >> 4) + dx, feet + dy):
 						gone[i] = true
-		if world_of(i).y >= solv.height_tiles * 8:
+		if not _sol_departing(i) and world_of(i).y >= solv.height_tiles * 8:
 			gone[i] = true
 
 
@@ -670,7 +670,7 @@ func _stand_in() -> void:
 	for i in range(who.size()):
 		if gone[i]:
 			continue
-		mid += world_of(i)
+		mid += _sol_script_feet(i)
 		n += 1
 	if n == 0:
 		return
@@ -688,6 +688,18 @@ func _stand_in() -> void:
 		spare_sol.state = SolPlayer.ST_GROUND if grounded else SolPlayer.ST_AIR
 		# $AB6A checks the native standing picture, not merely coordinates.
 		spare_sol._pose(0x00 if grounded else 0x06)
+
+
+## A script's standing height is measured from the support surface. Native
+## Nova rests one pixel above it; Solbrain's $82:$83 position is 16 pixels
+## above it. Convert the anchor here, without moving art or collision boxes.
+## $A294/$A98C/$ADF4 and other entrances compare an exact standing row.
+func _sol_script_feet(i: int) -> Vector2i:
+	var feet := world_of(i)
+	if who[i] == PB2 and pb2[i].sub in [Pb2Player.SUB_GROUND,
+			Pb2Player.SUB_CROUCH, Pb2Player.SUB_LANDED]:
+		feet.y += 1
+	return feet
 
 
 ## The two of them and the view, which is where the level's own order calls
@@ -1379,13 +1391,14 @@ func _drive_view() -> void:
 	var across: Array[int] = []
 	var down: Array[int] = []
 	for i in range(who.size()):
-		if gone[i]:
+		if gone[i] or _sol_departing(i):
 			continue
 		var f: Vector2i = flat_of(i)
 		across.append(f.x)
 		down.append(f.y)
 	if across.is_empty():
 		slid = Vector2i.ZERO
+		sol_pending = Vector2i.ZERO
 		_remember()
 		return
 	var mid := Vector2i.ZERO
@@ -1493,6 +1506,13 @@ func _led_by_sol() -> void:
 	down.cam_y = (sol_eye.y >> 4) + Pb2Objects.VIEW_TOP
 
 
+## $AC1C -> $96FF: scripted departure can cross the screen and wrap Y.
+## It must not steer the shared camera or enter ordinary fall/crush checks.
+func _sol_departing(i: int) -> bool:
+	return live_session and game == SOL and who[i] == SOL \
+			and sol[i].state == 0x11 and host_script.controls_locked
+
+
 ## Nobody is let off the screen.
 ##
 ## Across, an edge behaves like a wall: walking into it is the same thing as
@@ -1520,6 +1540,10 @@ func _led_by_sol() -> void:
 ## does not stay off it: his place is one byte and it comes round the top.
 func _hold_them_in() -> void:
 	for i in range(who.size()):
+		# $AC1C -> $96FF deliberately takes Solbrain off screen. The
+		# shared-camera safety clamp must not crush/reposition this actor.
+		if _sol_departing(i):
+			continue
 		if gone[i]:
 			continue
 		var s: Vector2i = screen_of(i)

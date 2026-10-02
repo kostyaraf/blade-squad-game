@@ -77,6 +77,7 @@ STANDS = [
     ('pb3gear',    'Э5.5', 'verify_pb3_gear.py',   []),
     ('pb3list',    'Э5.6', 'verify_pb3_list.py',   []),
     ('pb3run',     'Э5.7', 'verify_pb3_run.py',    []),
+    ('pb3solexits', 'QA', 'verify_pb3_sol_exits.py', []),
     ('pb3session', 'PB3',  'verify_pb3_session.py', []),
     ('pb3play',    'PB3',  'verify_pb3_playthrough.py', []),
     ('pb3combat', 'QA', 'verify_pb3_combat.py', []),

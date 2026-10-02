@@ -136,5 +136,22 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "s9-nova/replay.json",
+    "checkpoints": [
+      {
+        "tick": 3457,
+        "position": [
+          2247,
+          1135
+        ],
+        "player": 0
+      },
+      {
+        "tick": 3457,
+        "all_alive": true
+      }
+    ]
   }
 ]
