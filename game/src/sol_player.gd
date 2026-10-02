@@ -1186,11 +1186,13 @@ func _panels(held: int) -> int:
 
 
 ## $2A -- the metatile his feet are inside, which is what the floor probe
-## leaves behind ($D0FD).  It is the one the stage names and not the one shown
-## in its place: a panel is never a metatile that can be broken into another.
+## leaves behind ($D0F9..$D118).  It is the one shown there, not the one the
+## stage names: a whole metatile with the alternate bit ($20) is swapped for
+## its alternate ($18) before the probe returns.  Every panel is drawn that
+## way -- in stage 0 the map names 142 and 140, the panel table 68 and 64.
 func _floor_tile() -> int:
 	var py: int = y + (-FOOT_DY if (flags & UPSIDE_DOWN) != 0 else FOOT_DY)
-	var m: int = lvl.raw_at((x & 0xFFFF) >> 4, (py & 0xFFFF) >> 4)
+	var m: int = lvl.metatile_at((x & 0xFFFF) >> 4, (py & 0xFFFF) >> 4)
 	return 0 if m < 0 else m
 
 

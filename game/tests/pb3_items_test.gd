@@ -83,7 +83,7 @@ func cube_item_is_the_stages() -> void:
 ## ITM-02 -- a door keeps $2B:$2C (capsules already taken) and $98 (which
 ## drop the next death gives): only a new game wipes them ($86C5, $D06C).
 func door_keeps_taken_and_drops() -> void:
-	for kinds in [[0], [1], [0, 1], [0, 0]]:
+	for kinds in [[0], [1], [0, 1], [0, 0], [1, 1]]:
 		var s := Pb3Session.new(kinds)
 		s.at = 0
 		s.enter()
@@ -110,9 +110,42 @@ func door_keeps_taken_and_drops() -> void:
 		s.leave()
 
 
+## ITM-03 -- s0: the shield panel at (1216,400).  The map names metatile 142
+## there; the probe hands back what is shown, its alternate 68, and 68 is the
+## stage's shield tile ($9D6E).  Ducking on it buys the shield for ten.
+func panel_sells_the_shield() -> void:
+	for kinds in [[1], [1, 1], [0, 1]]:
+		for buyer in range(kinds.size()):
+			if kinds[buyer] != 1:
+				continue
+			var spots := []
+			for i in range(kinds.size()):
+				spots.append(Vector2i(1224 if i == buyer else 1180,
+						400 if i == buyer else (415 if kinds[i] == 0 else 416)))
+			var s := stand(63, 1, 0, kinds, spots)
+			var hero: SolPlayer = s.two.sol[buyer]
+			hero.pool.hero_bonus = 20
+			var pads := []
+			for i in kinds:
+				pads.append(0)
+			for t in range(30):
+				s.advance(s.tick, pads)
+			var tag := "%s buyer %d" % [str(kinds), buyer]
+			check(hero.shield == 0, tag + ": no shield before")
+			var p := pads.duplicate()
+			p[buyer] = Pad.DOWN
+			for t in range(20):
+				s.advance(s.tick, p)
+			check(hero.shield == SolPanels.one("shield_full"), tag + ": shield bought (%d)" % hero.shield)
+			check(hero.pool.hero_bonus - hero.pool.z56 == 10 or hero.pool.hero_bonus == 10,
+					tag + ": ten paid (%d, tab %d)" % [hero.pool.hero_bonus, hero.pool.z56])
+			s.leave()
+
+
 func run() -> void:
 	cube_item_is_the_stages()
 	door_keeps_taken_and_drops()
+	panel_sells_the_shield()
 	if failed == 0:
 		print("pb3_items_test: ok")
 	quit(1 if failed else 0)
