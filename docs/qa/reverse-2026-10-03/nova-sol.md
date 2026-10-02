@@ -9,13 +9,13 @@
 | s0.0 | ☑ | [s0-nova](../playthrough/s0-nova/replay.json) | 10400 | s0 → s8; отдельная запись и непрерывный этап проверены |
 | s1.0 | ☐ | — | — | В работе |
 | s2.0 | ☐ | — | — | В работе |
-| s3.0 | ☐ | — | — | В работе |
+| s3.0 | ☑ | [s3-nova](../playthrough/s3-nova/replay.json), [s3-s18-nova](../playthrough/s3-s18-nova/replay.json) | 2476 | s3 → s9; этап s3→s9→s18 непрерывно, STAGE CLEAR 7486; NSB-01 |
 | s4.0 | ☐ | — | — | В работе |
 | s5.0 | ☐ | — | — | В работе |
 | s6.0 | ☐ | — | — | В работе |
 | s7.0 | ☐ | — | — | В работе |
 | s8.0 | ☑ | [s0-s8-nova](../playthrough/s0-s8-nova/replay.json) | 12100 | Победа STAGE CLEAR, непрерывно из s0 |
-| s9.0 | ☑ | [s9-nova](../playthrough/s9-nova/replay.json) | 3653 | Выход к s18; босс ещё не подтверждён |
+| s9.0 | ☑ | [s9-nova](../playthrough/s9-nova/replay.json), [s3-s18-nova](../playthrough/s3-s18-nova/replay.json) | 3653 | Выход к s18; в цепочке из s3 вход 2476 → выход 6134 |
 | s10.0 | ☐ | — | — | В работе |
 | s11.0 | ☐ | — | — | В работе |
 | s12.0 | ☑ | [s12-nova](../playthrough/s12-nova/replay.json) | 3386 | Отдельный штатный вход; цепочка этапа ещё не закрыта |
@@ -32,7 +32,9 @@
 - Быстрый обход всех s0…s19: 120 тиков RIGHT+B от штатного входа, герой жив, первые экраны без вылета. Записи `playthrough/sN-nova-scout/`; это не приёмка уровня.
 - s9 → s18: оба босса убиты штатными лучами костюма 1; STAGE CLEAR на 5005. Перед анимацией завершения тик 4860, 12 HP, энергия 13.
 
-- `python3 work/extract/verify_pb3_playthrough.py`: 0 из 11 записей расходятся, код 0, без SCRIPT ERROR. s0-nova: выход 10400 (в чек-листе ранее указан 10405 — это длина записи); s0-s8-nova: выходы 10405 / 12100; s9-nova: 3653.
+- Этап s3→s9→s18 (`s3-s18-nova`): ввод s3 до перехода + выбор костюма 0 (START, DOWN, START) + ввод `s9-s18-nova`; переходы 2476/6134, STAGE CLEAR 7486, минимум HP 8.
+- Записи Новы s3, s3-s18, s9-s18, s12, s13, s14 добавлены в `cases.json`; `verify_pb3_playthrough.py`: 0 из 17 расходятся.
+- Ранее: `python3 work/extract/verify_pb3_playthrough.py`: 0 из 11 записей расходятся, код 0, без SCRIPT ERROR. s0-nova: выход 10400 (в чек-листе ранее указан 10405 — это длина записи); s0-s8-nova: выходы 10405 / 12100; s9-nova: 3653.
 
 ## Дефекты
 
