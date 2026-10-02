@@ -18,8 +18,8 @@ class_name Pb2AsSol
 ## | class $80, a wall    | `$10`         | `>= $80`, solid                  |
 ## | terrain 4, water     | `$0D`         | `$9505` -> `_wet`                |
 ## | terrain 3, mud       | `$0D`         | the nearest thing he has         |
-## | terrain $87, belt    | `$0E`         | `$963D` -> `vx + 8`              |
-## | terrain $88, belt    | `$0F`         | `$963D` -> `vx - 8`              |
+## | terrain $87, belt    | `$16`         | `$963D` -> `vx + 8`              |
+## | terrain $88, belt    | `$17`         | `$963D` -> `vx - 8`              |
 ## | anything else        | `$00`         | nothing                          |
 ##
 ## Two of Power Blade 2's own classes have no Solbrain answer at all and are
@@ -32,13 +32,13 @@ var src: Pb2Level
 ## PB3 uses continuous hero coordinates across the 16 padding rows of each page.
 var continuous_vertical := false
 
-## $0C -- a wall.  Shifted up by three this is the $80 the hero tests.
+## $10 -- a wall. Shifted up by three this is the $80 the hero tests.
 const SOLID := 0x10
-## The four that mean something: $0C is the marker, the low two say which.
+## $0D is water; $16/$17 are solid belts ($B0/$B8 after the native shift).
 const PLAIN := 0x0C
 const WATER := 0x0D
-const BELT_RIGHT := 0x0E
-const BELT_LEFT := 0x0F
+const BELT_RIGHT := 0x16
+const BELT_LEFT := 0x17
 
 ## Sixteen bits that wrap at nought is how the Solbrain hero keeps his place,
 ## and a Power Blade 2 area is at most six screens each way -- a little over
@@ -93,15 +93,18 @@ func collision_at(px: int, py: int) -> int:
 	# of the bottom is how a hero dies, not something a wall prevents.
 	if py >= height_tiles * 8:
 		return 0x00
-	if src.class_byte(px, py) == 0x80:
-		return SOLID
-	match src.terrain_at(px, py):
-		0x04, 0x03:
-			return WATER
+	# $A194 -> $963D: belts must retain both solidity and their push bit.
+	# Test terrain before the wall class, because both PB2 belts are solid.
+	var terrain := src.terrain_at(px, py)
+	match terrain:
 		0x87:
 			return BELT_RIGHT
 		0x88:
 			return BELT_LEFT
+	if src.class_byte(px, py) == 0x80:
+		return SOLID
+	if terrain == 0x04 or terrain == 0x03:
+		return WATER
 	return 0x00
 
 

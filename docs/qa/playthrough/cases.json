@@ -57,14 +57,6 @@
     "file": "p0.0-p0.2-coop/replay.json",
     "checkpoints": [
       {
-        "tick": 3699,
-        "player": 1,
-        "position": [
-          688,
-          139
-        ]
-      },
-      {
         "tick": 1077,
         "all_alive": true
       },
@@ -73,7 +65,15 @@
         "all_alive": true
       },
       {
-        "tick": 4695,
+        "tick": 3457,
+        "player": 1,
+        "position": [
+          683,
+          120
+        ]
+      },
+      {
+        "tick": 4519,
         "all_alive": true
       }
     ]
@@ -83,6 +83,56 @@
     "checkpoints": [
       {
         "tick": 786,
+        "all_alive": true
+      }
+    ]
+  },
+  {
+    "file": "p0.2-sol/replay.json",
+    "checkpoints": [
+      {
+        "tick": 742,
+        "player": 0,
+        "position": [
+          683,
+          112
+        ]
+      },
+      {
+        "tick": 1351,
+        "all_alive": true
+      }
+    ]
+  },
+  {
+    "file": "p0.2-nova/replay.json",
+    "checkpoints": [
+      {
+        "tick": 772,
+        "player": 0,
+        "position": [
+          679,
+          142
+        ]
+      },
+      {
+        "tick": 1411,
+        "player": 0,
+        "position": [
+          1190,
+          63
+        ]
+      },
+      {
+        "tick": 1427,
+        "player": 0,
+        "position": [
+          1182,
+          63
+        ]
+      },
+      {
+        "tick": 1631,
         "all_alive": true
       }
     ]

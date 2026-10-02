@@ -329,7 +329,8 @@ func _host_banks() -> Array:
 		var suit := 0
 		if two.host_pb2 != null:
 			suit = two.host_pb2.suit
-		return lv.banks + Pb2Sprites.banks_for(lv, pose, suit)
+		var cycle := two.host_pb2.storm if two.host_pb2 != null else 0
+		return lv.background_banks(cycle) + Pb2Sprites.banks_for(lv, pose, suit)
 	var sl: SolLevel = two.solv as SolLevel
 	if two.host_table != null:
 		return sl.banks + Array(two.host_table.banks)

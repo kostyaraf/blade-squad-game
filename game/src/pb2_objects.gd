@@ -1371,8 +1371,8 @@ func _spit_3c(s: PackedByteArray) -> void:
 ## the level, and while it is set only the door and the thing at $03 move.
 ##
 ## Returns the places the sweep freed, in the order it walked them.
-## $BF32 -- one step of the walk through the three sets of background colours.
-## In the three stormy areas it goes four times as fast, and once every 256
+## $BF32 -- cycle the three background CHR bank sets.
+## In the three stormy areas it steps every four frames (normally eight), and every 256
 ## pictures the storm switches off and on again -- that is the seventh bit of
 ## $5C.  While the suit menu is open ($4D), nothing moves at all.
 func step_colour(menu: bool) -> void:

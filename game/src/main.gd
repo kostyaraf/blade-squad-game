@@ -5405,7 +5405,7 @@ func _show() -> void:
 	scroll = Vector2i(0, w) if level_pb2.vertical else Vector2i(w, 0)
 	m.set_shader_parameter("map_paged", level_pb2.vertical)
 	m.set_shader_parameter("scroll", Vector2(scroll if level_pb2.vertical else scroll - origin))
-	m.set_shader_parameter("banks", PackedInt32Array(level_pb2.banks
+	m.set_shader_parameter("banks", PackedInt32Array(level_pb2.background_banks(world.storm)
 			+ Pb2Sprites.banks_for(level_pb2, hero.pose, world.suit)))
 	m.set_shader_parameter("sprites_on", true)
 	var img := Image.create(Pb2Sprites.SPRITES, 1, false, Image.FORMAT_RGBA8)

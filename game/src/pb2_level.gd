@@ -95,6 +95,14 @@ func _init(stage_index: int, area_index: int) -> void:
 	_build(a)
 
 
+## $BF88: $43 = $5D + ($5C & $7F). Bit 7 freezes the current phase.
+## Keep the loaded banks immutable: adapters share them with this level.
+func background_banks(cycle: int) -> Array:
+	if bank_phases.is_empty():
+		return banks
+	return bank_phases[(cycle & 0x7F) % bank_phases.size()]
+
+
 ## How many areas the data holds for a stage, and how many stages there are.
 ## Not the same as walk_count: the boss rooms are a stage of their own.
 static func area_count(stage_index: int) -> int:
