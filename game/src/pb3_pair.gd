@@ -558,7 +558,25 @@ func _raise_flow() -> void:
 
 
 ## One picture of both of them and of the view.
+## An equipment refill owned by any participant freezes the shared world.
+var force_hold := false
+
 func step(pads: Array) -> void:
+	pads_now = pads
+	ended = Pb2Turn.NONE
+	if turn_pb2 != null:
+		turn_pb2.came = came
+		var held: int = int(pads[host]) if host >= 0 else 0
+		var hit: int = held & ~last_pad[host] if host >= 0 else 0
+		var ready: bool = turn_pb2.prepare(hit)
+		if not ready or force_hold:
+			ended = Pb2Turn.HELD
+			latch_input(pads)
+			return
+	elif force_hold:
+		ended = Pb2Turn.HELD
+		latch_input(pads)
+		return
 	# $D924 -- a Power Blade area slides by what was decided last picture,
 	# before anybody moves.  A Solbrain stage moved at the end of the last
 	# picture instead, because its view is worked out from where the hero
@@ -585,14 +603,12 @@ func step(pads: Array) -> void:
 		turn_pb2.came = came
 		var held: int = int(pads[host]) if host >= 0 else 0
 		var hit: int = held & ~last_pad[host] if host >= 0 else 0
-		ended = turn_pb2.step(held, hit)
+		ended = turn_pb2.step(held, hit, true)
 		# With nobody of this game in the room the empty place at $0400 has no
 		# health, and $A17A reads that as a death.  It is not one: the two who
 		# are really here are guests, and how they end is asked of them.
 		if host < 0 and ended == Pb2Turn.DIED:
 			ended = Pb2Turn.NONE
-		if ended == Pb2Turn.HELD:
-			_walk_them()
 	elif turn_sol != null:
 		if host_fade != null:
 			_sol_fade_tick()
@@ -614,6 +630,15 @@ func step(pads: Array) -> void:
 						gone[i] = true
 		if world_of(i).y >= solv.height_tiles * 8:
 			gone[i] = true
+
+
+## The controller is polled even when world motion is paused. A held jump
+## must not become a fresh jump when the refill/menu releases the world.
+func latch_input(pads: Array) -> void:
+	for i in range(who.size()):
+		last_pad[i] = int(pads[i])
+		if who[i] == SOL:
+			sol[i].pad_held = int(pads[i])
 
 
 ## Where the hero nobody steps stands, when the stage has no hero of its own in

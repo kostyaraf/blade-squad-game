@@ -53,6 +53,10 @@ var walk: Callable = Callable()
 ## A suit changed its colours, and three of them have to be laid over sprite
 ## palette one.  The mode does that, and the mode clears this.
 var repaint := false
+## PB3 may own this exact status and have advanced it with the shared gear.
+var external_status := false
+var external_play := true
+var prepared_play := true
 
 
 func _init(lvl: Pb2Level, w: Pb2Objects, h: Pb2Player, v: Pb2Camera,
@@ -65,15 +69,7 @@ func _init(lvl: Pb2Level, w: Pb2Objects, h: Pb2Player, v: Pb2Camera,
 
 
 ## One step of the game, in the cartridge's own order ($CEF0).
-func step(held: int, pressed: int) -> int:
-	# $EE5D -- SELECT spends one spare health tank on the health bar.  It only
-	# looks like the suit menu; the suits are on START.
-	if pressed & Pad.SELECT:
-		status.life = world.slots[0][Pb2Objects.F_LIFE]
-		status.spend_life_tank()
-	# $CDBB and $CEFD -- the suits: the pause menu, and the wearing out of
-	# whichever one he has on.  While either has something to say the level
-	# itself does not run at all.
+func status_context() -> void:
 	status.life = world.slots[0][Pb2Objects.F_LIFE]
 	# $53 is the stage the hero walked in from, not the table the room was
 	# built out of: a boss room is the seventh table and no stage at all.
@@ -83,9 +79,17 @@ func step(held: int, pressed: int) -> int:
 	status.boss = world.boss
 	status.area = world.area
 	status.frozen = world.frozen != 0
+
+
+## Status runs before the pair camera or either actor can move.
+func prepare(pressed: int) -> bool:
+	if not external_status:
+		status_context()
+		if pressed & Pad.SELECT:
+			status.spend_life_tank()
 	# Pad already keeps the console's own order of the eight, so what it
 	# reports is what $48 would hold.
-	var play: bool = status.step(pressed)
+	prepared_play = external_play if external_status else status.step(pressed)
 	# $27 -- the level's things write it as well as read it: the boss's meter
 	# puts it out of play while it fills and back into play when it is full.
 	world.playing = status.mode
@@ -102,7 +106,13 @@ func step(held: int, pressed: int) -> int:
 		status.clear_shots = false
 		for k in range(1, Pb2Objects.FIRST_LIVE):
 			world.clear(k)
-	if not play:
+	return prepared_play
+
+
+func step(held: int, pressed: int, prepared: bool = false) -> int:
+	if not prepared:
+		prepare(pressed)
+	if not prepared_play:
 		return HELD
 	world.frame = (world.frame + 1) & 0xFF          # $0110
 	world.step_colour(status.menu != 0)             # $BF32

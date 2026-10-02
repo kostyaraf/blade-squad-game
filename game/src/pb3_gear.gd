@@ -66,6 +66,10 @@ var tanks := 0
 ## back by whoever keeps his table of things.
 var clear_shots: Array[bool] = []
 
+## Result for the whole session, including the last frame of a refill/change.
+var playing := true
+var menu_held := false
+
 var _sat: Dictionary
 
 
@@ -99,22 +103,51 @@ func _init(kinds: Array, energy_: int = 16, tanks_: int = 0) -> void:
 
 ## One picture for each of them, in the order they come.  `hits` is what each
 ## newly pressed this picture, which is what $D0A6 and $D259 both read.
-func step(hits: Array) -> void:
+func step(hits: Array, active: Array = []) -> void:
+	playing = true
+	menu_held = false
+	# Read all menus first. P2 opening a menu must freeze P1's wear this frame.
 	for i in range(who.size()):
 		var hit: int = int(hits[i]) if i < hits.size() else 0
 		var s: Pb2Status = st[i]
-		# The bar as the one before him left it.
 		s.energy = energy
 		s.tanks = tanks
 		if who[i] == SOL:
 			_gun_menu(i, hit, s)
+			menu_held = menu_held or open[i]
 		else:
-			s.step(hit)
-			if s.clear_shots:
-				clear_shots[i] = true
-				s.clear_shots = false
-		energy = s.energy
-		tanks = s.tanks
+			var ready: bool = s.step_menu(hit)
+			menu_held = menu_held or not ready
+	if menu_held:
+		playing = false
+	else:
+		# One shared bar can have only one energy refill in flight.
+		var filling := -1
+		for i in range(who.size()):
+			if who[i] == PB2 and st[i].mode == Pb2Status.REFILL_ENERGY:
+				filling = i
+				break
+		for i in range(who.size()):
+			if who[i] != PB2:
+				continue
+			var s: Pb2Status = st[i]
+			s.energy = energy
+			s.tanks = tanks
+			var wears: bool = (active.is_empty() or bool(active[i])) and (filling < 0 or filling == i)
+			var ready: bool = s.step_play(wears)
+			if s.mode == Pb2Status.REFILL_ENERGY:
+				filling = i
+			playing = playing and ready
+			energy = s.energy
+			tanks = s.tanks
+	for i in range(who.size()):
+		var s: Pb2Status = st[i]
+		# Publish the final shared values to every view, including the host.
+		s.energy = energy
+		s.tanks = tanks
+		if s.clear_shots:
+			clear_shots[i] = true
+			s.clear_shots = false
 
 
 ## The Solbrain side of the menu.  There is no cartridge for it -- his game

@@ -28,11 +28,15 @@ func play(case: Dictionary) -> void:
 	var events: Array = []
 	var missing: Dictionary = {}
 	var played := 0
+	var expected_ticks := 0
+	for part in rec.steps: expected_ticks += int(part[0])
 	for part in rec.steps:
+		if session.two == null: break
 		var pad: Array = []
 		for i in range(1, part.size()):
 			pad.append(int(part[i]))
 		for frame in range(int(part[0])):
+			if session.two == null: break
 			played += 1
 			var event := session.advance(session.tick, pad)
 			if session.two != null and session.two.host_pb2 != null:
@@ -78,6 +82,6 @@ func play(case: Dictionary) -> void:
 				and actual.entry == int(expected.entry)
 				and actual.event == expected.event
 				and actual.message == expected.message, case.file + " actual exit event")
-	check(session.tick == played, case.file + " every input consumed")
+	check(session.tick == expected_ticks, case.file + " every input consumed")
 	print(case.file, ": ", played, " ticks, ", events)
 	session.leave()

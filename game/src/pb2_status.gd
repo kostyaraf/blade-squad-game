@@ -89,6 +89,14 @@ func _init() -> void:
 ## freezes everything, and so do the two refills and the change of suit.  The
 ## clock is not frozen by any of them.
 func step(hit: int) -> bool:
+	if not step_menu(hit):
+		return false
+	return step_play()
+
+
+## PB3 resolves every menu before advancing any shared gameplay resources.
+## Kept separate without changing the native step() order.
+func step_menu(hit: int) -> bool:
 	clock = (clock + 1) & 0xFF
 	_menu(hit)
 	if menu != 0:
@@ -98,13 +106,18 @@ func step(hit: int) -> bool:
 		else:
 			_cycle(hit)
 		return false
+	return true
+
+
+func step_play(wear: bool = true) -> bool:
 	# $CEEC -- the clock, and the last boss of all is fought without one.
 	# It runs whatever the mode is: a refill and a change of suit hold the
 	# level still, but not the clock ($CED2 turns aside only the water).
 	if boss != 0 or stage != LAST_STAGE or area != 0:
 		if time_step(frozen):
 			bell = true
-	_drain()                                # $CEFD
+	if wear:
+		_drain()                            # $CEFD
 	# $8003 -- the level's own frame runs for anything under five.  Four is
 	# the boss's meter filling: the hero still walks and the things still
 	# get their turn, only the suit is not worn down and the menu is shut.

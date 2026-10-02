@@ -1024,8 +1024,11 @@ func _pb3_hits_pb2(stage: int, area: int, edges: Array,
 			out.append("untranslated pb2 type %02X why box" % t)
 			continue
 		var b: Array = things.box[t][0]
-		var rw: int = int(b[0]) + half_w
-		var rh: int = int(b[1]) + half_h
+		# PB3 doors deliberately use the native approach box (c488ec4),
+		# independently of Solbrain's narrower art. Keep testing all 8 edges.
+		var approach: Array = [15, 6, 13] if t in [3,4] else [up,half_w,half_h]
+		var rw: int = int(b[0]) + int(approach[1])
+		var rh: int = int(b[1]) + int(approach[2])
 		if rw > 0x60 or rh > 0x60:
 			continue                # bigger than the screen; no room to stand
 		# The thing is put where the middle of it comes out at $80,$80.
@@ -1040,7 +1043,7 @@ func _pb3_hits_pb2(stage: int, area: int, edges: Array,
 			s[Pb2Objects.F_MARK] = 0x01     # $C99F -> $FD76: it simply hurts
 			s[Pb2Objects.F_LIFE] = 0x40
 			s[Pb2Objects.F_X] = 0x80
-			s[Pb2Objects.F_Y] = (0x80 - up + things.middle[t]) & 0xFF
+			s[Pb2Objects.F_Y] = (0x80 - int(approach[0]) + things.middle[t]) & 0xFF
 			for i in range(guest.size()):
 				guest[i] = 0
 			guest[Pb2Objects.F_LIFE] = 0x10

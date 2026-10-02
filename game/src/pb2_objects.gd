@@ -932,7 +932,11 @@ func _pick_up(n: int) -> void:
 	var what: int = s[F_TYPE]
 	if status != null:
 		status.life = slots[0][F_LIFE]
-		status.take(s[F_LIFE])              # $B4CD
+		# A foreign pickup must not resurrect an inactive native slot.
+		# Reward recipient/conversion remains PB3 GAP-01.
+		if status.life != 0 or (s[F_LIFE] & 15) != 0:
+			status.take(s[F_LIFE])          # $B4CD
+		playing = status.mode             # $27: a pickup may begin a refill
 		power = status.power_level
 		second = status.second_blade
 		extra = status.extra_shot

@@ -51,11 +51,20 @@ func poll() -> void:
 		for i in range(1, part.size()):
 			words.append(int(part[i]))
 		var consumed := 0
-		for f in range(int(part[0])):
+		var remaining := int(part[0])
+		while remaining > 0:
 			if session.two == null:
 				break
 			var event := session.advance(session.tick, words)
 			consumed += 1
+			# Optional controller macro: wait out a refill/final suit-change
+			# frame with the same buttons. Record EVERY actual input frame.
+			var waiting := false
+			if cmd.get("settle_pauses",false) and session.two != null:
+				waiting = session.two.ended == Pb2Turn.HELD
+				for i in range(words.size()):
+					if session.gear.menu_open(i): waiting = false
+			if not waiting or consumed > int(part[0])+300: remaining -= 1
 			if event != "playing":
 				replay.events.append({"tick":session.tick,"event":event,"entry":session.at,"message":session.message})
 				if event == "changed":
@@ -98,7 +107,9 @@ func status() -> Dictionary:
 		if pair.who[i] == 0:
 			var p: Pb2Player = pair.pb2[i]
 			player.alive = player.alive and pair.things[i].slots[0][Pb2Objects.F_LIFE] > 0
-			player.merge({"sub":p.sub,"vy":p.vy,"state":p.state,"life":pair.things[i].slots[0][Pb2Objects.F_LIFE]})
+			player.merge({"sub":p.sub,"vy":p.vy,"state":p.state,"life":pair.things[i].slots[0][Pb2Objects.F_LIFE],
+					"suit":p.suit,"menu":session.gear.st[i].menu,"status_mode":session.gear.st[i].mode,
+					"energy":session.gear.energy,"owned":session.gear.st[i].owned})
 		else:
 			var p: SolPlayer = pair.sol[i]
 			player.alive = player.alive and p.state not in [0x0C, 0x0E]

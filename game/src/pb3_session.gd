@@ -61,6 +61,16 @@ func prepare() -> void:
 					two.guest_sol[i].suit = 0x10
 		elif i != two.host:
 			two.sol[i].pool = two.guest_pool[i]
+	if two.game == Pb3Pair.PB2 and two.host >= 0:
+		# The host menu, pickups and native turn share one status, not two clocks.
+		var status: Pb2Status = gear.st[two.host]
+		for field in ["time_hi", "time_lo", "warn", "out_of_time", "clock",
+				"mode", "refill_life", "refill_energy"]:
+			status.set(field, two.host_status.get(field))
+		two.host_status = status
+		two.host_pb2.status = status
+		two.turn_pb2.status = status
+		two.turn_pb2.external_status = true
 	two._mirror_them()
 	_sync_gear()
 
@@ -78,16 +88,29 @@ func advance(frame: int, words: Array) -> String:
 		hits.append(int(words[i]) & ~previous[i])
 		previous[i] = int(words[i])
 	tick += 1
-	gear.step(hits)
-	_sync_gear()
-	# A menu freezes both players, so its arrows cannot move the other hero.
+	if two.turn_pb2 != null and two.turn_pb2.external_status:
+		two.turn_pb2.status_context()
+	var active: Array = []
 	for i in range(kinds.size()):
-		if gear.menu_open(i):
-			return "playing"
+		active.append(not two.gone[i])
+	gear.step(hits, active)
+	_sync_gear()
+	# A menu freezes both players, including the final suit-change frame.
+	if gear.menu_held:
+		two.ended = Pb2Turn.HELD
+		two.latch_input(words)
+		return "playing"
+	two.force_hold = not gear.playing
+	if two.turn_pb2 != null:
+		two.turn_pb2.external_play = gear.playing
 	var play_words: Array = []
 	for word in words:
 		play_words.append(int(word) & ~(Pad.START | Pad.SELECT))
 	two.step(play_words)
+	if two.host_status != null:
+		# Native pickups/refills write the same resource; keep their result.
+		gear.energy = two.host_status.energy
+		gear.tanks = two.host_status.tanks
 	return resolve()
 
 
@@ -184,13 +207,11 @@ func _sync_gear() -> void:
 		pool.power = status.power_level
 		pool.second = status.second_blade
 		pool.extra = status.extra_shot
-		if i == two.host:
-			# $CEFD reads the live status, not the menu's display model.
-			two.host_status.suit = status.suit
-			two.host_status.owned = status.owned
-			two.host_status.energy = gear.energy
-			two.host_status.tanks = gear.tanks
 		if gear.clear_shots[i]:
 			for k in range(1, Pb2Objects.FIRST_LIVE):
 				pool.clear(k)
 			gear.clear_shots[i] = false
+
+	if two.host_status != null:
+		two.host_status.energy = gear.energy
+		two.host_status.tanks = gear.tanks
