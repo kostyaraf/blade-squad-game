@@ -177,10 +177,7 @@ func _travel(game: int, stage: int, area: int, phase: int = 0,
 	two.release()
 	two = Pb3Pair.new(game, stage, area, kinds)
 	two.came = came if game == Pb3Pair.PB2 else stage
-	var spots: Array = []
-	for _hero in kinds:
-		spots.append(two.home())
-	two.begin(spots, true)
+	two.begin(entry_spots(), true)
 	if old_world != null and two.host_pb2 != null:
 		# Set before the first picture: that is when the screen's things
 		# come out (`fill`) and ask `got` whether they are still there.

@@ -40,6 +40,8 @@ ROWS = [
     ('letter_x', 12, 0x932E, 3),
     ('letter_a', 12, 0x9331, 4),
     ('letter_b', 12, 0x9334, 4),
+    # $82EB LDA #$20 -- blink duration after either first/second letter.
+    ('letter_blink', 8, 0x82EC, 1),
     # $B8F7 and $B927 -- where the seventh weapon's slash is put and what it
     # is.  Eight bytes a stance, two words of them, right then left.
     ('melee_at', 13, 0xB8F7, 48),

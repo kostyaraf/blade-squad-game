@@ -105,6 +105,15 @@
     ]
   },
   {
+    "file": "p0.3-sol/replay.json",
+    "checkpoints": [
+      {
+        "tick": 1133,
+        "all_alive": true
+      }
+    ]
+  },
+  {
     "file": "p0.2-nova/replay.json",
     "checkpoints": [
       {
@@ -153,5 +162,23 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "s3-nova/replay.json"
+  },
+  {
+    "file": "s3-s18-nova/replay.json"
+  },
+  {
+    "file": "s9-s18-nova/replay.json"
+  },
+  {
+    "file": "s12-nova/replay.json"
+  },
+  {
+    "file": "s13-nova/replay.json"
+  },
+  {
+    "file": "s14-nova/replay.json"
   }
 ]
