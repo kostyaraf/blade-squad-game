@@ -75,6 +75,29 @@ func _initialize() -> void:
 	check(q.sub==Pb2Player.SUB_NET and (q.state&0x80)!=0,"can attack while gripping")
 	for f in range(60): q.step(0,0,q.cam)
 	check(q.sub==Pb2Player.SUB_NET and q.drawing_pose()==Pb2Sprites.net_pose(2,false),"attack returns to hold")
+	# Each authored palette overlay counts as an 8x16 hardware sprite.
+	for frame in Pb2Sprites.net_art().frames:
+		var peak := 0
+		for y in range(-48,0):
+			var on_line := 0
+			for part in frame.parts:
+				if y>=int(part[0]) and y<int(part[0])+16: on_line+=1
+			peak=maxi(peak,on_line)
+		check(peak<=4,"two Nova bodies fit eight sprites/line: "+str(frame.name))
+	for suit in [0,1,2,3,4,5]:
+		for left in [false,true]:
+			q=falling(suit)
+			q.face_left=left
+			q.step(Pad.UP,Pad.UP,q.cam)
+			for f in range(12): q.step(0,0,q.cam)
+			check(q.sub==Pb2Player.SUB_NET and q.face_left==left,"hold either facing / suit")
+			q.step(Pad.B,Pad.B,q.cam)
+			check(q.drawing_pose()==q.pose and q.pose<int(q.cfg.probe_set.size()),"attack uses native art and physics")
+			for f in range(35): q.step(0,0,q.cam)
+			check(q.sub==Pb2Player.SUB_NET and q.drawing_pose()==Pb2Sprites.net_pose(2,suit!=0),"attack returns in either facing / suit")
+			q.step(Pad.DOWN|Pad.A,Pad.DOWN|Pad.A,q.cam)
+			for f in range(12): q.step(0,0,q.cam)
+			check(q.sub!=Pb2Player.SUB_NET and q.pose<int(q.cfg.probe_set.size()),"drop resumes native physics")
 	# Verify native tile bytes survive extension of the atlas.
 	var original := Image.new()
 	check(original.load_png_from_buffer(FileAccess.get_file_as_bytes('res://data/pb2/tiles.png'))==OK,
@@ -103,6 +126,23 @@ func _initialize() -> void:
 		check(authored,"custom Nova tiles reach OAM "+str(i))
 		check(session.two.things[i].slots[0][Pb2Objects.F_KIND]==session.two.pb2[i].pose,
 			"OAM assembly does not change physical mirror "+str(i))
+	# Opening either menu freezes both grip positions AND drawing phases.
+	for owner in range(2):
+		var before: Array = []
+		for i in range(2):
+			var h: Pb2Player = session.two.pb2[i]
+			before.append([h.x,h.y,h.net_ticks,h.drawing_pose()])
+		var words := [0,0]
+		words[owner]=Pad.START
+		session.advance(session.tick,words)
+		check(session.gear.menu_open(owner),"menu opens on net "+str(owner))
+		for f in range(12): session.advance(session.tick,[0,0])
+		for i in range(2):
+			var h: Pb2Player = session.two.pb2[i]
+			check([h.x,h.y,h.net_ticks,h.drawing_pose()]==before[i],"menu freezes both grips "+str(owner)+"/"+str(i))
+		session.advance(session.tick,words)
+		session.advance(session.tick,[0,0])
+		check(not session.gear.menu_open(owner),"menu closes on net "+str(owner))
 	# Damage must release an attached player without altering the other one.
 	session.two.guest_sol[0].suit -= 1
 	session.two._harvest()
