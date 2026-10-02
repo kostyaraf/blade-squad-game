@@ -2269,7 +2269,7 @@ func _suit(s: int, one: int, two: int, three: int) -> void:
 	SolSound.want_noise = 0x10          # $82DA/$8318 -- $F1
 	b[s] = letters | bit             # $82DE
 	if which != 2:
-		pass                            # $82EB -- $070C,Y, the weapon's own
+		w_kind[0x0C + which] = int(sat_table["letter_blink"][0]) # $82EB/$8329
 	a[s] = 0xFF                         # $832E
 	mind[s] = mind[s] | 0x80
 

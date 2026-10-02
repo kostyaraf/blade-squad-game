@@ -105,6 +105,15 @@
     ]
   },
   {
+    "file": "p0.3-sol/replay.json",
+    "checkpoints": [
+      {
+        "tick": 1133,
+        "all_alive": true
+      }
+    ]
+  },
+  {
     "file": "p0.2-nova/replay.json",
     "checkpoints": [
       {

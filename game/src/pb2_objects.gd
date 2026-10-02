@@ -126,7 +126,8 @@ const MINDS := {0x46: "_mind_46", 0x3D: "_mind_3d", 0x48: "_mind_48", 0x01: "_mi
 		0x2C: "_mind_2c", 0x2D: "_mind_2c",
 		0x42: "_mind_42",
 		0x2E: "_mind_2c",
-		0x22: "_mind_22", 0x37: "_mind_37", 0x2F: "_mind_2f",
+		0x22: "_mind_22", 0x37: "_mind_37", 0x2F: "_mind_2f", 0x33: "_mind_33",
+		0x30: "_mind_30", 0x31: "_mind_31", 0x32: "_mind_32",
 		0x1E: "_mind_1e", 0x38: "_mind_38", 0x24: "_mind_24",
 		0x3C: "_mind_3c", 0x1B: "_mind_1b", 0x1A: "_mind_1a", 0x15: "_mind_15",
 		0x27: "_mind_27", 0x28: "_mind_28",
@@ -4428,6 +4429,244 @@ func _mind_2f(_n: int, s: PackedByteArray) -> void:
 			slots[k] = c
 			break
 	s[F_SELF] = 0xFF                                   # $BE75
+
+
+## $95FB -- what $2F lets out.  It is born in state 3: it falls until there
+## is ground $14 under it, and there it stops, says it is solid and goes back
+## to state 0.  From then on it is the defeated enemy's crawl ($826C), cut
+## short at the second step, and on each of its first four turns it puts out
+## one child of type $30 | its record byte, each with its own start from $96A6.
+const SPLIT_33 := [0x95, 0xB2, 0xCE, 0xEB]
+
+func _mind_33(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		3:
+			s[F_LIFE] = 0x01                           # $BE5A 01
+			s[F_MARK] = 0x01
+			s[F_KIND] = 0x56                           # $BE6E 56
+			set_speed_down(s, 0x01, 0x00)              # $BEB9 00 01
+			s[F_STATE] += 1                            # $C966
+		4:
+			if ground_turn_clear(n, s, 0x00, 0x14) < 0x80:   # $BECB 14 00
+				add_speed_down(s, 0x40)                # $C90C
+				if s[F_VY] >= 0x04:                    # $9627
+					set_speed_down(s, 0x04, 0x00)      # $BEB9 00 04
+				mark_target(n)                         # $C9D2
+				step_down(s)                           # $C8F4
+				return
+			s[F_REC_BYTE] = s[F_COUNT] | 0x30          # $9636
+			s[F_GROUND] = 0x03                         # $BEA6 03
+			s[F_KEEP2] = 0x01                          # $BE8A 01
+			s[F_MARK] = 0x80                           # $C9AB
+			s[F_STATE] = 0                             # $C96C
+		_:
+			_split_33(n, s)
+
+
+## $940D -- the first of the four: it flies out along the start it was given
+## for sixteen turns, then homes on him at five, turning two points a frame.
+const AIM_30 := [0x00, 0x04, 0x08, 0x0C, 0x00, 0xFC, 0xF8, 0xF4]
+
+func _mind_30(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0:
+			start_anim(s, 0x1B)                        # $BEAD 1B
+			_launch_33(s)                              # $959D
+		1:
+			if not _fly_33(n, s):                      # $95AF
+				step_anim(s)                           # $C837
+				return
+			s[F_KEEP] = (s[F_KEEP] + 1) & 0xFF         # $9425
+			s[F_STATE] += 1                            # $C966
+		_:
+			if _gone_33(n, s):                         # $95E8
+				return
+			if (s[F_XHI] | s[F_YHI]) != 0:             # $C9C3
+				s[F_KEEP] = (s[F_KEEP] - 1) & 0xFF
+				if s[F_KEEP] == 0:
+					s[F_KEEP] = 0x20                   # $BE83 20
+					s[F_COUNT] = aim_at_hero_wide(s)   # $C9CC
+				aim_turn(s)                            # $C9C9
+			else:
+				aim_clock(s, 0x20, AIM_30[n & 7])      # $C9C6
+			if ((n ^ clock) & 0x03) == 0:              # $9455
+				set_speed_at(s, 0x05, s[F_SELF])       # $C8AF
+				face_by_speed(s)                       # $C993
+			step_anim(s)                               # $C8EE
+			step_both(s)
+
+
+## $9473 -- the second: flies out the same way, stops, and from then on hops
+## at him -- four up, a random step across, and a rest of $20 once down.
+const STEP_31 := [0x00, 0x20, 0x40, 0x60, 0x80, 0x90, 0xA0, 0xB0]
+
+func _mind_31(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0:
+			s[F_KIND] = 0x59                           # $BE6E 59
+			_launch_33(s)                              # $959D
+		1:
+			if not _fly_33(n, s):                      # $95AF
+				step_anim(s)                           # $C837
+				return
+			s[F_SELF] = 0                              # $948B
+			set_speed_down(s, 0x00, 0x00)              # $C909
+			set_speed_side(s, 0x00, 0x00)              # $C906
+			s[F_STATE] += 1                            # $C966
+		_:
+			_hop_31(n, s)
+
+
+## $949A -- a rest on the ground, or the hop itself.
+func _hop_31(n: int, s: PackedByteArray) -> void:
+	if _gone_33(n, s):                                 # $95E8
+		return
+	if s[F_SELF] != 0:
+		s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+		if s[F_SELF] != 0:
+			return
+		s[F_KIND] = 0x59                               # $BE6E 59
+		set_speed_down(s, 0xFC, 0x00)                  # $BEB9 00 FC
+		face_hero(s)                                   # $C8FD
+		if walled_ahead(s, 0xFC, 0xFC, 0x00) >= 0x80:  # $9514, $C954
+			set_speed_side(s, 0x00, 0x00)              # $94CB
+			return
+		var r: int = random() & 0x07                   # $C939
+		set_speed_side_facing(s, 0xFF, STEP_31[r])     # $C903
+		return
+	add_speed_down(s, 0x28)                            # $C90C
+	if s[F_VY] >= 0x80:
+		if ground_turn_clear(n, s, 0x00, 0xF8) >= 0x80:    # $BECB F8 00
+			set_speed_down(s, 0x00, 0x00)              # $BEB9 00 00
+	else:
+		if s[F_VY] >= 0x04:
+			set_speed_down(s, 0x04, 0x00)              # $BEB9 00 04
+		if ground_turn_clear(n, s, 0x00, 0x04) >= 0x80:    # $BECB 04 00
+			snap_down(s)                               # $C981
+			s[F_KIND] = 0x5A                           # $BE6E 5A
+			s[F_SELF] = 0x20                           # $BE75 20
+			return
+	step_down(s)                                       # $C8F4
+	if walled_ahead_turn(n, s, 0xFC, 0xFC, 0x00, 0x00) >= 0x80:   # $C957
+		set_speed_side(s, 0x00, 0x00)                  # $94CB
+		return
+	step_side(s)                                       # $C8F7
+
+
+## $9524 -- the third: flies out, makes one hop of the second's, and then
+## walks at him at one and a half, turning at walls and at edges, with a rest
+## of $28 between walks of a random length.
+func _mind_32(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:
+		0:
+			start_anim(s, 0x1C)                        # $BEAD 1C
+			_launch_33(s)                              # $959D
+		1:
+			if not _fly_33(n, s):                      # $95AF
+				step_anim(s)                           # $C837
+				return
+			s[F_SELF] = 0                              # $9540
+			set_speed_down(s, 0x00, 0x00)              # $C909
+			set_speed_side(s, 0x00, 0x00)              # $C906
+			s[F_STATE] += 1                            # $C966
+		2:
+			_hop_31(n, s)                              # $949A
+			if s[F_TYPE] == 0 or s[F_SELF] == 0:
+				return
+			start_anim(s, 0x1C)                        # $BEAD 1C
+			set_speed_down(s, 0x00, 0x00)              # $BEB9 00 00
+			set_speed_side_at_hero(s, 0xFE, 0x80)      # $BEBF 80 FE
+			s[F_SELF] = 0x80                           # $BE75 80
+			s[F_STATE] += 1                            # $C966
+		3:
+			if _gone_33(n, s):                         # $95E8
+				return
+			s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+			if s[F_SELF] == 0:
+				s[F_SELF] = 0x28                       # $BE75 28
+				s[F_STATE] += 1                        # $C966
+				return
+			walled_ahead_turn_about(n, s, 0xF8, 0xFF, 0xF9)   # $BF12 F8 F9 FF
+			ground_turn_edge(n, s, 0xF8, 0x04)         # $BEE9 04 F8
+			step_anim(s)                               # $C8EE
+			step_both(s)
+		4:
+			s[F_SELF] = (s[F_SELF] - 1) & 0xFF
+			if s[F_SELF] != 0:
+				return
+			var r: int = random() & 0x1F               # $C939
+			s[F_SELF] = (r + 0x1F + (1 if rng_carry else 0)) & 0xFF   # $9594 ADC
+			s[F_STATE] -= 1                            # $C969
+
+
+## $959D -- off at sixteen along its own start, looking the way it goes, for
+## sixteen turns.
+func _launch_33(s: PackedByteArray) -> void:
+	set_speed_at(s, 0x10, s[F_SELF])                   # $C8AF
+	face_by_speed(s)                                   # $C993
+	s[F_COUNT] = 0x10                                  # $BE7C 10
+	s[F_STATE] += 1                                    # $C966
+
+
+## $95AF -- one turn of that flight, stopped on each axis by a wall four out.
+## True when the sixteen turns are over.
+func _fly_33(n: int, s: PackedByteArray) -> bool:
+	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+	if s[F_COUNT] == 0:
+		return true
+	var side: int = 0xFC if s[F_VX] >= 0x80 else 0x04
+	if ground_turn_clear(n, s, side, 0x00) >= 0x80:    # $C945
+		set_speed_side(s, 0x00, 0x00)                  # $BEB3 00 00
+	step_side(s)                                       # $C8F7
+	var down: int = 0xFC if s[F_VY] >= 0x80 else 0x04
+	if ground_turn_clear(n, s, 0x00, down) >= 0x80:    # $C945
+		set_speed_down(s, 0x00, 0x00)                  # $BEB9 00 00
+	step_down(s)                                       # $C8F4
+	return false
+
+
+## $95E8 -- $FF turns of grace, then gone as soon as it is off the screen.
+## True when it has been taken away and the turn is over.
+func _gone_33(n: int, s: PackedByteArray) -> bool:
+	if s[F_GROUND] != 0:
+		s[F_GROUND] -= 1
+		return false
+	if (s[F_XHI] | s[F_YHI]) != 0:                     # $C9C3
+		clear(n)                                       # $C810
+		return true
+	return false
+
+
+## $964D -- the crawl, and the four children while it lasts.
+func _split_33(n: int, s: PackedByteArray) -> void:
+	match s[F_STATE]:                                  # $826C
+		0: _start_crawl(s)
+		1: _crawl_step(s)
+		2: _drop_01(n, s)
+	if s[F_STATE] == 1 and s[F_SELF] == 2:             # $9650
+		clear(n)                                       # $C810
+		return
+	if s[F_GROUND] & 0x80:                             # $9661
+		return
+	if (s[F_XHI] | s[F_YHI]) != 0:                     # $C9C3
+		return
+	for k in range(FIRST_LIVE, FIRST_PLACED):          # $C873
+		var c: PackedByteArray = slots[k]
+		if c[F_TYPE] != 0:
+			continue
+		c[F_X] = s[F_X]                                # $C924, $C927
+		c[F_Y] = s[F_Y]
+		c[F_TYPE] = s[F_REC_BYTE]                      # $967A
+		c[F_SELF] = SPLIT_33[s[F_GROUND]]              # $9684
+		c[F_LIFE] = 0x01                               # $BE5A 01
+		c[F_MARK] = 0x01
+		c[F_GROUND] = 0xFF                             # $BEA6 FF
+		slots[k] = c
+		var was: int = s[F_GROUND]
+		s[F_GROUND] = (s[F_GROUND] - 1) & 0xFF         # $9697
+		if was == 2:
+			Pb2Sound.want(0x14)                        # $96A0
+		return
 
 
 ## $A8B4 (банк 11) -- двойня.  Дождавшись героя ближе тридцати двух шагов
