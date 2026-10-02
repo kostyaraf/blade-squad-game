@@ -80,8 +80,39 @@ func cube_item_is_the_stages() -> void:
 			s.leave()
 
 
+## ITM-02 -- a door keeps $2B:$2C (capsules already taken) and $98 (which
+## drop the next death gives): only a new game wipes them ($86C5, $D06C).
+func door_keeps_taken_and_drops() -> void:
+	for kinds in [[0], [1], [0, 1], [0, 0]]:
+		var s := Pb3Session.new(kinds)
+		s.at = 0
+		s.enter()
+		var pads := []
+		for i in kinds:
+			pads.append(0)
+		for t in range(5):
+			s.advance(s.tick, pads)
+		s.two.host_pb2.got = 0x0204
+		s.two.host_pb2.drop_clock = 5
+		var tag := "%s door S0A0 -> S0A1" % str(kinds)
+		check(s._travel(Pb3Pair.PB2, 0, 1) == "changed", tag + ": travelled")
+		for t in range(5):
+			s.advance(s.tick, pads)
+		check(s.two.host_pb2.got == 0x0204, tag + ": taken capsules kept (%X)" % s.two.host_pb2.got)
+		check(s.two.host_pb2.drop_clock == 5, tag + ": drop order kept (%d)" % s.two.host_pb2.drop_clock)
+		s.leave()
+		# And a new run from the list starts both afresh.
+		s = Pb3Session.new(kinds)
+		s.at = 1
+		s.enter()
+		check(s.two.host_pb2.got == 0 and s.two.host_pb2.drop_clock == 0,
+				str(kinds) + ": a new run starts afresh")
+		s.leave()
+
+
 func run() -> void:
 	cube_item_is_the_stages()
+	door_keeps_taken_and_drops()
 	if failed == 0:
 		print("pb3_items_test: ok")
 	quit(1 if failed else 0)
