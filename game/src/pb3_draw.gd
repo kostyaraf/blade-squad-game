@@ -289,8 +289,14 @@ func _guest_table() -> void:
 			guest_oam.fill(Pb2Sprites.HIDDEN)
 			return
 	if two.who[guest] == PB2:
-		guest_oam = Pb2Sprites.build((two.things[guest] as Pb2Objects).slots,
-				guest_rot, guest_oam)
+		var slots: Array = (two.things[guest] as Pb2Objects).slots
+		var q: Pb2Player = two.pb2[guest]
+		if q.drawing_pose() != q.pose:
+			# Rendering gets a copy; weapon/terrain tables keep the native pose.
+			slots = slots.duplicate()
+			slots[0] = (slots[0] as PackedByteArray).duplicate()
+			slots[0][Pb2Objects.F_KIND] = q.drawing_pose()
+		guest_oam = Pb2Sprites.build(slots, guest_rot, guest_oam)
 		guest_rot = (guest_rot + Pb2Sprites.ROTATE) & 0xFF
 		return
 	var h: SolPlayer = two.sol[guest]

@@ -28,15 +28,16 @@ func _initialize() -> void:
 		var q := falling(suit)
 		q.step(Pad.UP,Pad.UP,q.cam)
 		check(q.sub==Pb2Player.SUB_NET,"Up catches net in suit "+str(suit))
+		check(q.pose==int(q.cfg.ladder_pose),"grip keeps native physical pose")
 		var at := Vector2i(q.x,q.y)
 		var poses := {}
-		poses[q.pose]=true
+		poses[q.drawing_pose()]=true
 		for f in range(24):
 			q.step(0,0,q.cam)
-			poses[q.pose]=true
+			poses[q.drawing_pose()]=true
 		check(poses.size()==3,"reach/catch/hold art phases")
 		check(Vector2i(q.x,q.y)==at and q.vx==0 and q.vy==0,"released pad holds without falling")
-		check(q.pose==Pb2Sprites.net_pose(2,suit!=0),"stable held pose")
+		check(q.drawing_pose()==Pb2Sprites.net_pose(2,suit!=0),"stable held pose")
 		# Both camera axes move while the grip stays fixed in world space.
 		q.shift=3
 		q.shift_y=2
@@ -48,7 +49,7 @@ func _initialize() -> void:
 		q.shift_y=0
 		q.step(Pad.A,Pad.A,q.cam)
 		check(q.sub==Pb2Player.SUB_AIR and q.vy<0,"Jump leaves net upwards")
-		check(q.pose==Pb2Sprites.net_pose(3,suit!=0),"release has authored pose")
+		check(q.drawing_pose()==Pb2Sprites.net_pose(3,suit!=0),"release has authored pose")
 	var q := falling()
 	q.step(0,0,q.cam)
 	check(q.sub==Pb2Player.SUB_AIR,"no automatic catch without Up")
@@ -73,9 +74,11 @@ func _initialize() -> void:
 	q.step(Pad.B,Pad.B,q.cam)
 	check(q.sub==Pb2Player.SUB_NET and (q.state&0x80)!=0,"can attack while gripping")
 	for f in range(60): q.step(0,0,q.cam)
-	check(q.sub==Pb2Player.SUB_NET and q.pose==Pb2Sprites.net_pose(2,false),"attack returns to hold")
+	check(q.sub==Pb2Player.SUB_NET and q.drawing_pose()==Pb2Sprites.net_pose(2,false),"attack returns to hold")
 	# Verify native tile bytes survive extension of the atlas.
-	var original := Image.load_from_file('res://data/pb2/tiles.png')
+	var original := Image.new()
+	check(original.load_png_from_buffer(FileAccess.get_file_as_bytes('res://data/pb2/tiles.png'))==OK,
+		"native CHR PNG loads from bytes")
 	original.convert(Image.FORMAT_R8)
 	var atlas := Nes.sheet('pb2').get_image()
 	check(atlas.get_region(Rect2i(0,0,original.get_width(),original.get_height())).get_data()==original.get_data(),"native Nova CHR preserved")
@@ -91,11 +94,15 @@ func _initialize() -> void:
 	session.advance(session.tick,[Pad.UP,Pad.UP])
 	for i in range(2):
 		check(session.two.pb2[i].sub==Pb2Player.SUB_NET,"co-op Nova catches independently "+str(i))
+		check(session.two.things[i].slots[0][Pb2Objects.F_KIND]==session.two.pb2[i].pose,
+			"object mirror keeps native pose "+str(i))
 		var draw := Pb3Draw.new(session.two,i)
 		var authored := false
 		for n in range(0,256,4):
 			if draw.guest_oam[n]<240 and (draw.guest_oam[n+2]&0x10)!=0: authored=true
 		check(authored,"custom Nova tiles reach OAM "+str(i))
+		check(session.two.things[i].slots[0][Pb2Objects.F_KIND]==session.two.pb2[i].pose,
+			"OAM assembly does not change physical mirror "+str(i))
 	# Damage must release an attached player without altering the other one.
 	session.two.guest_sol[0].suit -= 1
 	session.two._harvest()

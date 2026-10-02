@@ -49,6 +49,8 @@ var combo_slide := false
 var net_enabled := false
 var net_ticks := 0
 var net_release_ticks := 0
+## Authored picture phase; pose remains a native physics/weapon table index.
+var net_draw_phase := -1
 
 var lvl: Pb2Level
 var cfg: Dictionary
@@ -171,6 +173,7 @@ func step(buttons: int, pressed: int, camera: int,
 	limit = shot_limit
 	dx = 0
 	dy = 0
+	net_draw_phase = -1
 	touched_sol_hazard = false
 	# $05A2 is his own cell, and $8E49 wipes it at the end of every update, so
 	# what the mud says about him is said afresh each frame.  But the things
@@ -217,7 +220,7 @@ func step(buttons: int, pressed: int, camera: int,
 		_: _ground()
 	if net_release_ticks > 0:
 		if sub == SUB_AIR and (state & 0x80) == 0:
-			pose = Pb2Sprites.net_pose(int(Pb2Sprites.net_art().animations.release), suit != 0)
+			net_draw_phase = int(Pb2Sprites.net_art().animations.release)
 			net_release_ticks -= 1
 		else:
 			net_release_ticks = 0
@@ -349,7 +352,8 @@ func _net_grab() -> bool:
 	net_ticks = 0
 	state = 0x04 # Native ladder attack selection, without ladder movement.
 	sub = SUB_NET
-	pose = Pb2Sprites.net_pose(0, suit != 0)
+	pose = int(cfg["ladder_pose"])
+	net_draw_phase = 0
 	return true
 
 
@@ -380,7 +384,16 @@ func _net() -> void:
 	var phase := 0 if net_ticks < int(art.reach_ticks) else 1
 	if net_ticks >= int(art.reach_ticks) + int(art.catch_ticks):
 		phase = int(art.hold)
-	pose = Pb2Sprites.net_pose(phase, suit != 0)
+	pose = int(cfg["ladder_pose"])
+	net_draw_phase = phase
+
+
+## Only the renderer reads this number; native tables and object mirrors use pose.
+func drawing_pose() -> int:
+	if net_enabled and net_draw_phase >= 0 and (state & 0x80) == 0 \
+			and sub in [SUB_NET, SUB_AIR]:
+		return Pb2Sprites.net_pose(net_draw_phase, suit != 0)
+	return pose
 
 
 ## $8F8C -- crouching.
@@ -1713,6 +1726,7 @@ func _pushed() -> void:
 
 ## $9FE2
 func _jump() -> void:
+	net_draw_phase = -1
 	vy = int(cfg["jump_speed"])
 	if combo_slide and lvl is SolAsPb2:
 		# PB3 compatibility: one extra gravity step clears Solbrain's
@@ -1726,6 +1740,7 @@ func _jump() -> void:
 
 ## $9FDB -- walking off a ledge is a very small jump.
 func _step_off(speed: int = 0x7FFFFFFF) -> void:
+	net_draw_phase = -1
 	vy = int(cfg["step_off_speed"]) if speed == 0x7FFFFFFF else speed
 	_set_pose(POSE_RISE)
 	fall = 0
