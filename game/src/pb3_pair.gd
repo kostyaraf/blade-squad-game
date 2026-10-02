@@ -85,6 +85,10 @@ var slid := Vector2i.ZERO
 ## $60 of a Solbrain view, which the cartridge has no name for: how far it was
 ## asked at the end of the last picture to slide at the start of this one.
 var sol_pending := Vector2i.ZERO
+## The Solbrain view the heroes last measured themselves against, in pixels.
+## A stage script ($A835/$A867 and others) may move the view after the heroes
+## took their picture; that motion belongs to the next `slid`, not to nobody.
+var sol_seen := Vector2i(-1, -1)
 ## The middle of the two as it stood at the end of the last picture, in
 ## sixteenths, at the height Solbrain's own view is measured from.
 var started := false
@@ -423,6 +427,7 @@ func begin(spots: Array, flow: bool = false) -> void:
 			sol_eye.x = (mid.x << 4) & 0xF000
 		if mid.y < (sol_eye.y >> 4) or mid.y >= (sol_eye.y >> 4) + 0xF0:
 			sol_eye.y = (mid.y << 4) & 0xF000
+		sol_seen = Vector2i(sol_eye.x >> 4, sol_eye.y >> 4)
 		_led_by_sol()
 	elif pb2v.vertical:
 		# The view of an area that scrolls downwards is counted in pages of
@@ -594,10 +599,13 @@ func step(pads: Array) -> void:
 				else Vector2i(0, eye.shift)
 	else:
 		var was_eye := Vector2i(sol_eye.x >> 4, sol_eye.y >> 4)
+		if sol_seen.x >= 0:
+			was_eye = sol_seen
 		_sol_move(sol_pending)
 		sol_pending = Vector2i.ZERO
 		slid = Vector2i((sol_eye.x >> 4) - was_eye.x,
 				(sol_eye.y >> 4) - was_eye.y)
+		sol_seen = Vector2i(sol_eye.x >> 4, sol_eye.y >> 4)
 		_led_by_sol()
 	pads_now = pads
 	ended = Pb2Turn.NONE
