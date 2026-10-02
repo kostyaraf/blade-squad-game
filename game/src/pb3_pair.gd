@@ -197,6 +197,7 @@ func release() -> void:
 	for pool in guest_pool:
 		if pool != null:
 			pool.hero = null
+			pool.stage_pool = null
 	if spare_sol != null:
 		spare_sol.pool = null
 
@@ -539,6 +540,8 @@ func _raise_flow() -> void:
 			# drawn: his pool is stepped with a pretended view, so the only
 			# way onto the picture is to lay it out again afterwards.
 			guest_pool[i].w_keep = true
+			# ITM-01 -- what he breaks out of the stage is the stage's.
+			guest_pool[i].stage_pool = host_sol
 		if game == PB2:
 			var row := Pb2Objects.empty_row()
 			row[Pb2Objects.F_LIFE] = 0x10

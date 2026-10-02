@@ -407,13 +407,19 @@ static func _break(o: SolObjects, x: int) -> void:
 
 
 ## Same $B933 path for a foreign weapon, without borrowing a satellite slot.
+##
+## PB3: `o` is the striker's pool, so his hurt and his suit choose the item
+## ($05C2/$05C5) and his slot fifteen is cooled; the wall, the rubble order
+## and the item itself are the stage's (`o.stage_side()`), where it can be seen and
+## picked up.  For the stage's own hero both are the same pool.
 static func break_at(o: SolObjects, px: int, py: int) -> void:
-	var v: int = o.break_wall(px, py)           # $B93F
+	var t: SolObjects = o.stage_side()
+	var v: int = t.break_wall(px, py)           # $B93F
 	if v < 0:
 		return                                          # $B942
 	var f := -1
 	for i in range(0x0B, -1, -1):                       # $B944
-		if o.id[i] == 0:
+		if t.id[i] == 0:
 			f = i
 			break
 	if f < 0:
@@ -423,30 +429,30 @@ static func break_at(o: SolObjects, px: int, py: int) -> void:
 		if o.hero_hurt != 0:                            # $05C2
 			m = 0x05                                    # $B95A
 		else:
-			m = 0x08 + (o.noise & 0x01)                 # $B95E
+			m = 0x08 + (t.noise & 0x01)                 # $B95E
 	else:
-		m = WALL[o.z7c & 0x07]                          # $B96E
-		o.z7c = (o.z7c + 1) & 0xFF
+		m = WALL[t.z7c & 0x07]                          # $B96E
+		t.z7c = (t.z7c + 1) & 0xFF
 		if (m & 0x80) != 0:
-			if o.hero_suit >= 0x03 and (o.noise & 0x03) == 0:
+			if o.hero_suit >= 0x03 and (t.noise & 0x03) == 0:
 				m = 0x07                                # $B984
 			else:
 				m = 0x06                                # $B980
-	o.mind[f] = m                                       # $B986
-	o.life[f] = 0x10                                    # $B98B
-	o.x[f] = (px & 0xFF00) | 0x80                   # $B98E
-	o.y[f] = (py & 0xFF00) | 0x80
-	o.cool[f] = 0x80                                    # $B99C
-	o.id[f] = 0x80
-	o.left[f] = 0                                       # $8DCA
-	o.frame[f] = 0
-	o.anim_a[f] = 0
-	o.pic_lo[f] = 0                                     # $B9A5
-	o.pic_hi[f] = 0
-	o.a[f] = 0
-	o.kind[f] = 0
+	t.mind[f] = m                                       # $B986
+	t.life[f] = 0x10                                    # $B98B
+	t.x[f] = (px & 0xFF00) | 0x80                   # $B98E
+	t.y[f] = (py & 0xFF00) | 0x80
+	t.cool[f] = 0x80                                    # $B99C
+	t.id[f] = 0x80
+	t.left[f] = 0                                       # $8DCA
+	t.frame[f] = 0
+	t.anim_a[f] = 0
+	t.pic_lo[f] = 0                                     # $B9A5
+	t.pic_hi[f] = 0
+	t.a[f] = 0
+	t.kind[f] = 0
 	SolSound.want_noise = 0x25          # $B9B1 -- $F1
-	o.hatch_up(o.x[f], o.y[f], 0x24)                    # $B9B7
+	t.hatch_up(t.x[f], t.y[f], 0x24)                    # $B9B7
 	if o.id[0x0F] != 0:                                 # $B9BA
 		o.cool[0x0F] = 0                                # $B9BF
 

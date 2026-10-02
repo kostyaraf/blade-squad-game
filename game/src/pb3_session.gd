@@ -170,10 +170,19 @@ func _travel(game: int, stage: int, area: int, phase: int = 0,
 		return "list"
 	var came: int = two.came
 	var old_clock: Pb2Status = two.host_status
+	# ITM-02 -- $2B:$2C (the capsules already taken) and $98 (which drop the
+	# next death gives) belong to the game, not to the area: a door keeps them
+	# and only a new game ($86C5) or the end of it ($D06C) wipes them.
+	var old_world: Pb2Objects = two.host_pb2
 	two.release()
 	two = Pb3Pair.new(game, stage, area, kinds)
 	two.came = came if game == Pb3Pair.PB2 else stage
 	two.begin(entry_spots(), true)
+	if old_world != null and two.host_pb2 != null:
+		# Set before the first picture: that is when the screen's things
+		# come out (`fill`) and ask `got` whether they are still there.
+		two.host_pb2.got = old_world.got
+		two.host_pb2.drop_clock = old_world.drop_clock
 	if two.host_pb2 != null:
 		two.host_pb2.phase = phase
 		two.host_pb2.boss = boss
