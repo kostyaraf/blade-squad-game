@@ -44,6 +44,7 @@ func _initialize() -> void:
 					air_ticks += 1
 					if air_ticks < int(opts.get("hold",24)): pad |= 128
 				if air_ticks == int(opts.get("shoot_at",20)): pad |= 64
+				if opts.has("shoot_every") and k % int(opts.shoot_every) == 0: pad |= 64
 				var e := s.advance(s.tick,[pad])
 				if not steps.is_empty() and int(steps[-1][1]) == pad: steps[-1][0] += 1
 				else: steps.append([1,pad])
@@ -73,4 +74,10 @@ func snapshot(s: Pb3Session) -> Dictionary:
 		var r: PackedByteArray = s.two.host_pb2.slots[n]
 		if r[0] != 0: enemies.append([r[0],r[7],r[12],r[9]])
 	out["enemies"] = enemies
+	var rows: Array = []
+	for n in range(Pb2Objects.FIRST_LIVE,Pb2Objects.SLOTS):
+		var r: PackedByteArray = s.two.host_pb2.slots[n]
+		if r[Pb2Objects.F_TYPE] != 0:
+			rows.append({"slot":n,"type":r[Pb2Objects.F_TYPE],"life":r[Pb2Objects.F_LIFE],"state":r[Pb2Objects.F_STATE],"x":r[Pb2Objects.F_X],"y":r[Pb2Objects.F_Y]})
+	out["rows"] = rows
 	return out
