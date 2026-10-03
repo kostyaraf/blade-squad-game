@@ -274,6 +274,10 @@
       {
         "tick": 1773,
         "all_alive": true
+      },
+      {
+        "tick": 3947,
+        "all_alive": true
       }
     ]
   }
