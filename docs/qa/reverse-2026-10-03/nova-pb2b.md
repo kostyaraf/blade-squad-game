@@ -13,7 +13,7 @@
 | p4.0 | ☐ | [вход](../../playthrough/p4.0-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→10; (746,127); вход 29 |
 | p4.1 | ☐ | [вход](../../playthrough/p4.1-nova-pb2b-entry/replay.json) | — | обход 224 тиков; TEAM DOWN - CHOOSE A LEVEL TO RETRY; события list@224 |
 | p4.2 | ☐ | [вход](../../playthrough/p4.2-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→12; (746,127); вход 31 |
-| p4.3 | ☐ | — | — | вход ещё не проверен |
+| p4.3 | ☐ | [вход](../../playthrough/p4.3-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→16; (234,127); вход 32; события changed@83 |
 | p4.4 | ☐ | — | — | вход ещё не проверен |
 | p4.5 | ☐ | — | — | вход ещё не проверен |
 | p4.6 | ☐ | — | — | вход ещё не проверен |
