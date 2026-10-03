@@ -318,5 +318,14 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "s16-nova/replay.json",
+    "checkpoints": [
+      {
+        "tick": 2188,
+        "all_alive": true
+      }
+    ]
   }
 ]
