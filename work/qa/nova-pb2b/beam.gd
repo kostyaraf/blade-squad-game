@@ -313,6 +313,13 @@ func score(k: Dictionary) -> float:
 			sc -= (absi(w2.x - int(target[0])) + absi(w2.y - int(target[1]))) * 2.0
 		else:
 			sc -= absi(w2.x - (lv.width_tiles * 8 - 16)) * 10.0
+	if args.has("floor"):
+		# feet below this line (flat y) are over a pit: treat as nearly lost
+		var wf: Vector2i = s.two.flat_of(0)
+		sc -= maxi(0, wf.y - int(args.floor)) * 300.0
+	if args.has("ceil"):
+		var wc: Vector2i = s.two.flat_of(0)
+		sc -= maxi(0, int(args.ceil) - wc.y) * 300.0
 	if kill_w > 0 and s.two.host_pb2 != null:
 		var o: Pb2Objects = s.two.host_pb2
 		for n in range(Pb2Objects.FIRST_LIVE, Pb2Objects.SLOTS):
