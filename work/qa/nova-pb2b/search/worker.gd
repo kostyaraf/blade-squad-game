@@ -114,6 +114,17 @@ func pick_action(sim: Sim, stuck: int) -> Array:
 	if absi(dx) <= 4: fwd = 0
 	var fire: int = int(cfg.get("fire", 0x40))
 	if rng.randf() < float(cfg.get("no_fire", 0.15)): fire = 0
+	if cfg.has("suit_by_wp"):
+		var sw: Array = cfg.suit_by_wp
+		var want2: int = int(sw[mini(sim.wi, sw.size() - 1)])
+		var have2: int = sim.s.two.pb2[0].suit
+		if want2 >= 0 and want2 != have2 and (want2 == 0 or sim.s.gear.energy > 0):
+			var m3: Array = [[1, 16], [1, 0]]
+			for _k in range((have2 - want2 + 5) % 5):
+				m3.append([1, 4])
+				m3.append([1, 0])
+			m3.append_array([[1, 16], [24, 0]])
+			return m3
 	if cfg.has("suits") and rng.randf() < float(cfg.get("suit_rate", 0.02)):
 		var want: int = int(cfg.suits[rng.randi() % cfg.suits.size()])
 		var have: int = sim.s.two.pb2[0].suit
@@ -156,7 +167,11 @@ func pick_action(sim: Sim, stuck: int) -> Array:
 
 func rollout() -> Dictionary:
 	var sim := make()
+	var wps0: Array = cfg.waypoints
+	cfg.waypoints = []   # waypoints belong to this room only, not to the replayed chain
 	play(sim, cfg.get("prefix", []))
+	cfg.waypoints = wps0
+	sim.wi = 0
 	var seg: Array = []
 	var length := int(cfg.get("length", 200))
 	var t0 := sim.s.tick
