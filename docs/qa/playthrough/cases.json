@@ -219,5 +219,8 @@
   },
   {
     "file": "s10-s14-sol/replay.json"
+  },
+  {
+    "file": "s17-nova/replay.json"
   }
 ]
