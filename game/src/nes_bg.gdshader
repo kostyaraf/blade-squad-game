@@ -72,6 +72,8 @@ uniform bool sprites_on = false;
 // line is put out of reach.
 uniform float split_at = 1000.0;
 uniform vec2 scroll2 = vec2(0.0);
+// $EB4E/$E7DA: the moving upper strip wraps separately from the fixed floor.
+uniform float top_wrap_y = 0.0;
 
 // Outside a stage the picture rides over the console's own two kilobytes of
 // name map put up four times, and it comes back round at the far edge: the
@@ -128,6 +130,9 @@ void fragment() {
     bool outside = FRAGCOORD.y < view_top || FRAGCOORD.y >= view_bottom;
     vec2 world = floor((FRAGCOORD.y < split_at ? scroll : scroll2)
                        + FRAGCOORD.xy);
+    if (top_wrap_y > 0.0 && FRAGCOORD.y < split_at) {
+        world.y = mod(mod(world.y, top_wrap_y) + top_wrap_y, top_wrap_y);
+    }
     if (wrap.x > 0.0) {
         world = mod(mod(world, wrap) + wrap, wrap);
     }
