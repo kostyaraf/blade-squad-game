@@ -592,7 +592,32 @@
         "all_alive": true
       },
       {
-        "tick": 2947,
+        "tick": 3368,
+        "all_alive": true
+      },
+      {
+        "tick": 4036,
+        "all_alive": true
+      },
+      {
+        "tick": 4988,
+        "all_alive": true
+      }
+    ]
+  },
+  {
+    "file": "p3-nova-pb2b/replay.json",
+    "checkpoints": [
+      {
+        "tick": 479,
+        "all_alive": true
+      },
+      {
+        "tick": 1685,
+        "all_alive": true
+      },
+      {
+        "tick": 1686,
         "all_alive": true
       }
     ]
