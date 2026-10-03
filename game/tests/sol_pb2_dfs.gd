@@ -29,7 +29,10 @@ func _initialize() -> void:
 	var max_segments: int = int(cfg.get("segments", 400))
 	var order_seed: int = int(cfg.get("shuffle", 0))
 	var base_len := steps.size()
-	var levels: Array = [[0, cur]]   # levels[i] = [next cand idx, state after i macros]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(cfg.get("shuffle", 0))
+	var shuf: bool = int(cfg.get("shuffle", 0)) != 0
+	var levels: Array = [[0, cur, _order(cands.size(), rng, shuf)]]   # levels[i] = [next cand idx, state after i macros]
 	var macros: Array = []           # accepted macros
 	var best_tick: int = int(cur.tick)
 	var fails := 0
@@ -47,7 +50,7 @@ func _initialize() -> void:
 			macros = best_macros.duplicate()
 			levels = []
 			for i in range(best_results.size()):
-				levels.append([0 if i >= best_results.size() - reopen else cands.size(), best_results[i]])
+				levels.append([0 if i >= best_results.size() - reopen else cands.size(), best_results[i], _order(cands.size(), rng, shuf)])
 			print("RELAX req ", req, " from tick ", best_tick)
 			continue
 		var lv: Array = levels[-1]
@@ -58,7 +61,7 @@ func _initialize() -> void:
 			if not macros.is_empty(): macros.pop_back()
 			fails += 1
 			continue
-		var c: Array = cands[lv[0]]
+		var c: Array = cands[lv[2][lv[0]]]
 		lv[0] += 1
 		var trial: Array = steps.duplicate(true)
 		for m in macros: trial.append_array(m)
@@ -75,7 +78,7 @@ func _initialize() -> void:
 		if r.score < -1.0e8 or r.hp < req or r.prog < (lv[1].prog + lazy_gain):
 			continue
 		macros.append(c)
-		levels.append([0, r])
+		levels.append([0, r, _order(cands.size(), rng, shuf)])
 		if r.tick > best_tick:
 			best_tick = r.tick
 			since_best = 0
@@ -87,6 +90,14 @@ func _initialize() -> void:
 			_save(out_steps, [{"tick": r.tick, "x": r.x, "y": r.y, "hp": r.hp, "evals": evals, "depth": levels.size(), "boss": r.get("boss", -1)}], r)
 	print("END evals ", evals, " best tick ", best_tick)
 	quit(0)
+
+func _order(n: int, rng: RandomNumberGenerator, shuf: bool) -> Array:
+	var o: Array = range(n)
+	if shuf:
+		for i in range(n - 1, 0, -1):
+			var j: int = rng.randi_range(0, i)
+			var t = o[i]; o[i] = o[j]; o[j] = t
+	return o
 
 func _append(steps: Array, part: Array) -> void:
 	for p in part:
@@ -133,9 +144,10 @@ func _run(steps: Array) -> Dictionary:
 	res.view = s.two.eye.pos if s.two.pb2v.vertical else 0
 	var g: Dictionary = cfg.get("goal", {})
 	var score: float = 0.0
-	if g.has("y"): score -= absf(float(p.y) - float(g.y)) * 10.0
-	elif not g.has("x"): score -= float(p.y) * 10.0
-	if g.has("x"): score -= absf(float(p.x) - float(g.x)) * 10.0
+	if g.has("y") and (not g.has("y_when_y_below") or p.y < int(g.y_when_y_below)): score -= absf(float(p.y) - float(g.y)) * 10.0
+	elif not g.has("y") and not cfg.get("no_y", false): score -= float(p.y) * 10.0
+	if g.has("x") and (not g.has("x_when_y_below") or p.y < int(g.x_when_y_below)):
+		score -= absf(float(p.x) - float(g.x)) * 10.0
 	if cfg.get("boss", false):
 		var life := 0
 		var bx := -1
@@ -148,6 +160,13 @@ func _run(steps: Array) -> Dictionary:
 		if s.tick >= int(cfg.get("boss_from", 150)): score -= float(life) * 400.0
 		if bx >= 0:
 			score -= absf(float(bx) - float(res.x - s.two.view_x())) * float(cfg.get("boss_dist", 2.0))
+	if cfg.has("broken_bonus"):
+		var bits: int = int(s.two.host_pb2.broken)
+		var cnt := 0
+		while bits != 0:
+			cnt += bits & 1
+			bits >>= 1
+		score += float(cnt) * float(cfg.broken_bonus)
 	res.prog = score
 	res.score = score + float(h.suit) * 100000.0
 	s.leave()

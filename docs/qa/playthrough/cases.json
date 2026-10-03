@@ -283,5 +283,8 @@
   },
   {
     "file": "p0-sol-SPB2/replay.json"
+  },
+  {
+    "file": "p0-sol-SPB2-p05/replay.json"
   }
 ]
