@@ -35,7 +35,7 @@ def accept(src, name, seconds=180):
     return st, r
 def promote(name):
     r=json.loads((F/name/"replay.json").read_text())
-    cps=[{"tick":e["tick"]-1,"all_alive":True} for e in r["events"] if e["event"]=="changed"]
+    cps=[{"tick":e["tick"]-1,"all_alive":True} for e in r["events"] if e["event"]=="changed" or (e["event"]=="list" and e["message"].startswith("STAGE CLEAR"))]
     cases=json.loads((F/"cases.json").read_text()); key=name+"/replay.json"
     for c in cases:
         if c["file"]==key: c["checkpoints"]=cps;break

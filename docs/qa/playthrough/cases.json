@@ -433,5 +433,42 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "p0-sol-SPB2-clear/replay.json",
+    "checkpoints": [
+      {
+        "tick": 923,
+        "all_alive": true
+      },
+      {
+        "tick": 1704,
+        "all_alive": true
+      },
+      {
+        "tick": 3056,
+        "all_alive": true
+      },
+      {
+        "tick": 4184,
+        "all_alive": true
+      },
+      {
+        "tick": 5736,
+        "all_alive": true
+      },
+      {
+        "tick": 12128,
+        "all_alive": true
+      },
+      {
+        "tick": 14220,
+        "all_alive": true
+      },
+      {
+        "tick": 19732,
+        "all_alive": true
+      }
+    ]
   }
 ]
