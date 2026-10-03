@@ -32,14 +32,14 @@ func _initialize() -> void:
 				var p: Vector2i = s.two.world_of(0)
 				if p.y < 250 and p.x > 200: crossed = true
 				var target: int = 52 if k < int(opts.get("cross_at",540)) else 216
-				if crossed: target = 56 if p.y >= 160 else 240
+				if crossed: target = 56 if p.y >= int(opts.get("upper_cross_y", 144)) else 240
 				if k < int(opts.get("guard_right",0)): target = 216
 				var pad := 0
 				if p.x < target-1: pad |= 1
 				elif p.x > target+1: pad |= 2
 				if h.state in [0,2]:
 					air_ticks = 0
-					pad |= 128
+					if (h.pad_held & 128) == 0: pad |= 128
 				else:
 					air_ticks += 1
 					if air_ticks < int(opts.get("hold",24)): pad |= 128
@@ -68,6 +68,10 @@ func snapshot(s: Pb3Session) -> Dictionary:
 	var p: Vector2i = s.two.world_of(0)
 	out.merge({"x":p.x,"y":p.y,"hp":s.two.sol[0].suit,"state":s.two.sol[0].state,"view":[s.two.view_x(),s.two.eye.pos if s.two.pb2v.vertical else 0]})
 	var h: SolPlayer = s.two.sol[0]
+	out["gun"] = s.gear.gun[0]
+	out["energy"] = s.gear.energy
+	var o: SolObjects = s.two.guest_pool[0]
+	out["sat"] = {"id":o.id[SolObjects.SAT],"life":o.life[SolObjects.SAT],"mind":o.mind[SolObjects.SAT]}
 	out["hero"] = {"scripted":h.scripted,"pad":h.pad_held,"timer":h.timer,"speed":h.speed,"rise":h.rise,"vy":h.vy,"pose":h.pose,"hold":h.hold,"hurt":h.hurt}
 	var enemies: Array = []
 	for n in range(Pb2Objects.FIRST_LIVE,Pb2Objects.SLOTS):
