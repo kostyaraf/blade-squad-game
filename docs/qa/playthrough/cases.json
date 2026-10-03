@@ -48,7 +48,7 @@
         "all_alive": true
       },
       {
-        "tick": 2704,
+        "tick": 2703,
         "all_alive": true
       }
     ]
@@ -61,11 +61,11 @@
         "all_alive": true
       },
       {
-        "tick": 2704,
+        "tick": 2703,
         "all_alive": true
       },
       {
-        "tick": 3488,
+        "tick": 3515,
         "player": 1,
         "position": [
           683,
@@ -73,7 +73,7 @@
         ]
       },
       {
-        "tick": 4552,
+        "tick": 4646,
         "all_alive": true
       }
     ]
@@ -100,6 +100,15 @@
       },
       {
         "tick": 1351,
+        "all_alive": true
+      }
+    ]
+  },
+  {
+    "file": "p0.3-sol/replay.json",
+    "checkpoints": [
+      {
+        "tick": 1133,
         "all_alive": true
       }
     ]
@@ -153,5 +162,32 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "s3-nova/replay.json"
+  },
+  {
+    "file": "s3-s18-nova/replay.json"
+  },
+  {
+    "file": "s9-s18-nova/replay.json"
+  },
+  {
+    "file": "s12-nova/replay.json"
+  },
+  {
+    "file": "s13-nova/replay.json"
+  },
+  {
+    "file": "s14-nova/replay.json"
+  },
+  {
+    "file": "s1-nova/replay.json"
+  },
+  {
+    "file": "s2-nova/replay.json"
+  },
+  {
+    "file": "s6-nova/replay.json"
   }
 ]

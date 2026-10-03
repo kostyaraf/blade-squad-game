@@ -85,6 +85,12 @@ var slid := Vector2i.ZERO
 ## $60 of a Solbrain view, which the cartridge has no name for: how far it was
 ## asked at the end of the last picture to slide at the start of this one.
 var sol_pending := Vector2i.ZERO
+## The Solbrain view the heroes last measured themselves against, in pixels.
+## A stage script ($A835/$A867 and others) may move the view after the heroes
+## took their picture; that motion belongs to the next `slid`, not to nobody.
+var sol_seen := Vector2i(-1, -1)
+## $75 as the Power Blade heroes last stood on it, -1 off the carrying map.
+var ride_seen := -1
 ## The middle of the two as it stood at the end of the last picture, in
 ## sixteenths, at the height Solbrain's own view is measured from.
 var started := false
@@ -197,6 +203,7 @@ func release() -> void:
 	for pool in guest_pool:
 		if pool != null:
 			pool.hero = null
+			pool.stage_pool = null
 	if spare_sol != null:
 		spare_sol.pool = null
 
@@ -422,6 +429,7 @@ func begin(spots: Array, flow: bool = false) -> void:
 			sol_eye.x = (mid.x << 4) & 0xF000
 		if mid.y < (sol_eye.y >> 4) or mid.y >= (sol_eye.y >> 4) + 0xF0:
 			sol_eye.y = (mid.y << 4) & 0xF000
+		sol_seen = Vector2i(sol_eye.x >> 4, sol_eye.y >> 4)
 		_led_by_sol()
 	elif pb2v.vertical:
 		# The view of an area that scrolls downwards is counted in pages of
@@ -539,6 +547,8 @@ func _raise_flow() -> void:
 			# drawn: his pool is stepped with a pretended view, so the only
 			# way onto the picture is to lay it out again afterwards.
 			guest_pool[i].w_keep = true
+			# ITM-01 -- what he breaks out of the stage is the stage's.
+			guest_pool[i].stage_pool = host_sol
 		if game == PB2:
 			var row := Pb2Objects.empty_row()
 			row[Pb2Objects.F_LIFE] = 0x10
@@ -591,10 +601,13 @@ func step(pads: Array) -> void:
 				else Vector2i(0, eye.shift)
 	else:
 		var was_eye := Vector2i(sol_eye.x >> 4, sol_eye.y >> 4)
+		if sol_seen.x >= 0:
+			was_eye = sol_seen
 		_sol_move(sol_pending)
 		sol_pending = Vector2i.ZERO
 		slid = Vector2i((sol_eye.x >> 4) - was_eye.x,
 				(sol_eye.y >> 4) - was_eye.y)
+		sol_seen = Vector2i(sol_eye.x >> 4, sol_eye.y >> 4)
 		_led_by_sol()
 	pads_now = pads
 	ended = Pb2Turn.NONE
@@ -752,6 +765,7 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 			continue
 		var q: Pb2Player = pb2[i]
 		q.combo_slide = live_session
+		q.net_enabled = live_session and game == SOL
 		var v: Pb2Objects = things[i]
 		v.cam = eye.pos
 		# Э5.8 -- and his, in his own game's order the other way about: what
@@ -766,6 +780,13 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 		else:
 			q.shift = slid.x
 			q.shift_y = slid.y
+		if game == SOL:
+			# $D065/$D079 -- the lift carries whoever stands on its line:
+			# the view rose by `slid` and the line moved by what $75 did, so
+			# a hero on it ($A126, only while he stands) goes with both.
+			q.push_y = 0
+			if down.ride_line >= 0 and ride_seen >= 0:
+				q.push_y = host_sol.z75 - ride_seen + slid.y
 		var held: int = int(pads[i])
 		var hit: int = held & ~last_pad[i]
 		last_pad[i] = held
@@ -786,6 +807,8 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 			# looks for him when it turns round ($A764).
 			if flowing:
 				Pb2Turn.mirror(v, q)
+	if game == SOL:
+		ride_seen = host_sol.z75 if down.ride_line >= 0 else -1
 	_drive_view()
 	_hold_them_in()
 	_mirror_them()
@@ -794,9 +817,18 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 ## The foreign map has thin ledges that fall between Solbrain's two side
 ## probes ($A411). Sweep the whole standing body so a jump cannot start with
 ## his chest inside a ledge. One substep is at most one pixel, in integers.
+##
+## Crouched, the body is his own crouching box ($80DE: middle ten above his
+## feet, ten each way), so its top is twenty above his feet, not thirty-two.
+## A PB2 hero crouches under a low ledge on a lift (p0.4); so must he.
+const SOL_STANDING_DY := [-15, -8, 0, 8, 15]
+const SOL_CROUCHED_DY := [-4, 0, 8, 15]
+
 func _sol_clear(h: SolPlayer, at: Vector2i) -> bool:
+	var body: Array = SOL_CROUCHED_DY if h.state == SolPlayer.ST_CROUCH \
+			else SOL_STANDING_DY
 	for dx in [-5, 0, 5]:
-		for dy in [-15, -8, 0, 8, 15]:
+		for dy in body:
 			var p := at + Vector2i(dx, dy) * 16
 			if solv.collision_at(p.x >> 4, p.y >> 4) >= Pb2AsSol.SOLID:
 				return false
@@ -913,10 +945,13 @@ func _sol_traversal(i: int, pad: int) -> bool:
 		elif (pad & Pad.DOWN) == 0 or not q._ladder_grab():
 			return false
 		climbers[i] = q
+		h.bridge_climb_distance = 0
 	else:
 		q.shift = slid.y if pb2v.vertical else slid.x
 	if host_pb2 != null:
 		q.solids = _platform_boxes()
+	var previous_y: int = q.y
+	var previous_sub: int = q.sub
 	q.step(pad & ~Pad.B, hit & ~Pad.B, eye.pos)
 	h.x = ((view_x() << 4) + (q.x >> 4)) & 0xFFFF
 	var low: bool = q.sub in [Pb2Player.SUB_SLIDE, Pb2Player.SUB_CROUCH]
@@ -935,13 +970,27 @@ func _sol_traversal(i: int, pad: int) -> bool:
 		h.bridge_compact = true
 		h.bridge_slide = q.sub == Pb2Player.SUB_SLIDE and q.vx != 0
 		h.bridge_slide_ticks = h.bridge_slide_ticks + 1 if was_sliding else 0
-		h.bridge_frame = 0 if h.bridge_slide_ticks < 4 else 1 + (h.bridge_slide_ticks / 6) % 2
+		var slide_art: Dictionary = SolSprites.traversal_art().animations.slide
+		var enter_ticks: int = int(slide_art.enter_ticks)
+		if not h.bridge_slide:
+			h.bridge_frame = int(slide_art.rest)
+		elif h.bridge_slide_ticks < enter_ticks:
+			h.bridge_frame = int(slide_art.first)
+		else:
+			h.bridge_frame = int(slide_art.loop_first) + ((h.bridge_slide_ticks - enter_ticks) / int(slide_art.loop_ticks)) % int(slide_art.loop_count)
 	elif q.sub in [Pb2Player.SUB_LADDER, Pb2Player.SUB_LADDER_ON,
 			Pb2Player.SUB_LADDER_OFF, Pb2Player.SUB_LADDER_MID]:
-		# $94A9 advances anim_i only while moving; a released pad freezes it.
-		var half_step: int = int(q.anims[q.anim_index[2]][0]) / 2
-		var phase: int = (maxi(0, q.anim_i - 1) % 2) * 2
-		h.bridge_frame = 3 + phase + (1 if q.anim_t <= half_step else 0)
+		# PB3 art follows actual travel, reversing on descent. Remove camera
+		# displacement and exclude the native mount/dismount position snaps.
+		var climb_art: Dictionary = SolSprites.traversal_art().animations.climb
+		var stride: int = int(climb_art.pixels_per_frame) << 8
+		var cycle: int = int(climb_art.count) * stride
+		if previous_sub == Pb2Player.SUB_LADDER and q.sub == Pb2Player.SUB_LADDER:
+			var travelled: int = q.y - previous_y + (q.shift_y << 8)
+			if pb2v.vertical:
+				travelled += q.shift << 8
+			h.bridge_climb_distance = posmod(h.bridge_climb_distance - travelled, cycle)
+		h.bridge_frame = int(climb_art.first) + h.bridge_climb_distance / stride
 		h._pose(0) # Give _picture a valid base even when mounting at spawn.
 	h._picture()
 	if q.sub not in [Pb2Player.SUB_LADDER, Pb2Player.SUB_LADDER_ON,
@@ -1100,6 +1149,8 @@ func _harvest() -> void:
 		else:
 			var s: PackedByteArray = things[i].slots[0]
 			s[Pb2Objects.F_LIFE] = maxi(0, s[Pb2Objects.F_LIFE] - took)
+			if pb2[i].sub == Pb2Player.SUB_NET:
+				pb2[i]._step_off(0)
 
 
 ## A guest of a Power Blade area: twenty nine bytes of $0400's shape, his feet
@@ -1420,6 +1471,16 @@ func _drive_view() -> void:
 		sol_pending = Vector2i.ZERO
 		_remember()
 		return
+	# $A4BB (NSB-04) -- while a room script holds the heroes ($9E73 clears
+	# $06/$04) it walks $30/$31 itself, a sixteenth of a screen a picture,
+	# until the boss column is under the hero.  The native view only follows
+	# a hero who moves ($F1EA), and a held one does not, so the walk stands;
+	# the pair's band would pull it back every picture and the step never ends.
+	if game == SOL and live_session and host_script != null \
+			and host_script.controls_locked:
+		sol_pending = Vector2i.ZERO
+		_remember()
+		return
 	var mid := Vector2i.ZERO
 	for k in range(across.size()):
 		mid += Vector2i(across[k], down[k])
@@ -1523,6 +1584,10 @@ func _sol_move(d: Vector2i) -> void:
 func _led_by_sol() -> void:
 	eye.pos = (sol_eye.x >> 4) & 0xFFFF
 	down.cam_y = (sol_eye.y >> 4) + Pb2Objects.VIEW_TOP
+	# $D04E -- on the carrying map the ground is the lift's line, $75 lines
+	# under the top of the view.
+	down.ride_line = (sol_eye.y >> 4) + host_sol.z75 \
+			if host_sol != null and sol_eye.map_kind == SolCamera.RIDE else -1
 
 
 ## $AC1C -> $96FF: scripted departure can cross the screen and wrap Y.

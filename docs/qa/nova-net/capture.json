@@ -1,0 +1,4560 @@
+{
+  "events": [],
+  "evidence": "ordinary input from native entry",
+  "final_entry": 63,
+  "final_tick": 3020,
+  "frames": [
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 12,
+          "pose": 24,
+          "sub": 8,
+          "suit": 0,
+          "vy": -468,
+          "world": [
+            1252,
+            344
+          ]
+        }
+      ],
+      "tick": 2695,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 12,
+          "pose": 24,
+          "sub": 8,
+          "suit": 0,
+          "vy": -306,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2696,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 12,
+          "pose": 24,
+          "sub": 8,
+          "suit": 0,
+          "vy": -144,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2697,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 108,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2698,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 108,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2699,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 108,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2700,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 108,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2701,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 108,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2702,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 109,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2703,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 109,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2704,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 109,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2705,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 109,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2706,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 109,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2707,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2708,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2709,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2710,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2711,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2712,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2713,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2714,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2715,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2716,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2717,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2718,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2719,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2720,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2721,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2722,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2723,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2724,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": true,
+      "pads": [
+        16
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2725,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": true,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2744,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": true,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2745,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        16
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2746,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2747,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2748,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2749,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2750,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2751,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2752,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2753,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2754,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2755,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2756,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2757,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2758,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2759,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2760,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2761,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2762,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2763,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2764,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2765,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2766,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        2
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2767,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        2
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2768,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        2
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2769,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        2
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2770,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        2
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2771,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        2
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2772,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        2
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2773,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        2
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2774,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        2
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2775,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        2
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2776,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        2
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2777,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        2
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 12,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2778,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        64
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 28,
+          "life": 12,
+          "pose": 28,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2779,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 28,
+          "life": 12,
+          "pose": 28,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2780,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 28,
+          "life": 12,
+          "pose": 28,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2781,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 28,
+          "life": 12,
+          "pose": 28,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2782,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 28,
+          "life": 12,
+          "pose": 28,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2783,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 28,
+          "life": 12,
+          "pose": 28,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2784,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 29,
+          "life": 12,
+          "pose": 29,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2785,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 29,
+          "life": 12,
+          "pose": 29,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2786,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 29,
+          "life": 12,
+          "pose": 29,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2787,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 29,
+          "life": 12,
+          "pose": 29,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2788,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 29,
+          "life": 12,
+          "pose": 29,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2789,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 29,
+          "life": 12,
+          "pose": 29,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1252,
+            343
+          ]
+        }
+      ],
+      "tick": 2790,
+      "view": [
+        1124,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2850,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2851,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2852,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2853,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2854,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2855,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2856,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2857,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2858,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2859,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2860,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2861,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2862,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2863,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2864,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2865,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2866,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2867,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2868,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2869,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2870,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2871,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2872,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2873,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2874,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2875,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2876,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2877,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2878,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2879,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2880,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": true,
+      "pads": [
+        16
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 110,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 0,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2881,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": true,
+      "pads": [
+        8
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2882,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": true,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2883,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": true,
+      "pads": [
+        16
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2884,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2885,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2886,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2887,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2888,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2889,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2890,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2891,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2892,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2893,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2894,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2895,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2896,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2897,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2898,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2899,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        0
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 114,
+          "life": 11,
+          "pose": 30,
+          "sub": 29,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1253,
+            376
+          ]
+        }
+      ],
+      "tick": 2900,
+      "view": [
+        1125,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": 250,
+          "world": [
+            1257,
+            379
+          ]
+        }
+      ],
+      "tick": 2910,
+      "view": [
+        1128,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": 300,
+          "world": [
+            1258,
+            380
+          ]
+        }
+      ],
+      "tick": 2911,
+      "view": [
+        1129,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": 350,
+          "world": [
+            1259,
+            382
+          ]
+        }
+      ],
+      "tick": 2912,
+      "view": [
+        1130,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 17,
+          "life": 11,
+          "pose": 17,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1260,
+            383
+          ]
+        }
+      ],
+      "tick": 2913,
+      "view": [
+        1131,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 6,
+          "life": 11,
+          "pose": 6,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1261,
+            383
+          ]
+        }
+      ],
+      "tick": 2914,
+      "view": [
+        1132,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 6,
+          "life": 11,
+          "pose": 6,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1262,
+            383
+          ]
+        }
+      ],
+      "tick": 2915,
+      "view": [
+        1133,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 6,
+          "life": 11,
+          "pose": 6,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1263,
+            383
+          ]
+        }
+      ],
+      "tick": 2916,
+      "view": [
+        1134,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 6,
+          "life": 11,
+          "pose": 6,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1264,
+            383
+          ]
+        }
+      ],
+      "tick": 2917,
+      "view": [
+        1135,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 6,
+          "life": 11,
+          "pose": 6,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1265,
+            383
+          ]
+        }
+      ],
+      "tick": 2918,
+      "view": [
+        1136,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 6,
+          "life": 11,
+          "pose": 6,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1266,
+            383
+          ]
+        }
+      ],
+      "tick": 2919,
+      "view": [
+        1137,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 6,
+          "life": 11,
+          "pose": 6,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1267,
+            383
+          ]
+        }
+      ],
+      "tick": 2920,
+      "view": [
+        1138,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 6,
+          "life": 11,
+          "pose": 6,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1268,
+            383
+          ]
+        }
+      ],
+      "tick": 2921,
+      "view": [
+        1139,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 6,
+          "life": 11,
+          "pose": 6,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1269,
+            383
+          ]
+        }
+      ],
+      "tick": 2922,
+      "view": [
+        1140,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 7,
+          "life": 11,
+          "pose": 7,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1270,
+            383
+          ]
+        }
+      ],
+      "tick": 2923,
+      "view": [
+        1141,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 7,
+          "life": 11,
+          "pose": 7,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1271,
+            383
+          ]
+        }
+      ],
+      "tick": 2924,
+      "view": [
+        1142,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 7,
+          "life": 11,
+          "pose": 7,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1272,
+            383
+          ]
+        }
+      ],
+      "tick": 2925,
+      "view": [
+        1143,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 7,
+          "life": 11,
+          "pose": 7,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1273,
+            383
+          ]
+        }
+      ],
+      "tick": 2926,
+      "view": [
+        1144,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 7,
+          "life": 11,
+          "pose": 7,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1274,
+            383
+          ]
+        }
+      ],
+      "tick": 2927,
+      "view": [
+        1145,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 7,
+          "life": 11,
+          "pose": 7,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1275,
+            383
+          ]
+        }
+      ],
+      "tick": 2928,
+      "view": [
+        1146,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 7,
+          "life": 11,
+          "pose": 7,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1276,
+            383
+          ]
+        }
+      ],
+      "tick": 2929,
+      "view": [
+        1147,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        1
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 7,
+          "life": 11,
+          "pose": 7,
+          "sub": 4,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1277,
+            383
+          ]
+        }
+      ],
+      "tick": 2930,
+      "view": [
+        1148,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -1330,
+          "world": [
+            1278,
+            383
+          ]
+        }
+      ],
+      "tick": 2931,
+      "view": [
+        1149,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -1280,
+          "world": [
+            1279,
+            378
+          ]
+        }
+      ],
+      "tick": 2932,
+      "view": [
+        1150,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -1230,
+          "world": [
+            1280,
+            373
+          ]
+        }
+      ],
+      "tick": 2933,
+      "view": [
+        1151,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -1180,
+          "world": [
+            1281,
+            368
+          ]
+        }
+      ],
+      "tick": 2934,
+      "view": [
+        1152,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -1130,
+          "world": [
+            1282,
+            364
+          ]
+        }
+      ],
+      "tick": 2935,
+      "view": [
+        1153,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -1080,
+          "world": [
+            1283,
+            359
+          ]
+        }
+      ],
+      "tick": 2936,
+      "view": [
+        1154,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -1030,
+          "world": [
+            1284,
+            355
+          ]
+        }
+      ],
+      "tick": 2937,
+      "view": [
+        1155,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -980,
+          "world": [
+            1285,
+            352
+          ]
+        }
+      ],
+      "tick": 2938,
+      "view": [
+        1156,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -930,
+          "world": [
+            1286,
+            348
+          ]
+        }
+      ],
+      "tick": 2939,
+      "view": [
+        1157,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -880,
+          "world": [
+            1287,
+            345
+          ]
+        }
+      ],
+      "tick": 2940,
+      "view": [
+        1158,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -830,
+          "world": [
+            1288,
+            341
+          ]
+        }
+      ],
+      "tick": 2941,
+      "view": [
+        1159,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -780,
+          "world": [
+            1289,
+            338
+          ]
+        }
+      ],
+      "tick": 2942,
+      "view": [
+        1160,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -730,
+          "world": [
+            1290,
+            335
+          ]
+        }
+      ],
+      "tick": 2943,
+      "view": [
+        1161,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -680,
+          "world": [
+            1291,
+            333
+          ]
+        }
+      ],
+      "tick": 2944,
+      "view": [
+        1162,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -630,
+          "world": [
+            1292,
+            330
+          ]
+        }
+      ],
+      "tick": 2945,
+      "view": [
+        1163,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -580,
+          "world": [
+            1293,
+            328
+          ]
+        }
+      ],
+      "tick": 2946,
+      "view": [
+        1164,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -530,
+          "world": [
+            1294,
+            326
+          ]
+        }
+      ],
+      "tick": 2947,
+      "view": [
+        1165,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -480,
+          "world": [
+            1295,
+            324
+          ]
+        }
+      ],
+      "tick": 2948,
+      "view": [
+        1166,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -430,
+          "world": [
+            1296,
+            322
+          ]
+        }
+      ],
+      "tick": 2949,
+      "view": [
+        1167,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -380,
+          "world": [
+            1297,
+            321
+          ]
+        }
+      ],
+      "tick": 2950,
+      "view": [
+        1168,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -330,
+          "world": [
+            1298,
+            320
+          ]
+        }
+      ],
+      "tick": 2951,
+      "view": [
+        1169,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 24,
+          "life": 11,
+          "pose": 24,
+          "sub": 8,
+          "suit": 1,
+          "vy": -280,
+          "world": [
+            1299,
+            319
+          ]
+        }
+      ],
+      "tick": 2952,
+      "view": [
+        1170,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 38,
+          "life": 11,
+          "pose": 38,
+          "sub": 22,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1300,
+            319
+          ]
+        }
+      ],
+      "tick": 2953,
+      "view": [
+        1171,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 38,
+          "life": 11,
+          "pose": 38,
+          "sub": 22,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1300,
+            319
+          ]
+        }
+      ],
+      "tick": 2954,
+      "view": [
+        1172,
+        256
+      ]
+    },
+    {
+      "held": false,
+      "pads": [
+        129
+      ],
+      "players": [
+        {
+          "alive": true,
+          "drawing": 38,
+          "life": 11,
+          "pose": 38,
+          "sub": 22,
+          "suit": 1,
+          "vy": 0,
+          "world": [
+            1300,
+            319
+          ]
+        }
+      ],
+      "tick": 2955,
+      "view": [
+        1172,
+        256
+      ]
+    }
+  ],
+  "grip_ticks": 188,
+  "source": "res://../docs/qa/nova-net/s0-nova-input.json"
+}

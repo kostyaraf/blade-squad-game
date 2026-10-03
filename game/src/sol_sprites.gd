@@ -28,6 +28,13 @@ static var shine_off: PackedByteArray = PackedByteArray()
 static var bare: PackedByteArray = PackedByteArray()
 static var pictures: Array = []
 static var traversal: Array = []
+static var traversal_data: Dictionary = {}
+
+
+static func traversal_art() -> Dictionary:
+	if traversal_data.is_empty():
+		traversal_data = Nes._load_json(Nes.DATA + "/pb3/sol_traversal.json")
+	return traversal_data
 
 ## $F4D0 -- past this many sprites the second end is not written at all.
 const CROWDED := 0x3A
@@ -91,7 +98,7 @@ static func hero(p: SolPlayer, x: int, y: int, t: Table) -> void:
 static func _traversal(p: SolPlayer, x: int, y: int, t: Table) -> void:
 	if traversal.is_empty():
 		var tile := 0
-		for frame in Nes._load_json(Nes.DATA + "/pb3/sol_traversal.json")["frames"]:
+		for frame in traversal_art()["frames"]:
 			var parts: Array = []
 			for row in range(0, int(frame.height), 16):
 				for col in range(0, int(frame.width), 8):
