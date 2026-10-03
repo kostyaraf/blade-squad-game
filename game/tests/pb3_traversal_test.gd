@@ -41,6 +41,24 @@ func points(pair: Pb3Pair) -> Array:
 		sample.append(found[(n * (found.size() - 1)) / maxi(1, mini(3, found.size()) - 1)])
 	return sample
 
+## REV-02 -- a live session's hero rules (net, combo slide, Solbrain on a
+## Power Blade map) without the level's things.  `begin(.., false)` raises no
+## pools, but a live Solbrain stage hands every guest a contact carrier
+## ($948D timer, $8354 wound; `Pb3Pair._raise_flow`).  The stand gives each
+## guest the same idle carrier, so the empty stage is a whole live one.
+func live_without_flow(pair: Pb3Pair) -> void:
+	pair.live_session = true
+	if pair.game != 1:
+		return
+	pair.guest_sol.resize(pair.who.size())
+	for i in range(pair.who.size()):
+		if i == pair.host:
+			continue
+		var carrier := SolPlayer.new(pair.solv)
+		carrier.timer = 0xFF
+		pair.guest_sol[i] = carrier
+
+
 func run() -> void:
 	for rec in Pb3List.records():
 		var look := Pb3Pair.new(rec[0], rec[1], rec[2], [0, 1])
@@ -54,7 +72,7 @@ func run() -> void:
 					if rec[0] == 0:
 						pair.solv.continuous_vertical = true
 					pair.begin([spot, spot])
-					pair.live_session = true
+					live_without_flow(pair)
 					var bad := ""
 					for f in range(180):
 						var word: int = 0 if mode == 0 else (Pad.RIGHT if mode % 2 else Pad.LEFT)
