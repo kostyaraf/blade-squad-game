@@ -28,7 +28,8 @@ static func take(root: Object) -> Array:
 				continue
 			var v = o.get(pn)
 			var t := typeof(v)
-			if (t == TYPE_ARRAY or t == TYPE_DICTIONARY or t >= TYPE_PACKED_BYTE_ARRAY) and v.size() > BIG:
+			# packed bytes are cheap to copy and hold the breakable map (tiles)
+			if (t == TYPE_ARRAY or t == TYPE_DICTIONARY or t > TYPE_PACKED_BYTE_ARRAY) and v.size() > BIG:
 				if not skipped.has(pn):
 					skipped[pn] = v.size()
 				continue
