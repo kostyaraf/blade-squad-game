@@ -18,8 +18,8 @@
 | p0.4 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 4379 | повтор от p0.0; босс p6.0 также завершён |
 | p0.5 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 10515 | повтор от p0.0; босс p6.0 также завершён |
 | p0.6 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 12019 | повтор от p0.0; босс p6.0 также завершён |
-| p1.0 | ☑ | [p1-nova-pb2b](../playthrough/p1-nova-pb2b/replay.json) | 1774 | обычный ввод; враги и урон; повтор цепочки |
-| p1.1 | ☑ | [p1-nova-pb2b](../playthrough/p1-nova-pb2b/replay.json) | 3948 | обычный ввод; враги и урон; повтор цепочки |
+| p1.0 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 1774 | обычный ввод; враги и урон; повтор цепочки |
+| p1.1 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 4401 | обычный ввод; враги и урон; костюм0; ожидание камеры на последней площадке; энергия11 после двери |
 | p1.2 | ☑ | [p1-nova-pb2b](../playthrough/p1-nova-pb2b/replay.json) | 4777 | обычный ввод; враги и урон; повтор цепочки |
 | p1.3 | ☑ | [p1-nova-pb2b](../playthrough/p1-nova-pb2b/replay.json) | 5658 | обычный ввод; враги и урон; повтор цепочки |
 | p1.4 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 530 | обычный ввод; враги и урон; повтор цепочки |
@@ -275,4 +275,10 @@ NPB-02 уже исправлен SPB2-02 (91c9729), повтор боя оста
 
 полёт костюмом3 через гнёзда; обработчик $1C исправлен NPB2-40; вход к p6.1. Запись `p1-upper-nova-pb2b`, штатный выход 4676.
 Последнее состояние: тик 4690, вход 54, [{'alive': True, 'energy': 5, 'life': 16, 'menu': 0, 'owned': 15, 'state': 0, 'status_mode': 4, 'sub': 4, 'suit': 3, 'vy': 0, 'x': 32, 'y': 143}].
+Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.
+
+### Передача после p1.1 (продолжение 3)
+
+костюм0; ожидание камеры на последней площадке; энергия11 после двери. Запись `p1-nova-pb2b-energy`, штатный выход 4401.
+Последнее состояние: тик 4460, вход 9, [{'alive': True, 'energy': 11, 'life': 16, 'menu': 0, 'owned': 15, 'state': 0, 'status_mode': 3, 'sub': 4, 'suit': 0, 'vy': 0, 'x': 224, 'y': 303}].
 Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.
