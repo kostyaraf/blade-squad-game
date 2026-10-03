@@ -120,7 +120,7 @@ var cull_rules: Array = []
 
 ## $8080 -- the minds the engine has of its own.  A type that is not in here
 ## is still told what it did; a type that is drives itself and is compared.
-const MINDS := {0x46: "_mind_46", 0x3D: "_mind_3d", 0x48: "_mind_48", 0x01: "_mind_01", 0x02: "_mind_02", 0x11: "_mind_12", 0x45: "_mind_42", 0x1F: "_mind_1f", 0x2A: "_mind_2a", 0x16: "_mind_16", 0x18: "_mind_18", 0x10: "_mind_10", 0x23: "_mind_23",
+const MINDS := {0x1C: "_mind_1c", 0x46: "_mind_46", 0x3D: "_mind_3d", 0x48: "_mind_48", 0x01: "_mind_01", 0x02: "_mind_02", 0x11: "_mind_12", 0x45: "_mind_42", 0x1F: "_mind_1f", 0x2A: "_mind_2a", 0x16: "_mind_16", 0x18: "_mind_18", 0x10: "_mind_10", 0x23: "_mind_23",
 		0x12: "_mind_12", 0x17: "_mind_17", 0x19: "_mind_19",
 		0x13: "_mind_13", 0x1D: "_mind_1d",
 		0x2C: "_mind_2c", 0x2D: "_mind_2c",
@@ -225,6 +225,7 @@ var death_cfg: Dictionary = {}
 var small_shot_cfg: Dictionary = {}
 var hatchling_cfg: Dictionary = {}
 var hand_4a_cfg: Dictionary = {}
+var nest_child_cfg: Dictionary = {}
 var drop_clock := 0  ## $98 -- successive deaths read successive nibbles.
 ## The ten minds themselves, which live in a file of their own.
 var bosses := Pb2Bosses.new()
@@ -373,6 +374,7 @@ func _init(level: Pb2Level) -> void:
 	small_shot_cfg = t["small_shots"]
 	hatchling_cfg = t["hatchling"]
 	hand_4a_cfg = t["hand_4a"]
+	nest_child_cfg = t["nest_child"]
 	pickup_bit = PackedByteArray(t["pickup_bit"])
 	pickup_pic = PackedByteArray(t["pickup_pic"])
 	cull_class = PackedByteArray(t["cull_class"])
@@ -5200,6 +5202,48 @@ func _mind_1b(_n: int, s: PackedByteArray) -> void:
 	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
 	if s[F_COUNT] == 0:
 		s[F_STATE] -= 1                                # $C969
+
+
+## $8E29..$8E9C (bank 10) -- child of nest $1B. The whole/fraction
+## speeds, probes, gravity and terminal animation are extracted from ROM.
+func _mind_1c(n: int, s: PackedByteArray) -> void:
+	var d: Dictionary = nest_child_cfg
+	if s[F_STATE] == 0:
+		start_anim(s, int(d.anim))                       # $8E34
+		set_speed_down(s, int(d.fall[0]), int(d.fall[1]))
+		set_speed_side_at_hero(s, int(d.side[0]), int(d.side[1]))
+		s[F_LIFE] = int(d.life)                         # $BE5A
+		s[F_MARK] = int(d.mark)                         # $C99F
+		s[F_STATE] += 1
+	elif s[F_STATE] == 1:
+		step_anim(s)                                   # $8E49
+		if walled_either_turn(n, s, int(d.floor[0]), int(d.floor[1]), 0) >= 0x80:
+			snap_down(s)                               # $8E67
+			set_speed_down(s, 0, 0)
+			s[F_STATE] += 1
+		else:
+			add_speed_down(s, int(d.gravity))           # $8E54
+			# Native CMP is unsigned, including a wrapped negative whole byte.
+			if s[F_VY] >= int(d.limit[0]):
+				set_speed_down(s, int(d.limit[0]), int(d.limit[1]))
+			step_down(s)
+	elif s[F_STATE] == 2:
+		if walled_either_turn(n, s, int(d.floor[0]), int(d.floor[1]), 0x80) < 0x80:
+			s[F_STATE] -= 1                            # $8E79
+		elif walled_ahead_turn(n, s, int(d.wall[0]), int(d.wall[1]), int(d.wall[2]), 0) >= 0x80:
+			start_anim(s, int(d.end_anim))              # $8E87
+			s[F_COUNT] = int(d.end_ticks)
+			s[F_STATE] += 1
+		else:
+			step_anim(s)                               # $C8EE -> $FA05
+			step_side(s)
+			step_down(s)
+	else:
+		s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF             # $8E92
+		if s[F_COUNT] == 0:
+			clear(n)
+		else:
+			step_anim(s)
 
 
 ## $910D -- the one that hangs in the air and spits.  The bottom bit of the
