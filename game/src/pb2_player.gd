@@ -197,6 +197,7 @@ func step(buttons: int, pressed: int, camera: int,
 	y -= shift_y << 8
 	cam = camera
 	_terrain()
+	_b570()
 	match sub:
 		SUB_GROUND: _ground()
 		SUB_AIR: _air()
@@ -2232,6 +2233,60 @@ func _scaled(v: int) -> int:
 
 
 # ------------------------------------------------------- what he stands in
+
+## $B570 -- what the sort of area ($87) does to him, after the ground has had
+## its say ($8E1D) and before he moves ($8E2C).  Kinds five and nine ride a
+## floor that the screen carries ($B5E7, p0.5 and p3.6); kind seven nothing;
+## every other kind looks at $2E for an area that slides sideways by itself
+## ($B59F, p4.4 and p5.3).
+func _b570() -> void:
+	if lvl is SolAsPb2:
+		return
+	match lvl.kind:
+		5, 9:
+			_b5e7()
+		7:
+			pass
+		_:
+			_b59f()
+
+
+## $B59F -- the view carries itself sideways: the edge it is coming from pushes
+## him on a pixel a step, and past it he is dead.
+func _b59f() -> void:
+	var sx: int = (x >> 8) & 0xFF
+	if lvl.auto == 3:
+		if sx < 0xEF:
+			return
+		held |= 0x10                            # $0668
+		push_x = -1                             # $063C := $FF
+		if sx >= 0xF7:
+			dead = true                         # $049A := 0
+	elif lvl.auto == 4:
+		if sx >= 0x12:
+			return
+		held |= 0x20
+		push_x = 1
+		if sx < 0x0A:
+			dead = true
+
+
+## $B5E7 -- a floor right across the screen at the area's line ($29), as solid
+## as any thing's ($0120..$0150), which the view carries up with it.  Standing
+## a little into it he is lifted out; caught more than six lines under it, he
+## is crushed.
+func _b5e7() -> void:
+	var top: int = (lvl.line - 1) & 0xFF        # $08
+	var under: int = (top + 2) & 0xFF           # $09
+	solids = solids + [[0x00, 0xFF, under, (under + 0x28) & 0xFF]]
+	var sy: int = (y >> 8) & 0xFF
+	if sy < top or (state & 0x60) != 0:
+		return
+	var v: int = ((sy - under) & 0xFF) ^ 0xFF   # $0652
+	push_y = v - 256 if v > 127 else v
+	if v >= 0x80 and v < 0xFA:
+		dead = true                             # $049A := 0
+
 
 ## $B316 -- what the place he is standing in does to him.
 ##
