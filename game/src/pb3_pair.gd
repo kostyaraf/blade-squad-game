@@ -91,6 +91,10 @@ var sol_pending := Vector2i.ZERO
 var sol_seen := Vector2i(-1, -1)
 ## $75 as the Power Blade heroes last stood on it, -1 off the carrying map.
 var ride_seen := -1
+## SPB-03 -- where the top of a Power Blade lift ($B5E7) stood in the level
+## last step, in hero lines, and how far it has risen since.
+var lift_seen := -1
+var lift_carry := 0
 ## The middle of the two as it stood at the end of the last picture, in
 ## sixteenths, at the height Solbrain's own view is measured from.
 var started := false
@@ -652,8 +656,27 @@ func step(pads: Array) -> void:
 						continue
 					if (solv as Pb2AsSol).hurts_at((p.x >> 4) + dx, feet + dy):
 						gone[i] = true
-		if not _sol_departing(i) and world_of(i).y >= solv.height_tiles * 8:
+		if not _sol_departing(i) and _below_area(i):
 			gone[i] = true
+
+
+## Out of the bottom of the area -- in both games the fall that kills.
+##
+## A Power Blade area that scrolls downwards keeps its map in pages of 256
+## lines but is never shown below its last view, page and line $59/$5A
+## (`Pb2Camera.limit_page`/`limit_low`, from the area record).  The map
+## under that view can be empty, or not drawn at all, so its height is not
+## the bottom: the bottom is the last line of the lowest view.  His own hero
+## dies higher up, at screen line $C7 ($A17A, `_off_foot`); the Solbrain hero
+## has only his own rule -- feet past the end of the stage -- and here the
+## end of the stage is the foot of that lowest screen (SPB-07, p2.0).
+func _below_area(i: int) -> bool:
+	var feet: int = world_of(i).y
+	if feet >= solv.height_tiles * 8:
+		return true
+	if game == PB2 and pb2v.vertical:
+		return _flat(feet) >= pb2v.cam_limit_page * 240 + pb2v.cam_limit_low + 0xF0
+	return false
 
 
 ## $A17A..$A191 -- a Power Blade hero whose feet are off the foot of the
@@ -749,6 +772,16 @@ func _sol_script_feet(i: int) -> Vector2i:
 func _walk_them(take_pad: bool = false, shots: int = 0,
 		extra: int = 0, hold: int = 0) -> void:
 	var pads: Array = pads_now
+	lift_carry = 0
+	if live_session and game == PB2 and host_pb2 != null:
+		# SPB-03 -- the lift is a box fixed on the screen; the native hero
+		# lives in screen lines and rides it for free ($D363, then $0652).
+		# Solbrain lives in the level, so he is moved by what it rose.
+		var lift: Array = host_pb2.lift_box
+		var top: int = -1 if lift.is_empty() else _hero_y(line_at(int(lift[2])))
+		if top >= 0 and lift_seen >= 0:
+			lift_carry = top - lift_seen
+		lift_seen = top
 	for i in range(who.size()):
 		shoved[i] = Vector2i.ZERO
 		if gone[i]:
@@ -908,6 +941,12 @@ func _supply_surfaces(i: int) -> void:
 		if i != host and feet.x >= int(box[0]) - dx - 5 and feet.x <= int(box[1]) - dx + 5 \
 				and absi(feet.y - (int(box[2]) - dy)) <= 1:
 			carry = Vector2i(dx, dy)
+	var lift: Array = host_pb2.lift_box
+	if who[i] == SOL and not lift.is_empty():
+		boxes = boxes + [lift]          # $B5E7 -- PB2 heroes add it themselves
+	if who[i] == SOL and lift_carry != 0 and not lift.is_empty() \
+			and absi(_hero_y(world_of(i).y) - (lift_seen - lift_carry)) <= 1:
+		carry.y = lift_carry
 	if who[i] == PB2:
 		pb2[i].solids = boxes
 		if i != host:
@@ -1047,6 +1086,7 @@ func _walk_sol(hold: int) -> void:
 		pads_now = []
 		pads_now.resize(who.size())
 		pads_now.fill(0)
+		_let_go_held()
 	_walk_them(false, 0, 0, hold)
 	pads_now = saved_pads
 	# $91C0 -- and the stage's own hero into the table, where the order has it,
@@ -1055,6 +1095,23 @@ func _walk_sol(hold: int) -> void:
 		var h: SolPlayer = sol[host]
 		SolSprites.hero(h, (h.x - sol_eye.x) & 0xFFFF,
 				(h.y - sol_eye.y) & 0xFFFF, host_table)
+
+
+## $9E73 / $9371 (NSB-05) -- the end of a stage holds the heroes ($9E73 takes
+## $04/$06 away) and waits for $05A2 to be 0 or 8, a hero on his feet.  The
+## stage's own hero comes down by himself once his buttons are gone; a Power
+## Blade hero does not: on a wall, under a ceiling or on a net he holds on
+## with no button at all, so the wait never ends and the stage stands locked.
+## Held without buttons, he lets go and falls to the floor the script wants.
+func _let_go_held() -> void:
+	for i in range(who.size()):
+		if gone[i] or who[i] != PB2:
+			continue
+		var q: Pb2Player = pb2[i]
+		if q.sub in [Pb2Player.SUB_WALL, Pb2Player.SUB_ROOF,
+				Pb2Player.SUB_ROOF_ON, Pb2Player.SUB_ROOF_OVER,
+				Pb2Player.SUB_HANG, Pb2Player.SUB_NET]:
+			q._step_off(0)
 
 
 ## $CA9A / $F806: palette requests are a clock used by room scripts too.
@@ -1652,7 +1709,7 @@ func _hold_them_in() -> void:
 		if gone[i]:
 			continue
 		var s: Vector2i = screen_of(i)
-		if live_session and world_of(i).y >= solv.height_tiles * 8:
+		if live_session and _below_area(i):
 			# A fall out of the map must be consumed before screen clamping
 			# pins him at its last pixel forever.
 			gone[i] = true

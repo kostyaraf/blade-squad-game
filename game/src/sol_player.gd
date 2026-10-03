@@ -1159,8 +1159,11 @@ func _crouch(held: int, pressed: int) -> void:
 func _panels(held: int) -> int:
 	if pool == null:
 		return held
-	if pool.row_due != 0 or pool.col_due != 0:
-		return held                         # $9CA4
+	# PB3 (REV-01): a guest breaks the panel in the stage's pool, so it is
+	# the stage's picture whose owed row or column forbids the purchase.
+	var t: SolObjects = pool.stage_side()
+	if t.row_due != 0 or t.col_due != 0:
+		return held                         # $9CA0..$9CA4
 	var tile: int = _floor_tile() & 0xFE    # $9CAB
 	if tile == 0:
 		return held                         # $9CAE
