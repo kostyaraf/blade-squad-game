@@ -30,6 +30,10 @@ func poll() -> void:
 	var cmd = JSON.parse_string(FileAccess.get_file_as_string(folder + "/command.json"))
 	if not cmd is Dictionary or int(cmd.get("id", -1)) <= seen:
 		return
+	# The mailbox survives process restarts; continuation needs a live run.
+	if session == null and not cmd.has("start"):
+		seen = int(cmd.id)
+		return
 	busy = true
 	seen = int(cmd.id)
 	if cmd.has("start"):
@@ -93,6 +97,8 @@ func poll() -> void:
 	write_json("state.json", result)
 	print(JSON.stringify(result))
 	busy = false
+	if cmd.get("quit", false):
+		quit(0)
 
 func status() -> Dictionary:
 	var result := {"tick":session.tick,"entry":session.at,"message":session.message,"players":[],"enemies":[]}
