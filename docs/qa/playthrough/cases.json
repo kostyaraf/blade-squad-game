@@ -608,5 +608,14 @@
   },
   {
     "file": "s16-s19-sol/replay.json"
+  },
+  {
+    "file": "p1.1-sol-SPB2/replay.json",
+    "checkpoints": [
+      {
+        "tick": 1697,
+        "all_alive": true
+      }
+    ]
   }
 ]
