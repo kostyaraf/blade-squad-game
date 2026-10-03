@@ -62,6 +62,7 @@ BRIEF и skill godot применены. Быстрый обход — штат�
 |---|---|---|---:|---|
 | p0.0 | ☑ | [цепочка](../playthrough/p0-sol-SPB2/replay.json) | 924 | — |
 | p0.1 | ☑ | [цепочка](../playthrough/p0-sol-SPB2/replay.json) | 1705 | — |
+| p0.2 | ☑ | [цепочка](../playthrough/p0-sol-SPB2/replay.json) | 3057 | — |
 
 p0.5: попытка `p0.5-sol-SPB2-attempt1` погибла на 4460 (обычный ввод,
 8→0 HP). Корабль `$38` был ранен до 2 HP, но не убит. Статус ☐.
