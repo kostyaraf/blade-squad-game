@@ -357,23 +357,6 @@
     ]
   },
   {
-    "file": "p1-upper-nova-pb2b/replay.json",
-    "checkpoints": [
-      {
-        "tick": 529,
-        "all_alive": true
-      },
-      {
-        "tick": 1679,
-        "all_alive": true
-      },
-      {
-        "tick": 1680,
-        "all_alive": true
-      }
-    ]
-  },
-  {
     "file": "p1-nova-pb2b/replay.json",
     "checkpoints": [
       {
@@ -398,6 +381,27 @@
       },
       {
         "tick": 6192,
+        "all_alive": true
+      }
+    ]
+  },
+  {
+    "file": "p1-upper-nova-pb2b/replay.json",
+    "checkpoints": [
+      {
+        "tick": 529,
+        "all_alive": true
+      },
+      {
+        "tick": 1679,
+        "all_alive": true
+      },
+      {
+        "tick": 3860,
+        "all_alive": true
+      },
+      {
+        "tick": 3886,
         "all_alive": true
       }
     ]
