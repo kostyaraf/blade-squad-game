@@ -420,5 +420,18 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "p3-sol-SPB2-p31/replay.json",
+    "checkpoints": [
+      {
+        "tick": 1825,
+        "all_alive": true
+      },
+      {
+        "tick": 3183,
+        "all_alive": true
+      }
+    ]
   }
 ]
