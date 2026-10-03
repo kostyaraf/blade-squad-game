@@ -203,6 +203,14 @@ def export():
                        spawn_wall=list(b11[0x73D:0x740]), floor_probe=list(b11[0x750:0x752]),
                        walk_wall=list(b11[0x78E:0x791]), gravity=b11[0x775],
                        fall_limit=b11[0x77D], burst_ticks=b11[0x799], burst_anim=b11[0x79B]),
+        # $AB45..$AC0C: invulnerable shutters spawned by boss $52.
+        hand_4a=dict(life=b11[0xB55], anim=b11[0xB59],
+                     left=b11[0xB72], right=b11[0xB65],
+                     top=b11[0xC09], bottom=b11[0xB60],
+                     corner_mask=b11[0xC04],
+                     stop=[b11[0xB8D], b11[0xB8C]],
+                     positive=[b11[0xBD4], b11[0xBD3]],
+                     negative=[b11[0xB92], b11[0xB91]]),
         cull_class=classes,
         # Read in pairs, one pair per Y of 0, 2, 4 and 6.  Off the near side
         # a thing is kept while its low byte is >= the first of the pair; off

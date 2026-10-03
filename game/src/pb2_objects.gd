@@ -150,7 +150,7 @@ const MINDS := {0x46: "_mind_46", 0x3D: "_mind_3d", 0x48: "_mind_48", 0x01: "_mi
 		0x56: "_mind_boss", 0x57: "_mind_boss", 0x58: "_mind_boss",
 		0x59: "_mind_boss",
 		0x25: "_mind_25", 0x26: "_mind_26", 0x44: "_mind_44",
-		0x4B: "_mind_4b", 0x4C: "_mind_4c", 0x4D: "_mind_4d",
+		0x4A: "_mind_4a", 0x4B: "_mind_4b", 0x4C: "_mind_4c", 0x4D: "_mind_4d",
 		0x4F: "_mind_4f"}
 
 ## $BE36 -- one bit a stage, tried against $5B to tell a stage already beaten.
@@ -224,6 +224,7 @@ var cfg_boss: Dictionary = {}
 var death_cfg: Dictionary = {}
 var small_shot_cfg: Dictionary = {}
 var hatchling_cfg: Dictionary = {}
+var hand_4a_cfg: Dictionary = {}
 var drop_clock := 0  ## $98 -- successive deaths read successive nibbles.
 ## The ten minds themselves, which live in a file of their own.
 var bosses := Pb2Bosses.new()
@@ -362,6 +363,7 @@ func _init(level: Pb2Level) -> void:
 	death_cfg = t["death"]
 	small_shot_cfg = t["small_shots"]
 	hatchling_cfg = t["hatchling"]
+	hand_4a_cfg = t["hand_4a"]
 	pickup_bit = PackedByteArray(t["pickup_bit"])
 	pickup_pic = PackedByteArray(t["pickup_pic"])
 	cull_class = PackedByteArray(t["cull_class"])
@@ -8496,6 +8498,71 @@ func _mind_44(n: int, s: PackedByteArray) -> void:
 		s[F_SELF] = (s[F_SELF] + 1) & 0xFF
 		nudge_down(s, 0x00, 0x01)                      # $C930
 	ground_or_die(n, s)                                # $C8EB
+
+
+## $AB45 (bank 11) -- two invulnerable shutters circling the room.
+## $ABFD animates and moves every turn; only direction changes wait for
+## $0119 & $07 == 0. The low coordinate clamps on every turn at an edge.
+func _mind_4a(_n: int, s: PackedByteArray) -> void:
+	var c: Dictionary = hand_4a_cfg
+	var stop: Array = c["stop"]
+	var positive: Array = c["positive"]
+	var negative: Array = c["negative"]
+	if s[F_STATE] == 0:                                # $AB52
+		s[F_LIFE] = int(c["life"])                    # $BE5A FF
+		s[F_MARK] = 0x01                             # $BE5A -> $C99F/$FD76
+		start_anim(s, int(c["anim"]))                 # $BEAD 0C
+		if s[F_SELF] == 0:                            # $AB5A
+			s[F_Y] = int(c["bottom"])                 # $AB5F
+			s[F_X] = int(c["right"])                  # $AB64
+			set_speed_side(s, int(stop[0]), int(stop[1]))
+			set_speed_down(s, int(negative[0]), int(negative[1]))
+			s[F_STATE] = 2                            # $AB93 -> $FCFE
+		else:
+			s[F_Y] = int(c["top"])                    # $AB6B -> $AC08
+			s[F_X] = int(c["left"])                   # $AB71
+			set_speed_down(s, int(positive[0]), int(positive[1]))
+			set_speed_side(s, int(stop[0]), int(stop[1]))
+			s[F_STATE] = 4                            # $ABDA -> $FD06
+		return
+	# $ABFD -> $C8EE/$FA05: animation AND both movement axes.
+	step_anim(s)
+	step_both(s)
+	var turn_now: bool = (clock & int(c["corner_mask"])) == 0
+	match s[F_STATE]:
+		1:                                            # $AB78 -- right
+			if s[F_X] <= int(c["right"]):
+				return
+			s[F_X] = int(c["right"])
+			if turn_now:                              # $AB85 -> $AB89
+				set_speed_side(s, int(stop[0]), int(stop[1]))
+				set_speed_down(s, int(negative[0]), int(negative[1]))
+				s[F_STATE] = 2
+		2:                                            # $AB97 -- up
+			if s[F_Y] > int(c["top"]):
+				return
+			s[F_Y] = int(c["top"])
+			if turn_now:                              # $ABA7 -> $ABAB
+				set_speed_down(s, int(stop[0]), int(stop[1]))
+				set_speed_side(s, int(negative[0]), int(negative[1]))
+				s[F_STATE] = 3
+		3:                                            # $ABB9 -- left
+			s[F_Y] = int(c["top"])                    # $ABBF, always
+			if s[F_X] > int(c["left"]):
+				return
+			s[F_X] = int(c["left"])
+			if turn_now:                              # $ABCC -> $ABD0
+				set_speed_down(s, int(positive[0]), int(positive[1]))
+				set_speed_side(s, int(stop[0]), int(stop[1]))
+				s[F_STATE] = 4
+		4:                                            # $ABDE -- down
+			if s[F_Y] <= int(c["bottom"]):
+				return
+			s[F_Y] = int(c["bottom"])
+			if turn_now:                              # $ABEB -> $ABEF
+				set_speed_down(s, int(stop[0]), int(stop[1]))
+				set_speed_side(s, int(positive[0]), int(positive[1]))
+				s[F_STATE] = 1
 
 
 ## $9B6A (bank 10) -- the one shot the boss that fades throws.  Below a
