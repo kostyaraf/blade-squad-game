@@ -12,7 +12,7 @@
 | s3.0 | ☑ | [s3-nova](../playthrough/s3-nova/replay.json), [s3-s18-nova](../playthrough/s3-s18-nova/replay.json) | 2476 | s3 → s9; этап s3→s9→s18 непрерывно, STAGE CLEAR 7486; NSB-01 |
 | s4.0 | ☐ | — | — | В работе |
 | s5.0 | ☐ | — | — | В работе |
-| s6.0 | ☐ | — | — | В работе |
+| s6.0 | ☑ | [s6-nova](../playthrough/s6-nova/replay.json) | 4525 | s6 → s7 по row1; минимум HP 12 |
 | s7.0 | ☐ | — | — | В работе |
 | s8.0 | ☑ | [s0-s8-nova](../playthrough/s0-s8-nova/replay.json) | 12100 | Победа STAGE CLEAR, непрерывно из s0 |
 | s9.0 | ☑ | [s9-nova](../playthrough/s9-nova/replay.json), [s3-s18-nova](../playthrough/s3-s18-nova/replay.json) | 3653 | Выход к s18; в цепочке из s3 вход 2476 → выход 6134 |
