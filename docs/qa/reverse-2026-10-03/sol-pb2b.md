@@ -31,6 +31,7 @@ BRIEF и skill godot применены. Быстрый обход — штат�
 | p5.5 | ☐ | [ввод](../playthrough/p5.5-sol-SPB2-smoke/replay.json) | 92 | TEAM DOWN - CHOOSE A LEVEL TO RETRY; $37 |
 | p5.6 | ☐ | [ввод](../playthrough/p5.6-sol-SPB2-smoke/replay.json) | 135 | (105,144), HP 8, state $00; $04,$3A,$3B,$3C |
 | p5.7 | ☐ | [ввод](../playthrough/p5.7-sol-SPB2-smoke/replay.json) | 92 | TEAM DOWN - CHOOSE A LEVEL TO RETRY; $04,$2F,$3E |
+| p5.8 | ☐ | [ввод](../playthrough/p5.8-sol-SPB2-smoke/replay.json) | 135 | (121,144), HP 7, state $00; $02,$04,$20,$29,$2A |
 
 ## Полные прохождения
 
