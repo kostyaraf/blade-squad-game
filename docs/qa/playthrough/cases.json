@@ -249,5 +249,14 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "p2.2-sol/replay.json",
+    "checkpoints": [
+      {
+        "tick": 1533,
+        "all_alive": true
+      }
+    ]
   }
 ]
