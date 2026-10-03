@@ -24,8 +24,8 @@ assert code in ticks,(code,ticks)
 for c,t in ticks.items():
  row=f'| {c} | ☑ | [{chain}](../playthrough/{key}) | {t} | обычный ввод; враги и урон; {note if c==code else "повтор цепочки"} |'
  s=re.sub(r'^\| '+re.escape(c)+r' \|.*$',row,s,flags=re.M)
-s+=f'\n### Передача после {code} (продолжение 3)\n\n{note}. Запись `{chain}`, штатный выход {ticks[code]}.\nПоследнее состояние: тик {st["tick"]}, вход {st["entry"]}, '+str(st.get('players',[]))+'.\nПринято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.\n'
+s+=f'\n### Передача после {code} (продолжение 4)\n\n{note}. Запись `{chain}`, штатный выход {ticks[code]}.\nПоследнее состояние: тик {st["tick"]}, вход {st["entry"]}, '+str(st.get('players',[]))+'.\nПринято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.\n'
 r.write_text(s)
 files=[str(F/chain/n) for n in ['replay.json','state.json','current.png']]+[str(F/'cases.json'),str(r)]
 subprocess.run(['git','add']+files,cwd=ROOT,check=True)
-subprocess.run(['git','commit','-m',f'QA Nova PB2: {code} — запись и передача'],cwd=ROOT,check=True)
+subprocess.run(['git','commit','-m',f'QA Nova PB2: {code} — запись и передача\n\nCo-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>'],cwd=ROOT,check=True)
