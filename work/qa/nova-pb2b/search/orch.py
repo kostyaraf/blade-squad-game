@@ -48,6 +48,7 @@ def main():
     stall = 0
     last_score = -1e18
     frac = cfg.get('commit', 0.5)
+    cur_wi = 0
     t_start = time.time()
     while True:
         res = run_batch(cfg, steps, seed)
@@ -68,6 +69,7 @@ def main():
                 n = commits[-1 - back]
                 commits = commits[:len(commits) - back]
                 steps = steps[:n]
+                cur_wi = 0
             print(f'ALL DEAD -> back {back} to {ticks(steps)} ticks', flush=True)
             if fails > cfg.get('max_fails', 12):
                 print('GIVE UP'); return
@@ -79,7 +81,7 @@ def main():
         if stall >= cfg.get('stall_tries', 3) and best['score'] <= last_score + cfg.get('min_gain', 1):
             stall = 0
             if len(commits) > 1:
-                commits.pop(); steps = steps[:commits[-1]]
+                commits.pop(); steps = steps[:commits[-1]]; cur_wi = 0
                 last_score = -1e18
                 print(f'stalled -> back to {ticks(steps)}', flush=True)
                 continue
@@ -90,6 +92,9 @@ def main():
         seg = best['seg']
         marks = best['marks']
         cut = max(2, int(len(seg) * frac))
+        if best.get('wi', 0) > cur_wi:
+            cut = len(seg)
+            cur_wi = best['wi']
         cut -= cut % 2
         steps = steps + seg[:cut]
         commits.append(len(steps))

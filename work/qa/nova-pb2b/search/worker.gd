@@ -114,6 +114,19 @@ func pick_action(sim: Sim, stuck: int) -> Array:
 	if absi(dx) <= 4: fwd = 0
 	var fire: int = int(cfg.get("fire", 0x40))
 	if rng.randf() < float(cfg.get("no_fire", 0.15)): fire = 0
+	if cfg.has("suits") and rng.randf() < float(cfg.get("suit_rate", 0.02)):
+		var want: int = int(cfg.suits[rng.randi() % cfg.suits.size()])
+		var have: int = sim.s.two.pb2[0].suit
+		if want != have and (want == 0 or sim.s.gear.energy > 0):
+			var m2: Array = [[1, 16], [1, 0]]
+			for _k in range((have - want + 5) % 5):
+				m2.append([1, 4])
+				m2.append([1, 0])
+			m2.append_array([[1, 16], [24, 0]])
+			return m2
+	if cfg.has("macros") and rng.randf() < float(cfg.get("macro_rate", 0.05)):
+		var m: Array = cfg.macros
+		return m[rng.randi() % m.size()]
 	var n: int = [8, 16, 24, 24, 32][rng.randi() % 5]
 	var r := rng.randf()
 	var w: Dictionary = cfg.get("weights", {})
@@ -163,4 +176,4 @@ func rollout() -> Dictionary:
 	var desc := ""
 	if sim.s.two != null:
 		desc = "t=%d pos=%s life=%d wi=%d boss=%d en=%d" % [sim.s.tick, str(sim.s.two.world_of(0)), life(sim), sim.wi, boss(sim), sim.s.gear.energy]
-	return {"score": score(sim), "seg": seg, "won": sim.won, "dead": sim.dead, "desc": desc, "marks": marks}
+	return {"wi": sim.wi, "score": score(sim), "seg": seg, "won": sim.won, "dead": sim.dead, "desc": desc, "marks": marks}
