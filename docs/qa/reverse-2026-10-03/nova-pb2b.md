@@ -19,8 +19,8 @@
 | p0.5 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 10515 | повтор от p0.0; босс p6.0 также завершён |
 | p0.6 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 12019 | повтор от p0.0; босс p6.0 также завершён |
 | p1.0 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 1774 | обычный ввод; враги и урон; повтор цепочки |
-| p1.1 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 4401 | обычный ввод; враги и урон; костюм0; ожидание камеры на последней площадке; энергия11 после двери |
-| p1.2 | ☑ | [p1-nova-pb2b](../playthrough/p1-nova-pb2b/replay.json) | 4777 | обычный ввод; враги и урон; повтор цепочки |
+| p1.1 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 4401 | обычный ввод; враги и урон; повтор цепочки |
+| p1.2 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 5243 | обычный ввод; враги и урон; detour к штатному энерго-баку x80,y288; костюмы1/3; цепочка от p1.0 |
 | p1.3 | ☑ | [p1-nova-pb2b](../playthrough/p1-nova-pb2b/replay.json) | 5658 | обычный ввод; враги и урон; повтор цепочки |
 | p1.4 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 530 | обычный ввод; враги и урон; повтор цепочки |
 | p1.5 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 1680 | обычный ввод; враги и урон; повтор цепочки |
@@ -294,4 +294,10 @@ NPB-02 уже исправлен SPB2-02 (91c9729), повтор боя оста
 
 победа над $51 обычным вводом; HP минимум13; STAGE CLEAR; от p1.4. Запись `p1-upper-nova-pb2b`, штатный выход 5413.
 Последнее состояние: тик 5413, вход 54, [].
+Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.
+
+### Передача после p1.2 (продолжение 3)
+
+detour к штатному энерго-баку x80,y288; костюмы1/3; цепочка от p1.0. Запись `p1-nova-pb2b-energy`, штатный выход 5243.
+Последнее состояние: тик 5243, вход 10, [{'alive': True, 'energy': 10, 'life': 16, 'menu': 0, 'owned': 15, 'state': 0, 'status_mode': 3, 'sub': 4, 'suit': 3, 'vy': 0, 'x': 736, 'y': 127}].
 Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.
