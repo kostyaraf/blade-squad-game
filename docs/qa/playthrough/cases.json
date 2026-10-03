@@ -300,5 +300,8 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "s13-sol/replay.json"
   }
 ]
