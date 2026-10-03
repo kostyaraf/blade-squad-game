@@ -32,7 +32,7 @@
 | p2.3 | ☑ | [p2-nova-pb2b](../playthrough/p2-nova-pb2b/replay.json) | 2356 | обычный ввод; враги и урон; повтор цепочки |
 | p2.4 | ☑ | [p2-nova-pb2b](../playthrough/p2-nova-pb2b/replay.json) | 2947 | обычный ввод; враги и урон; повтор цепочки |
 | p2.5 | ☑ | [p2-nova-pb2b](../playthrough/p2-nova-pb2b/replay.json) | 3369 | обычный ввод; враги и урон; повтор цепочки |
-| p2.6 | ☑ | [p2-nova-pb2b](../playthrough/p2-nova-pb2b/replay.json) | 4037 | обычный ввод; враги и урон; поиск лучом обычных нажатий |
+| p2.6 | ☑ | [p2-nova-pb2b](../playthrough/p2-nova-pb2b/replay.json) | 4037 | обычный ввод; враги и урон; повтор цепочки |
 | p3.0 | ☐ | — | — | не подтверждено |
 | p3.1 | ☐ | — | — | не подтверждено |
 | p3.2 | ☐ | — | — | не подтверждено |
@@ -66,7 +66,7 @@
 | p5.13 | ☐ | [вход](../playthrough/p5.13-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→14; (119,133); вход 52 |
 | p6.0 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 13213 | босс `$50` убит, штатный STAGE CLEAR; костюм 2 |
 | p6.1 | ☑ | [p1-nova-pb2b-full](../playthrough/p1-nova-pb2b-full/replay.json) | 11421 | обычный ввод; враги и урон; весь этап p1 непрерывно от p1.0 до победы над $51: префикс p1-nova-pb2b-energy до входа p1.5 (6538) + ввод p1-upper-nova-pb2b после её входа p1.5; энергии 7 хватило |
-| p6.2 | ☐ | [вход](../playthrough/p6.2-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→7; (234,143); вход 55 |
+| p6.2 | ☑ | [p2-nova-pb2b](../playthrough/p2-nova-pb2b/replay.json) | 4989 | обычный ввод; враги и урон; поиск лучом обычных нажатий |
 | p6.3 | ☐ | [вход](../playthrough/p6.3-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→4; (234,143); вход 56 |
 | p6.4 | ☐ | [вход](../playthrough/p6.4-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→10; (234,143); вход 57 |
 | p6.5 | ☐ | [вход](../playthrough/p6.5-nova-pb2b-entry/replay.json) | — | обход 264 тиков; TEAM DOWN - CHOOSE A LEVEL TO RETRY; события list@264 |
@@ -354,4 +354,10 @@ NPB-02 уже исправлен SPB2-02 (91c9729), повтор боя оста
 
 поиск лучом обычных нажатий. Запись `p2-nova-pb2b`, штатный выход 4037.
 Последнее состояние: тик 4037, вход 55, [{'alive': True, 'energy': 7, 'life': 16, 'menu': 0, 'owned': 15, 'state': 0, 'status_mode': 3, 'sub': 4, 'suit': 1, 'vy': 0, 'x': 32, 'y': 143}].
+Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.
+
+### Передача после p6.2 (продолжение 4)
+
+поиск лучом обычных нажатий. Запись `p2-nova-pb2b`, штатный выход 4989.
+Последнее состояние: тик 4989, вход 55, [].
 Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.
