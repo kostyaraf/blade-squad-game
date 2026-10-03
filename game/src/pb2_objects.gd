@@ -473,10 +473,12 @@ static func empty_row() -> PackedByteArray:
 ## $E3F3.  `pos` is $66:$67 as the step begins, before the view has moved, and
 ## `shift` is how far it moved in the step BEFORE this one: the scan runs at
 ## $CF0E and the view is driven at $CF11, so what it reads is last step's.
-func scan(pos: int, shift: int) -> void:
+func scan(pos: int, shift: int, back: int = 0) -> void:
 	if shift == 0 and fill == 0:
 		return
-	var world := _world(pos)
+	# `back`: a pair has already slid the view this picture, while $CF0E reads
+	# the view as it stood before it slid ($66:$67), so it is taken back by that.
+	var world := _world(pos) - back
 	var edge := (world >> 4) & 0xFF
 	# Э5.7 -- the furthest column the list was ever read up to, so that a run
 	# can tell "the level put nothing out" from "the level was never walked as

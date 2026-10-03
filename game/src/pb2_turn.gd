@@ -49,6 +49,11 @@ var slid := 0
 ## and not a copy of it.  Left empty -- which is what the single game leaves
 ## them -- the order is exactly what it was.
 var slid_already := false
+## The slide of the picture before, as $CF0E reads it when a pair slid first.
+var scan_slid := 0
+## SPB2-04.  Recordings made before the fix replay with this off (`exact_scan`
+## false in their file); everything live has it on.
+static var exact_scan := true
 var walk: Callable = Callable()
 ## A suit changed its colours, and three of them have to be laid over sprite
 ## palette one.  The mode does that, and the mode clears this.
@@ -123,7 +128,14 @@ func step(held: int, pressed: int, prepared: bool = false) -> int:
 	# $CF08 -- what touches what.
 	world.contact()
 	# $CF0E -- what the view has uncovered since the last step.
-	world.scan(view.pos, slid)
+	if slid_already and exact_scan:
+		# The pair slid the view at the top of its picture: $CF0E must see the
+		# view as it stood before that slide and the slide of the picture
+		# before, or what it puts out stands one slide too far over.
+		world.scan(view.pos, scan_slid, slid)
+		scan_slid = slid
+	else:
+		world.scan(view.pos, slid)
 	# $CF11 -- the view follows him.
 	if not slid_already:
 		view.drive()

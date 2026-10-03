@@ -42,13 +42,14 @@ func poll() -> void:
 		var kinds: Array = []
 		for hero in cmd.heroes:
 			kinds.append(int(hero))
+		Pb2Turn.exact_scan = bool(cmd.get("exact_scan", true))
 		session = Pb3Session.new(kinds)
 		session.at = int(cmd.start)
 		session.enter()
 		app.pb3_session = session
 		app.pb3 = session
 		app._pb3_enter()
-		replay = {"entry": int(cmd.start), "heroes": cmd.heroes, "steps": [], "events": []}
+		replay = {"entry": int(cmd.start), "heroes": cmd.heroes, "steps": [], "events": [], "exact_scan": Pb2Turn.exact_scan}
 	var trace: Array = []
 	for part in cmd.get("steps", []):
 		var words: Array = []
