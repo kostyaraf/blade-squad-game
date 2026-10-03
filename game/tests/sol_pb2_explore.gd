@@ -132,7 +132,7 @@ func _initialize() -> void:
 			var dist := 0.0
 			if has_goal: dist = absf(w.x - gx) + absf(w.y - gy)
 			if better:
-				var nn := {"snap": Snap.take(s), "parent": node, "mac": mi, "hp": h.suit, "ticks": nticks, "chosen": 0 if old == null else old.chosen, "dist": dist}
+				var nn := {"snap": Snap.take(s), "parent": node, "mac": mi, "hp": h.suit, "ticks": nticks, "chosen": 0 if old == null else old.chosen, "dist": dist, "sig": "%d %s %d" % [s.tick, w, h.suit]}
 				if old == null: keys.append(key)
 				archive[key] = nn
 				node = nn
@@ -166,10 +166,13 @@ func _key(w: Vector2i, hp: int, cell: int, hp_cell: bool, s: Pb3Session) -> Stri
 
 func _save(last: Dictionary, path: Array, entry: int, done: bool) -> void:
 	var macs: Array = []
+	var sigs: Array = []
 	var n = last
 	while n != null:
 		if n.mac >= 0: macs.append(n.mac)
+		if n.has("sig"): sigs.append(n.sig)
 		n = n.parent
+	sigs.reverse()
 	macs.reverse()
 	var pads: Array = path.duplicate()
 	for m in macs: pads.append_array(macro_pads[m])
@@ -178,4 +181,4 @@ func _save(last: Dictionary, path: Array, entry: int, done: bool) -> void:
 		if not steps.is_empty() and steps[-1][1] == p: steps[-1][0] += 1
 		else: steps.append([1, p])
 	var f := FileAccess.open(cfg.out, FileAccess.WRITE)
-	f.store_string(JSON.stringify({"entry": entry, "steps": steps, "done": done}))
+	f.store_string(JSON.stringify({"entry": entry, "steps": steps, "done": done, "sigs": sigs}))
