@@ -18,14 +18,14 @@
 | p0.4 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 4379 | повтор от p0.0; босс p6.0 также завершён |
 | p0.5 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 10515 | повтор от p0.0; босс p6.0 также завершён |
 | p0.6 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 12019 | повтор от p0.0; босс p6.0 также завершён |
-| p1.0 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 1774 | обычный ввод; враги и урон; повтор цепочки |
-| p1.1 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 4401 | обычный ввод; враги и урон; повтор цепочки |
-| p1.2 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 5243 | обычный ввод; враги и урон; повтор цепочки |
-| p1.3 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 6080 | обычный ввод; враги и урон; короткий маршрут с запасом энергии и энерго-баком; от p1.0 |
-| p1.4 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 530 | обычный ввод; враги и урон; повтор цепочки |
-| p1.5 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 1680 | обычный ввод; враги и урон; повтор цепочки |
-| p1.6 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 3861 | обычный ввод; враги и урон; повтор цепочки |
-| p1.7 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 4676 | обычный ввод; враги и урон; повтор цепочки |
+| p1.0 | ☑ | [p1-nova-pb2b-full](../playthrough/p1-nova-pb2b-full/replay.json) | 1774 | обычный ввод; враги и урон; повтор цепочки |
+| p1.1 | ☑ | [p1-nova-pb2b-full](../playthrough/p1-nova-pb2b-full/replay.json) | 4401 | обычный ввод; враги и урон; повтор цепочки |
+| p1.2 | ☑ | [p1-nova-pb2b-full](../playthrough/p1-nova-pb2b-full/replay.json) | 5243 | обычный ввод; враги и урон; повтор цепочки |
+| p1.3 | ☑ | [p1-nova-pb2b-full](../playthrough/p1-nova-pb2b-full/replay.json) | 6080 | обычный ввод; враги и урон; повтор цепочки |
+| p1.4 | ☑ | [p1-nova-pb2b-full](../playthrough/p1-nova-pb2b-full/replay.json) | 6538 | обычный ввод; враги и урон; повтор цепочки |
+| p1.5 | ☑ | [p1-nova-pb2b-full](../playthrough/p1-nova-pb2b-full/replay.json) | 7688 | обычный ввод; враги и урон; повтор цепочки |
+| p1.6 | ☑ | [p1-nova-pb2b-full](../playthrough/p1-nova-pb2b-full/replay.json) | 9869 | обычный ввод; враги и урон; повтор цепочки |
+| p1.7 | ☑ | [p1-nova-pb2b-full](../playthrough/p1-nova-pb2b-full/replay.json) | 10684 | обычный ввод; враги и урон; повтор цепочки |
 | p2.0 | ☐ | — | — | не подтверждено |
 | p2.1 | ☐ | — | — | не подтверждено |
 | p2.2 | ☐ | — | — | не подтверждено |
@@ -65,7 +65,7 @@
 | p5.12 | ☐ | [вход](../playthrough/p5.12-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→15; (234,63); вход 51 |
 | p5.13 | ☐ | [вход](../playthrough/p5.13-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→14; (119,133); вход 52 |
 | p6.0 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 13213 | босс `$50` убит, штатный STAGE CLEAR; костюм 2 |
-| p6.1 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 5413 | обычный ввод; враги и урон; победа над $51 обычным вводом; HP минимум13; STAGE CLEAR; от p1.4 |
+| p6.1 | ☑ | [p1-nova-pb2b-full](../playthrough/p1-nova-pb2b-full/replay.json) | 11421 | обычный ввод; враги и урон; весь этап p1 непрерывно от p1.0 до победы над $51: префикс p1-nova-pb2b-energy до входа p1.5 (6538) + ввод p1-upper-nova-pb2b после её входа p1.5; энергии 7 хватило |
 | p6.2 | ☐ | [вход](../playthrough/p6.2-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→7; (234,143); вход 55 |
 | p6.3 | ☐ | [вход](../playthrough/p6.3-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→4; (234,143); вход 56 |
 | p6.4 | ☐ | [вход](../playthrough/p6.4-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→10; (234,143); вход 57 |
@@ -306,4 +306,10 @@ NPB-02 уже исправлен SPB2-02 (91c9729), повтор боя оста
 
 короткий маршрут с запасом энергии и энерго-баком; от p1.0. Запись `p1-nova-pb2b-energy`, штатный выход 6080.
 Последнее состояние: тик 6080, вход 11, [{'alive': True, 'energy': 8, 'life': 16, 'menu': 0, 'owned': 15, 'state': 0, 'status_mode': 3, 'sub': 4, 'suit': 3, 'vy': 0, 'x': 224, 'y': 95}].
+Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.
+
+### Передача после p6.1 (продолжение 3)
+
+весь этап p1 непрерывно от p1.0 до победы над $51: префикс p1-nova-pb2b-energy до входа p1.5 (6538) + ввод p1-upper-nova-pb2b после её входа p1.5; энергии 7 хватило. Запись `p1-nova-pb2b-full`, штатный выход 11421.
+Последнее состояние: тик 11421, вход 54, [].
 Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.
