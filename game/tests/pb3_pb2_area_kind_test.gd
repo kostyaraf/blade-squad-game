@@ -3,6 +3,11 @@ extends SceneTree
 ## screen) for Nova on her own maps.  Cartridge reference (emulator, stage 0
 ## area 5, idle): $04C6 stays $7F while the view climbs -- he rides the floor
 ## at line $29 -- and a jump lands back on it.
+## NPB-05: the line $29 moves in PB3 ($CED2) and the hero reads it live.
+## Cartridge reference, stage 1 area 0 (kind four): $29 starts at $69 and
+## climbs a line every fourth frame to $7E, then sinks to $37 and back; the
+## hero walking right from the start is killed by the ceiling at x $3B, and
+## one who waits 130 frames first walks under it unharmed.
 var failures := 0
 
 func check(ok: bool, message: String) -> void:
@@ -43,5 +48,30 @@ func _initialize() -> void:
 	check(not s.two._off_foot(0), "$C6 is still on screen")
 	q.y = 0x011000
 	check(s.two._off_foot(0), "a screen down is off the foot")
+	# p1.0: the turned-about ceiling.
+	s = session(7)
+	var lo := 0xFF
+	var hi := 0
+	for t in range(400):
+		s.advance(s.tick, [0])
+		lo = mini(lo, s.two.host_pb2.water)
+		hi = maxi(hi, s.two.host_pb2.water)
+	check(hi == 0x7E and lo == 0x37, "p1.0 line swings $37..$7E, got %02X..%02X" % [lo, hi])
+	s = session(7)
+	var died := -1
+	for t in range(10):
+		s.advance(s.tick, [0])
+	for t in range(80):
+		if s.advance(s.tick, [Pad.RIGHT]) != "playing":
+			died = t
+			break
+	check(died >= 20 and died <= 35, "p1.0 walking at once dies under the ceiling, at %d" % died)
+	s = session(7)
+	for t in range(130):
+		s.advance(s.tick, [0])
+	var alive := true
+	for t in range(200):
+		alive = alive and s.advance(s.tick, [Pad.RIGHT]) == "playing"
+	check(alive and (s.two.pb2[0].x >> 8) > 0x60, "p1.0 waiting for the ceiling walks under it")
 	print("pb3_pb2_area_kind_test: %s" % ("OK" if failures == 0 else "%d FAILED" % failures))
 	quit(1 if failures else 0)

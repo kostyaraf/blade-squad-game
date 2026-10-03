@@ -355,6 +355,12 @@ func _init(level: Pb2Level) -> void:
 	area = lvl.area
 	came = lvl.stage
 	water = lvl.line
+	flow = lvl.flow
+	# Only the turned-about ceiling of kind four needs the screen's drawing
+	# point from the start; elsewhere the view answers for it until a
+	# harness says otherwise.
+	if lvl.kind == 0x04:
+		draw = lvl.draw
 	for i in range(SLOTS):
 		slots.append(empty_row())
 	var f := FileAccess.open("res://data/pb2/objects.json", FileAccess.READ)

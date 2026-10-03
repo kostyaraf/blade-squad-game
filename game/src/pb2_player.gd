@@ -2215,8 +2215,29 @@ func _class_byte(sx: int, sy: int) -> int:
 	# which we have no way of keeping -- so the first row stands in for them.
 	if sy >= 0xE0:
 		return 0x00
+	sy = _turned(clampi(sy, 0x10, 0xAF)) if lvl.kind == 0x04 else sy
 	sy = maxi(sy, top)
 	return lvl.class_byte(cam + sx, sy - top)
+
+
+## $29 -- the line the area's water, lava or ceiling has reached.  It moves
+## (the things' frame moves it, $CEE0), so it is read live and not from the
+## area's record.
+func _line() -> int:
+	return int(world.water) if world != null else lvl.line
+
+
+## $AC1D -- kind four: the ceiling over the top of the screen is drawn turned
+## about and moves against the line.  Between the line and the hundred and
+## twenty eighth row there is nothing at all, and above the line the map is
+## asked with the row moved down by $80 - $29.
+func _turned(sy: int) -> int:
+	if lvl.kind != 0x04 or sy >= 0x80:
+		return sy
+	var ln: int = _line()
+	if sy >= ln:
+		return 0x80
+	return (sy - ln + 0x80) & 0xFF
 
 
 ## $B16D -- water and mud take their share of every movement.
@@ -2276,7 +2297,7 @@ func _b59f() -> void:
 ## a little into it he is lifted out; caught more than six lines under it, he
 ## is crushed.
 func _b5e7() -> void:
-	var top: int = (lvl.line - 1) & 0xFF        # $08
+	var top: int = (_line() - 1) & 0xFF         # $08
 	var under: int = (top + 2) & 0xFF           # $09
 	solids = solids + [[0x00, 0xFF, under, (under + 0x28) & 0xFF]]
 	var sy: int = (y >> 8) & 0xFF
@@ -2384,17 +2405,18 @@ func _feel(ox: int, oy: int) -> int:
 	var sy: int = (y >> 8) + oy
 	if not lvl.vertical and not lvl is SolAsPb2:
 		sy = clampi(sy, 0x10, 0xAF)
+		sy = _turned(sy)
 	# $B34A: a few areas have a line across them -- water below it, or a fall
 	# that kills -- and there the map underneath does not matter.
 	match lvl.kind:
 		8:
-			if lvl.line + 0x1F >= sy:
+			if _line() + 0x1F >= sy:
 				return 2
 		0x0A:
-			if sy < 0x98 and sy >= lvl.line:
+			if sy < 0x98 and sy >= _line():
 				return 4
 		6:
-			if sy - 4 >= lvl.line:
+			if sy - 4 >= _line():
 				return 2
 	if lvl.vertical:
 		return lvl.terrain_at(sx, Pb2Level.map_row(cam, sy & 0xFF))

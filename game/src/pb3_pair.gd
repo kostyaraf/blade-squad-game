@@ -604,6 +604,11 @@ func step(pads: Array) -> void:
 	# picture -- $D924 for Power Blade, and the same split kept for Solbrain
 	# so that everybody in the picture is measured against one view.
 	if game == PB2:
+		# $CED2 -- the water, the lava or the turned-about ceiling moves at
+		# the head of the level's frame, before the view takes its hold
+		# ($D924) and counts the same wait down a second time.
+		if host_pb2 != null:
+			host_pb2.water_turn(eye)
 		eye.drive()
 		slid = Vector2i(eye.shift, 0) if not pb2v.vertical \
 				else Vector2i(0, eye.shift)
