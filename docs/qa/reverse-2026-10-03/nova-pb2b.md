@@ -20,8 +20,8 @@
 | p0.6 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 12019 | повтор от p0.0; босс p6.0 также завершён |
 | p1.0 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 1774 | обычный ввод; враги и урон; повтор цепочки |
 | p1.1 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 4401 | обычный ввод; враги и урон; повтор цепочки |
-| p1.2 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 5243 | обычный ввод; враги и урон; detour к штатному энерго-баку x80,y288; костюмы1/3; цепочка от p1.0 |
-| p1.3 | ☑ | [p1-nova-pb2b](../playthrough/p1-nova-pb2b/replay.json) | 5658 | обычный ввод; враги и урон; повтор цепочки |
+| p1.2 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 5243 | обычный ввод; враги и урон; повтор цепочки |
+| p1.3 | ☑ | [p1-nova-pb2b-energy](../playthrough/p1-nova-pb2b-energy/replay.json) | 6080 | обычный ввод; враги и урон; короткий маршрут с запасом энергии и энерго-баком; от p1.0 |
 | p1.4 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 530 | обычный ввод; враги и урон; повтор цепочки |
 | p1.5 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 1680 | обычный ввод; враги и урон; повтор цепочки |
 | p1.6 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 3861 | обычный ввод; враги и урон; повтор цепочки |
@@ -298,6 +298,12 @@ NPB-02 уже исправлен SPB2-02 (91c9729), повтор боя оста
 
 ### Передача после p1.2 (продолжение 3)
 
-detour к штатному энерго-баку x80,y288; костюмы1/3; цепочка от p1.0. Запись `p1-nova-pb2b-energy`, штатный выход 5243.
+обход к штатному энерго-баку x80,world_y304 (flat288); костюмы1/3; цепочка от p1.0. Запись `p1-nova-pb2b-energy`, штатный выход 5243.
 Последнее состояние: тик 5243, вход 10, [{'alive': True, 'energy': 10, 'life': 16, 'menu': 0, 'owned': 15, 'state': 0, 'status_mode': 3, 'sub': 4, 'suit': 3, 'vy': 0, 'x': 736, 'y': 127}].
+Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.
+
+### Передача после p1.3 (продолжение 3)
+
+короткий маршрут с запасом энергии и энерго-баком; от p1.0. Запись `p1-nova-pb2b-energy`, штатный выход 6080.
+Последнее состояние: тик 6080, вход 11, [{'alive': True, 'energy': 8, 'life': 16, 'menu': 0, 'owned': 15, 'state': 0, 'status_mode': 3, 'sub': 4, 'suit': 3, 'vy': 0, 'x': 224, 'y': 95}].
 Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.
