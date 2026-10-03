@@ -1092,7 +1092,7 @@ func _walk_sol(hold: int) -> void:
 		# him may then hand him its own: $06 held ($9EB5 walks him towards
 		# the last boss) and $04 pressed.  The script has run already this
 		# picture ($CDB3 before $91B5), so they are read as it left them;
-		# every hero is handed them, as the stage's hero is (NSB-20).
+		# every hero is handed them, as the stage's hero is (NSB-20, SSB-20).
 		var scripted: int = host_script.g(0x06) | host_script.g(0x04)
 		pads_now = []
 		pads_now.resize(who.size())
