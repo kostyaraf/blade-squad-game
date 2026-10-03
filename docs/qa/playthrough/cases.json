@@ -267,5 +267,14 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "p1-nova-pb2b/replay.json",
+    "checkpoints": [
+      {
+        "tick": 1773,
+        "all_alive": true
+      }
+    ]
   }
 ]

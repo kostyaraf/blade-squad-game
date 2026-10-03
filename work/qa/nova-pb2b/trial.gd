@@ -21,7 +21,7 @@ func _initialize() -> void:
 		if s.two != null:
 			var p: Pb2Player = s.two.pb2[0]
 			var w: Pb2Objects = s.two.host_pb2
-			result.merge({"pos":[s.two.world_of(0).x,s.two.world_of(0).y],"sub":p.sub,"charge":p.charge,"state":p.state,"hp":w.slots[0][Pb2Objects.F_LIFE],"suit":p.suit,"energy":s.gear.energy,"boss":[],"enemies":[],"view":[s.two.view_x(),s.two.eye.pos if s.two.pb2v.vertical else 0]})
+			result.merge({"pos":[s.two.world_of(0).x,s.two.world_of(0).y],"sub":p.sub,"held":p.held,"screen":[p.x>>8,p.y>>8],"solids":p.solids,"wall":p._wall_class(1,1,false),"vy":p.vy,"water":w.water,"scale":p.scale,"charge":p.charge,"state":p.state,"hp":w.slots[0][Pb2Objects.F_LIFE],"suit":p.suit,"energy":s.gear.energy,"boss":[],"enemies":[],"view":[s.two.view_x(),s.two.eye.pos if s.two.pb2v.vertical else 0]})
 			for n in range(Pb2Objects.FIRST_LIVE,Pb2Objects.SLOTS):
 				var row: PackedByteArray = w.slots[n]
 				if row[Pb2Objects.F_TYPE] == 0: continue
