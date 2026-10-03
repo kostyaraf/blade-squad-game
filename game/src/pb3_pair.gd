@@ -637,7 +637,7 @@ func step(pads: Array) -> void:
 	else:
 		_walk_them()
 	for i in range(who.size()):
-		if live_session and who[i] == PB2 and pb2[i].dead:
+		if live_session and who[i] == PB2 and (pb2[i].dead or _off_foot(i)):
 			gone[i] = true
 		if live_session and game == PB2 and who[i] == SOL:
 			var p: SolPlayer = sol[i]
@@ -650,6 +650,21 @@ func step(pads: Array) -> void:
 						gone[i] = true
 		if not _sol_departing(i) and world_of(i).y >= solv.height_tiles * 8:
 			gone[i] = true
+
+
+## $A17A..$A191 -- a Power Blade hero whose feet are off the foot of the
+## screen is dead: $04B0 one or more screens down, or $04C6 at $C7 or past it
+## (a negative $04B0 still reaches the $C7 test).  On a sideways map this is
+## the pit; in an area that climbs by itself ($2E) it is the screen leaving
+## him behind.  Without it the safety clamp below pins him at line $EF for
+## ever (NPB-03, p0.5).
+func _off_foot(i: int) -> bool:
+	if game != PB2 or pb2[i] == null:
+		return false
+	var hi: int = (pb2[i].y >> 16) & 0xFF
+	if hi != 0 and hi < 0x80:
+		return true
+	return ((pb2[i].y >> 8) & 0xFF) >= 0xC7
 
 
 ## The controller is polled even when world motion is paused. A held jump
