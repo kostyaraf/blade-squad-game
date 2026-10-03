@@ -358,5 +358,8 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "p1.1-sol-SPB2/replay.json"
   }
 ]
