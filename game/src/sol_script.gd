@@ -2673,6 +2673,11 @@ func pack(pool, hero, view, table, flow) -> void:
 			p(r[0] + 0x10 + s, (v >> 8) & 0xFF)
 	for s in range(pool.mark.size()):
 		p(0x0560 + s, int(pool.mark[s]) & 0xFF)
+	# $0540 -- the whole/broken mark of every metatile (NSB-06): a script
+	# that sets a door whole again ($A58D) must reach the stage itself.
+	if pool.level.present.size() == 32:
+		for i in range(32):
+			p(0x0540 + i, pool.level.present[i])
 	if table != null:
 		for i in range(0x100):
 			p(0x0200 + i, int(table.oam[i]))
@@ -2710,6 +2715,9 @@ func unpack(pool, hero, view, table, flow) -> void:
 			list[s] = g(r[0] + s) | g(r[0] + 0x10 + s) << 8
 	for s in range(pool.mark.size()):
 		pool.mark[s] = g(0x0560 + s)
+	if pool.level.present.size() == 32:
+		for i in range(32):
+			pool.level.set_present(i, g(0x0540 + i))
 	if table != null:
 		for i in range(0x100):
 			table.oam[i] = g(0x0200 + i)

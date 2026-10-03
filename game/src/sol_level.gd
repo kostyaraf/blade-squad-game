@@ -182,6 +182,26 @@ func smash(m: int) -> void:
 	map_dirty = true
 
 
+## $0540 written a byte at a time by the stage's script ($A58D, $9D6E, $9B99
+## set whole marks back): every metatile whose mark changed is redrawn, as
+## $BE36 does for the one it breaks.
+func set_present(i: int, v: int) -> void:
+	var was: int = present[i]
+	if was == v:
+		return
+	present[i] = v
+	_settle()
+	for b in range(8):
+		var mm: int = i * 8 + b
+		if ((was ^ v) & (0x80 >> b)) == 0 or mm >= props.size():
+			continue
+		if (props[mm] & 0x20) == 0:
+			continue
+		for cell in _cells.get(mm, []):
+			_paint(cell % (width_tiles / 2), cell / (width_tiles / 2), mm)
+	map_dirty = true
+
+
 ## The metatile the stage names at a world pixel, whole or not, or -1 outside.
 func raw_at(px: int, py: int) -> int:
 	var mx := px >> 4

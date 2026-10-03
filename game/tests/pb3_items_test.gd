@@ -142,10 +142,53 @@ func panel_sells_the_shield() -> void:
 			s.leave()
 
 
+## REV-01 -- $9CA0 LDA $36 / ORA $37 / BNE: while the stage's picture still
+## owes a row or a column nothing is bought.  A guest breaks the panel in the
+## stage's pool (ITM-01), so it is the stage's debt that forbids it, not his
+## own pool's, which never draws anything.
+func panel_waits_for_the_stage() -> void:
+	for kinds in [[1], [1, 1], [0, 1]]:
+		for buyer in range(kinds.size()):
+			if kinds[buyer] != 1:
+				continue
+			for owed in ["row", "col"]:
+				var spots := []
+				for i in range(kinds.size()):
+					spots.append(Vector2i(1224 if i == buyer else 1180,
+							400 if i == buyer else (415 if kinds[i] == 0 else 416)))
+				var s := stand(63, 1, 0, kinds, spots)
+				var hero: SolPlayer = s.two.sol[buyer]
+				hero.pool.hero_bonus = 20
+				var pads := []
+				for i in kinds:
+					pads.append(0)
+				for t in range(30):
+					s.advance(s.tick, pads)
+				var tag := "%s buyer %d %s" % [str(kinds), buyer, owed]
+				var stage: SolObjects = s.two.host_sol
+				hero.pool.row_due = 0 if hero.pool != stage else hero.pool.row_due
+				hero.pool.col_due = 0 if hero.pool != stage else hero.pool.col_due
+				if owed == "row":
+					stage.row_due = 1
+				else:
+					stage.col_due = 1
+				var tab: int = hero.pool.z56
+				for t in range(4):
+					hero._panels(Pad.DOWN)
+				check(hero.shield == 0, tag + ": nothing bought while owed (%d)" % hero.shield)
+				check(hero.pool.z56 == tab, tag + ": nothing paid while owed")
+				stage.row_due = 0
+				stage.col_due = 0
+				hero._panels(Pad.DOWN)
+				check(hero.shield == SolPanels.one("shield_full"), tag + ": bought once paid up")
+				s.leave()
+
+
 func run() -> void:
 	cube_item_is_the_stages()
 	door_keeps_taken_and_drops()
 	panel_sells_the_shield()
+	panel_waits_for_the_stage()
 	if failed == 0:
 		print("pb3_items_test: ok")
 	quit(1 if failed else 0)
