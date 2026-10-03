@@ -11,7 +11,7 @@ func _initialize() -> void:
 		var s := "%4d " % (r * 16)
 		for c in range(cols):
 			var b := lv.class_byte(c * 16, r * 16)
-			s += "#" if b == 0x80 else ("L" if b == 1 else ("^" if b == 2 else "."))
+			s += "#" if b == 0x80 else ("L" if b == 1 else ("^" if b == 2 else ("." if b == 0 else "%X" % (b & 15))))
 		print(s)
 	var sp := []
 	for o in lv.spawns: sp.append("%d/%d:%02X f%d" % [o.along, o.across, o.type, o.flags])

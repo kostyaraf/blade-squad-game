@@ -2899,6 +2899,7 @@ func _show_sol_screen(at: Vector2i) -> void:
 		m.set_shader_parameter("band_bank", sc.band_banks())
 	m.set_shader_parameter("bar_on", false)
 	m.set_shader_parameter("split_at", 1000.0)
+	m.set_shader_parameter("top_wrap_y", 0.0)
 	m.set_shader_parameter("clip_left", 0.0)
 	m.set_shader_parameter("view_top", 0.0)
 	m.set_shader_parameter("view_bottom", 240.0)
@@ -3495,6 +3496,7 @@ func _apply() -> void:
 	# A level is handed one place to stand in and keeps it the whole frame,
 	# and it draws the leftmost eight points like any other.
 	m.set_shader_parameter("split_at", 1000.0)
+	m.set_shader_parameter("top_wrap_y", 0.0)
 	m.set_shader_parameter("clip_left", 0.0)
 	_bar_show(m)
 	if select != null:
@@ -4356,6 +4358,7 @@ func _sol_dark() -> void:
 	m.set_shader_parameter("bands_on", false)
 	m.set_shader_parameter("bar_on", false)
 	m.set_shader_parameter("split_at", 1000.0)
+	m.set_shader_parameter("top_wrap_y", 0.0)
 	m.set_shader_parameter("clip_left", 0.0)
 	m.set_shader_parameter("view_top", 0.0)
 	m.set_shader_parameter("view_bottom", 240.0)
@@ -5408,6 +5411,7 @@ func _show() -> void:
 	scroll = Vector2i(0, w) if level_pb2.vertical else Vector2i(w, 0)
 	m.set_shader_parameter("map_paged", level_pb2.vertical)
 	m.set_shader_parameter("scroll", Vector2(scroll if level_pb2.vertical else scroll - origin))
+	_pb2_raster(m, level_pb2, world, Vector2(scroll - origin))
 	m.set_shader_parameter("banks", PackedInt32Array(level_pb2.background_banks(world.storm)
 			+ Pb2Sprites.banks_for(level_pb2, hero.pose, world.suit)))
 	m.set_shader_parameter("sprites_on", true)
@@ -5425,6 +5429,7 @@ func _title_show() -> void:
 	var m: ShaderMaterial = bg.material
 	m.set_shader_parameter("scroll", Vector2.ZERO)
 	m.set_shader_parameter("split_at", 1000.0)
+	m.set_shader_parameter("top_wrap_y", 0.0)
 	m.set_shader_parameter("clip_left", 0.0)
 	m.set_shader_parameter("banks",
 			PackedInt32Array(title.banks + title.spr_banks))
@@ -5444,6 +5449,7 @@ func _pass_show() -> void:
 	var m: ShaderMaterial = bg.material
 	m.set_shader_parameter("scroll", Vector2.ZERO)
 	m.set_shader_parameter("split_at", 1000.0)
+	m.set_shader_parameter("top_wrap_y", 0.0)
 	m.set_shader_parameter("clip_left", 0.0)
 	m.set_shader_parameter("banks",
 			PackedInt32Array(secret.banks + secret.spr_banks))
@@ -5733,6 +5739,7 @@ func _pb3_apply() -> void:
 	m.set_shader_parameter("bands_on", false)
 	m.set_shader_parameter("bar_on", false)
 	m.set_shader_parameter("split_at", 1000.0)
+	m.set_shader_parameter("top_wrap_y", 0.0)
 	m.set_shader_parameter("clip_left", 0.0)
 	m.set_shader_parameter("wrap", Vector2.ZERO)
 	_pb3_show()
@@ -5766,6 +5773,8 @@ func _pb3_show() -> void:
 	var paged: bool = two.game == Pb3Pair.PB2 and two.pb2v.vertical
 	m.set_shader_parameter("map_paged", paged)
 	m.set_shader_parameter("scroll", Vector2(scroll if paged else scroll - origin))
+	if two.game == Pb3Pair.PB2:
+		_pb2_raster(m, two.pb2v, two.host_pb2, Vector2(scroll - origin))
 	Nes.update_palette(pal_tex, pb3_draw.palette)
 	pal2_tex.update(_pb3_guest_palette())
 	m.set_shader_parameter("banks", PackedInt32Array(pb3_draw.banks))
@@ -5776,6 +5785,34 @@ func _pb3_show() -> void:
 	oam2_tex.update(_pb3_guest_oam())
 	if pb3_extra != null:
 		m.set_shader_parameter("banks3", PackedInt32Array(pb3_extra.guest_banks))
+
+
+## $EAF7/$E7AC/$E7DA -- kind four has a scrolling ceiling, a blank CHR
+## strip below $29, and a floor restored at the fixed second IRQ. Sprite
+## coordinates stay untouched. Constants come from ROM/PPU extraction.
+var _pb2_raster_cfg: Dictionary = {}
+
+func _pb2_raster(m: ShaderMaterial, lv: Pb2Level, things: Pb2Objects, normal: Vector2) -> void:
+	m.set_shader_parameter("top_wrap_y", 0.0)
+	m.set_shader_parameter("bands_on", false)
+	m.set_shader_parameter("split_at", 1000.0)
+	if lv.kind != 0x04:
+		return
+	if _pb2_raster_cfg.is_empty():
+		_pb2_raster_cfg = Nes._load_json(Nes.DATA + "/pb2/raster.json")
+	var cfg: Dictionary = _pb2_raster_cfg["kind4"]
+	var normal_banks: Array = lv.background_banks(things.storm)
+	var blank: Array = cfg["blank_banks"]
+	var floor_at: int = int(cfg["floor_at"])
+	m.set_shader_parameter("scroll", Vector2(normal.x, things.draw))
+	m.set_shader_parameter("scroll2", Vector2(normal.x, int(cfg["floor_scroll_y"])))
+	m.set_shader_parameter("split_at", float(floor_at))
+	m.set_shader_parameter("top_wrap_y", float(cfg["draw_wrap"]))
+	m.set_shader_parameter("bands_on", true)
+	m.set_shader_parameter("band_at", PackedInt32Array([0,
+			things.water + int(cfg["blank_bias"]), floor_at, 1000]))
+	m.set_shader_parameter("band_bank", PackedInt32Array(normal_banks + blank
+			+ normal_banks + normal_banks))
 
 
 ## The two foreign heroes use the same sheet, but may wear different suits.
