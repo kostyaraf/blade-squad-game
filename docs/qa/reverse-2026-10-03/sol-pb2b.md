@@ -15,6 +15,7 @@ BRIEF и skill godot применены. Быстрый обход — штат�
 |---|---|---|---:|---|
 | p4.0 | ☐ | [ввод](../playthrough/p4.0-sol-SPB2-smoke/replay.json) | 135 | (617,103), HP 8, state $01; $13,$16 |
 | p4.1 | ☐ | [ввод](../playthrough/p4.1-sol-SPB2-smoke/replay.json) | 135 | (105,615), HP 8, state $01; $0F,$47 |
+| p4.2 | ☐ | [ввод](../playthrough/p4.2-sol-SPB2-smoke/replay.json) | 135 | (617,103), HP 7, state $01; $23,$38 |
 
 ## Полные прохождения
 
