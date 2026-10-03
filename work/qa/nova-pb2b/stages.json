@@ -1,0 +1,1035 @@
+{
+  "coordinate_notes": {
+    "doorpoint": "Nova feet in Pb3Pair.world_of; center_world is actual object center. Nominal feet=center+15; final door completion requires changed event.",
+    "vertical": "world has16px seams each256; spawn along is flat: worldY=(along*16//240)*256+(along*16%240). g/d world, ordinary wp flat.",
+    "horizontal": "world mapY=screenY-16.",
+    "holes": "World 16px cells for geo scoring only. Actual input must break blocks.",
+    "menus": "Search candidates only, not accepted routes. All current stage configs choose the type4 room chain; type3 is separately listed optional boss branch."
+  },
+  "rooms": {
+    "p2.0": {
+      "entry": 15,
+      "vertical": true,
+      "kind": 1,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 0,
+      "flow": 0,
+      "draw": 224,
+      "size_world": [
+        256,
+        1024
+      ],
+      "start_world": [
+        32,
+        639
+      ],
+      "start_flat": [
+        32,
+        607
+      ],
+      "doorpoint": [
+        240,
+        63
+      ],
+      "wp": "d240,63",
+      "doors": [
+        {
+          "record": 1,
+          "type": 4,
+          "flags": 0,
+          "center_world": [
+            240,
+            48
+          ],
+          "feet_world": [
+            240,
+            63
+          ],
+          "feet_flat": [
+            240,
+            63
+          ],
+          "wp": "d240,63",
+          "requires_up": false,
+          "to": "p2.1"
+        }
+      ],
+      "holes": [],
+      "holes_arg": "",
+      "breakables": [],
+      "pickups": [
+        {
+          "record": 4,
+          "flags": 51,
+          "subtype": 3,
+          "center_world": [
+            48,
+            224
+          ],
+          "center_flat": [
+            48,
+            224
+          ]
+        }
+      ],
+      "menus": "0,1,3",
+      "waypoints": []
+    },
+    "p2.1": {
+      "entry": 16,
+      "vertical": true,
+      "kind": 1,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 0,
+      "flow": 0,
+      "draw": 23,
+      "size_world": [
+        256,
+        768
+      ],
+      "start_world": [
+        32,
+        63
+      ],
+      "start_flat": [
+        32,
+        63
+      ],
+      "doorpoint": [
+        240,
+        639
+      ],
+      "wp": "d240,639",
+      "doors": [
+        {
+          "record": 8,
+          "type": 4,
+          "flags": 0,
+          "center_world": [
+            240,
+            624
+          ],
+          "feet_world": [
+            240,
+            639
+          ],
+          "feet_flat": [
+            240,
+            607
+          ],
+          "wp": "d240,639",
+          "requires_up": false,
+          "to": "p2.2"
+        }
+      ],
+      "holes": [],
+      "holes_arg": "",
+      "breakables": [],
+      "pickups": [],
+      "menus": "0,1,3",
+      "waypoints": []
+    },
+    "p2.2": {
+      "entry": 17,
+      "vertical": false,
+      "kind": 1,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 0,
+      "flow": 0,
+      "draw": 224,
+      "size_world": [
+        1536,
+        160
+      ],
+      "start_world": [
+        32,
+        127
+      ],
+      "start_flat": [
+        32,
+        127
+      ],
+      "doorpoint": [
+        1520,
+        127
+      ],
+      "wp": "d1520,127",
+      "doors": [
+        {
+          "record": 9,
+          "type": 3,
+          "flags": 0,
+          "center_world": [
+            1152,
+            112
+          ],
+          "feet_world": [
+            1152,
+            127
+          ],
+          "feet_flat": [
+            1152,
+            127
+          ],
+          "wp": "d1152,127",
+          "requires_up": true,
+          "to": "p6.8"
+        },
+        {
+          "record": 13,
+          "type": 4,
+          "flags": 1,
+          "center_world": [
+            1520,
+            112
+          ],
+          "feet_world": [
+            1520,
+            127
+          ],
+          "feet_flat": [
+            1520,
+            127
+          ],
+          "wp": "d1520,127",
+          "requires_up": false,
+          "to": "p2.3"
+        }
+      ],
+      "holes": [],
+      "holes_arg": "",
+      "breakables": [],
+      "pickups": [],
+      "menus": "0,1,3",
+      "waypoints": []
+    },
+    "p2.3": {
+      "entry": 18,
+      "vertical": true,
+      "kind": 1,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 0,
+      "flow": 0,
+      "draw": 64,
+      "size_world": [
+        256,
+        1280
+      ],
+      "start_world": [
+        32,
+        975
+      ],
+      "start_flat": [
+        32,
+        927
+      ],
+      "doorpoint": [
+        16,
+        127
+      ],
+      "wp": "d16,127",
+      "doors": [
+        {
+          "record": 2,
+          "type": 4,
+          "flags": 0,
+          "center_world": [
+            16,
+            112
+          ],
+          "feet_world": [
+            16,
+            127
+          ],
+          "feet_flat": [
+            16,
+            127
+          ],
+          "wp": "d16,127",
+          "requires_up": false,
+          "to": "p2.4"
+        }
+      ],
+      "holes": [],
+      "holes_arg": "",
+      "breakables": [],
+      "pickups": [
+        {
+          "record": 3,
+          "flags": 67,
+          "subtype": 3,
+          "center_world": [
+            224,
+            144
+          ],
+          "center_flat": [
+            224,
+            144
+          ]
+        },
+        {
+          "record": 17,
+          "flags": 50,
+          "subtype": 2,
+          "center_world": [
+            32,
+            736
+          ],
+          "center_flat": [
+            32,
+            704
+          ]
+        }
+      ],
+      "menus": "0,1,3",
+      "waypoints": []
+    },
+    "p2.4": {
+      "entry": 19,
+      "vertical": false,
+      "kind": 1,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 0,
+      "flow": 0,
+      "draw": 224,
+      "size_world": [
+        1024,
+        160
+      ],
+      "start_world": [
+        992,
+        127
+      ],
+      "start_flat": [
+        992,
+        127
+      ],
+      "doorpoint": [
+        16,
+        127
+      ],
+      "wp": "d16,127",
+      "doors": [
+        {
+          "record": 1,
+          "type": 4,
+          "flags": 0,
+          "center_world": [
+            16,
+            112
+          ],
+          "feet_world": [
+            16,
+            127
+          ],
+          "feet_flat": [
+            16,
+            127
+          ],
+          "wp": "d16,127",
+          "requires_up": false,
+          "to": "p2.5"
+        }
+      ],
+      "holes": [],
+      "holes_arg": "",
+      "breakables": [],
+      "pickups": [],
+      "menus": "0,1,3",
+      "waypoints": []
+    },
+    "p2.5": {
+      "entry": 20,
+      "vertical": true,
+      "kind": 1,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 0,
+      "flow": 0,
+      "draw": 144,
+      "size_world": [
+        256,
+        512
+      ],
+      "start_world": [
+        224,
+        303
+      ],
+      "start_flat": [
+        224,
+        287
+      ],
+      "doorpoint": [
+        240,
+        127
+      ],
+      "wp": "d240,127",
+      "doors": [
+        {
+          "record": 1,
+          "type": 4,
+          "flags": 0,
+          "center_world": [
+            240,
+            112
+          ],
+          "feet_world": [
+            240,
+            127
+          ],
+          "feet_flat": [
+            240,
+            127
+          ],
+          "wp": "d240,127",
+          "requires_up": false,
+          "to": "p2.6"
+        }
+      ],
+      "holes": [],
+      "holes_arg": "",
+      "breakables": [],
+      "pickups": [],
+      "menus": "0,1,3",
+      "waypoints": []
+    },
+    "p2.6": {
+      "entry": 21,
+      "vertical": false,
+      "kind": 1,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 0,
+      "flow": 0,
+      "draw": 224,
+      "size_world": [
+        1024,
+        160
+      ],
+      "start_world": [
+        32,
+        127
+      ],
+      "start_flat": [
+        32,
+        127
+      ],
+      "doorpoint": [
+        1008,
+        127
+      ],
+      "wp": "d1008,127",
+      "doors": [
+        {
+          "record": 13,
+          "type": 4,
+          "flags": 0,
+          "center_world": [
+            1008,
+            112
+          ],
+          "feet_world": [
+            1008,
+            127
+          ],
+          "feet_flat": [
+            1008,
+            127
+          ],
+          "wp": "d1008,127",
+          "requires_up": false,
+          "to": "p6.2"
+        }
+      ],
+      "holes": [],
+      "holes_arg": "",
+      "breakables": [],
+      "pickups": [],
+      "menus": "0,1,3",
+      "waypoints": []
+    },
+    "p3.0": {
+      "entry": 15,
+      "vertical": false,
+      "kind": 1,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 0,
+      "flow": 0,
+      "draw": 224,
+      "size_world": [
+        768,
+        160
+      ],
+      "start_world": [
+        32,
+        127
+      ],
+      "start_flat": [
+        32,
+        127
+      ],
+      "doorpoint": [
+        752,
+        63
+      ],
+      "wp": "d752,63",
+      "doors": [
+        {
+          "record": 12,
+          "type": 4,
+          "flags": 0,
+          "center_world": [
+            752,
+            48
+          ],
+          "feet_world": [
+            752,
+            63
+          ],
+          "feet_flat": [
+            752,
+            63
+          ],
+          "wp": "d752,63",
+          "requires_up": false,
+          "to": "p3.1"
+        }
+      ],
+      "holes": [
+        [
+          224,
+          112
+        ],
+        [
+          240,
+          112
+        ],
+        [
+          480,
+          112
+        ],
+        [
+          496,
+          112
+        ]
+      ],
+      "holes_arg": "224,112;240,112;480,112;496,112",
+      "breakables": [
+        {
+          "record": 3,
+          "flags": 0,
+          "cell_world": [
+            224,
+            112
+          ],
+          "center_world": [
+            232,
+            112
+          ]
+        },
+        {
+          "record": 4,
+          "flags": 1,
+          "cell_world": [
+            240,
+            112
+          ],
+          "center_world": [
+            248,
+            112
+          ]
+        },
+        {
+          "record": 7,
+          "flags": 2,
+          "cell_world": [
+            480,
+            112
+          ],
+          "center_world": [
+            488,
+            112
+          ]
+        },
+        {
+          "record": 8,
+          "flags": 3,
+          "cell_world": [
+            496,
+            112
+          ],
+          "center_world": [
+            504,
+            112
+          ]
+        }
+      ],
+      "pickups": [],
+      "menus": "0,1,3",
+      "waypoints": []
+    },
+    "p3.1": {
+      "entry": 16,
+      "vertical": true,
+      "kind": 1,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 0,
+      "flow": 0,
+      "draw": 0,
+      "size_world": [
+        256,
+        512
+      ],
+      "start_world": [
+        32,
+        63
+      ],
+      "start_flat": [
+        32,
+        63
+      ],
+      "doorpoint": [
+        240,
+        463
+      ],
+      "wp": "d240,463",
+      "doors": [
+        {
+          "record": 8,
+          "type": 4,
+          "flags": 0,
+          "center_world": [
+            240,
+            448
+          ],
+          "feet_world": [
+            240,
+            463
+          ],
+          "feet_flat": [
+            240,
+            447
+          ],
+          "wp": "d240,463",
+          "requires_up": false,
+          "to": "p3.2"
+        }
+      ],
+      "holes": [],
+      "holes_arg": "",
+      "breakables": [],
+      "pickups": [],
+      "menus": "0,1,3",
+      "waypoints": []
+    },
+    "p3.2": {
+      "entry": 17,
+      "vertical": false,
+      "kind": 1,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 0,
+      "flow": 0,
+      "draw": 224,
+      "size_world": [
+        1280,
+        160
+      ],
+      "start_world": [
+        32,
+        127
+      ],
+      "start_flat": [
+        32,
+        127
+      ],
+      "doorpoint": [
+        1264,
+        127
+      ],
+      "wp": "d1264,127",
+      "doors": [
+        {
+          "record": 17,
+          "type": 4,
+          "flags": 0,
+          "center_world": [
+            1264,
+            112
+          ],
+          "feet_world": [
+            1264,
+            127
+          ],
+          "feet_flat": [
+            1264,
+            127
+          ],
+          "wp": "d1264,127",
+          "requires_up": false,
+          "to": "p3.3"
+        }
+      ],
+      "holes": [],
+      "holes_arg": "",
+      "breakables": [],
+      "pickups": [],
+      "menus": "0,1,3",
+      "waypoints": []
+    },
+    "p3.3": {
+      "entry": 18,
+      "vertical": true,
+      "kind": 1,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 0,
+      "flow": 0,
+      "draw": 64,
+      "size_world": [
+        256,
+        1024
+      ],
+      "start_world": [
+        32,
+        975
+      ],
+      "start_flat": [
+        32,
+        927
+      ],
+      "doorpoint": [
+        16,
+        63
+      ],
+      "wp": "d16,63",
+      "doors": [
+        {
+          "record": 2,
+          "type": 4,
+          "flags": 0,
+          "center_world": [
+            16,
+            48
+          ],
+          "feet_world": [
+            16,
+            63
+          ],
+          "feet_flat": [
+            16,
+            63
+          ],
+          "wp": "d16,63",
+          "requires_up": false,
+          "to": "p3.4"
+        }
+      ],
+      "holes": [],
+      "holes_arg": "",
+      "breakables": [],
+      "pickups": [
+        {
+          "record": 12,
+          "flags": 66,
+          "subtype": 2,
+          "center_world": [
+            48,
+            640
+          ],
+          "center_flat": [
+            48,
+            608
+          ]
+        },
+        {
+          "record": 17,
+          "flags": 83,
+          "subtype": 3,
+          "center_world": [
+            208,
+            848
+          ],
+          "center_flat": [
+            208,
+            800
+          ]
+        }
+      ],
+      "menus": "0,1,3",
+      "waypoints": []
+    },
+    "p3.4": {
+      "entry": 19,
+      "vertical": false,
+      "kind": 1,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 0,
+      "flow": 0,
+      "draw": 224,
+      "size_world": [
+        1536,
+        160
+      ],
+      "start_world": [
+        1504,
+        63
+      ],
+      "start_flat": [
+        1504,
+        63
+      ],
+      "doorpoint": [
+        16,
+        63
+      ],
+      "wp": "d16,63",
+      "doors": [
+        {
+          "record": 1,
+          "type": 4,
+          "flags": 1,
+          "center_world": [
+            16,
+            48
+          ],
+          "feet_world": [
+            16,
+            63
+          ],
+          "feet_flat": [
+            16,
+            63
+          ],
+          "wp": "d16,63",
+          "requires_up": false,
+          "to": "p3.5"
+        },
+        {
+          "record": 11,
+          "type": 3,
+          "flags": 0,
+          "center_world": [
+            1152,
+            64
+          ],
+          "feet_world": [
+            1152,
+            79
+          ],
+          "feet_flat": [
+            1152,
+            79
+          ],
+          "wp": "d1152,79",
+          "requires_up": true,
+          "to": "p6.9"
+        }
+      ],
+      "holes": [],
+      "holes_arg": "",
+      "breakables": [],
+      "pickups": [],
+      "menus": "0,1,3",
+      "waypoints": []
+    },
+    "p3.5": {
+      "entry": 20,
+      "vertical": true,
+      "kind": 1,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 0,
+      "flow": 0,
+      "draw": 0,
+      "size_world": [
+        256,
+        512
+      ],
+      "start_world": [
+        224,
+        63
+      ],
+      "start_flat": [
+        224,
+        63
+      ],
+      "doorpoint": [
+        240,
+        303
+      ],
+      "wp": "d240,303",
+      "doors": [
+        {
+          "record": 5,
+          "type": 4,
+          "flags": 0,
+          "center_world": [
+            240,
+            288
+          ],
+          "feet_world": [
+            240,
+            303
+          ],
+          "feet_flat": [
+            240,
+            287
+          ],
+          "wp": "d240,303",
+          "requires_up": false,
+          "to": "p3.6"
+        }
+      ],
+      "holes": [],
+      "holes_arg": "",
+      "breakables": [],
+      "pickups": [
+        {
+          "record": 4,
+          "flags": 82,
+          "subtype": 2,
+          "center_world": [
+            48,
+            224
+          ],
+          "center_flat": [
+            48,
+            224
+          ]
+        }
+      ],
+      "menus": "0,1,3",
+      "waypoints": []
+    },
+    "p3.6": {
+      "entry": 21,
+      "vertical": false,
+      "kind": 9,
+      "auto": 0,
+      "auto_wait": 0,
+      "line": 113,
+      "flow": 1,
+      "draw": 224,
+      "size_world": [
+        1280,
+        160
+      ],
+      "start_world": [
+        48,
+        127
+      ],
+      "start_flat": [
+        48,
+        127
+      ],
+      "doorpoint": [
+        1264,
+        127
+      ],
+      "wp": "d1264,127",
+      "doors": [
+        {
+          "record": 19,
+          "type": 4,
+          "flags": 0,
+          "center_world": [
+            1264,
+            112
+          ],
+          "feet_world": [
+            1264,
+            127
+          ],
+          "feet_flat": [
+            1264,
+            127
+          ],
+          "wp": "d1264,127",
+          "requires_up": false,
+          "to": "p6.3"
+        }
+      ],
+      "holes": [
+        [
+          608,
+          48
+        ],
+        [
+          624,
+          48
+        ],
+        [
+          640,
+          48
+        ],
+        [
+          656,
+          48
+        ]
+      ],
+      "holes_arg": "608,48;624,48;640,48;656,48",
+      "breakables": [
+        {
+          "record": 8,
+          "flags": 0,
+          "cell_world": [
+            608,
+            48
+          ],
+          "center_world": [
+            616,
+            48
+          ]
+        },
+        {
+          "record": 9,
+          "flags": 1,
+          "cell_world": [
+            624,
+            48
+          ],
+          "center_world": [
+            632,
+            48
+          ]
+        },
+        {
+          "record": 10,
+          "flags": 2,
+          "cell_world": [
+            640,
+            48
+          ],
+          "center_world": [
+            648,
+            48
+          ]
+        },
+        {
+          "record": 11,
+          "flags": 3,
+          "cell_world": [
+            656,
+            48
+          ],
+          "center_world": [
+            664,
+            48
+          ]
+        }
+      ],
+      "pickups": [],
+      "menus": "0,1,3",
+      "waypoints": []
+    }
+  }
+}

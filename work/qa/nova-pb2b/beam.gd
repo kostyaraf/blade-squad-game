@@ -27,8 +27,8 @@ func _initialize() -> void:
 		var hp := hcell.split(",")
 		holes[Vector2i(int(hp[0]) >> 4, int(hp[1]) >> 4)] = true
 	for w in String(args.wp).split(";"):
-		if w == "door":
-			wps.append("door")
+		if w == "door" or w == "clear":
+			wps.append(w)
 		elif w.begins_with("g") or w.begins_with("d"):
 			var q := w.substr(1).split(",")
 			# "d" = a door: steer to it by walking distance, done only on the room change
@@ -80,7 +80,7 @@ func _initialize() -> void:
 		beam = []
 		for k in kids:
 			var w: Vector2i = k.s.two.flat_of(0)
-			var key := "%d|%d|%d|%d|%d" % [k.wpi, w.x >> 2, w.y >> 2, k.s.two.pb2[0].sub, k.lost]
+			var key := "%d|%d|%d|%d|%d|%d|%d" % [k.wpi, w.x >> 2, w.y >> 2, k.s.two.pb2[0].sub, k.s.two.pb2[0].suit, k.s.gear.energy, k.lost]
 			if seen.has(key):
 				continue
 			seen[key] = true
@@ -107,6 +107,9 @@ func _initialize() -> void:
 				ids[e.s.get_instance_id()] = ids.get(e.s.get_instance_id(), 0) + 1
 			print("beam ", beam.size(), " distinct sessions ", ids.size())
 		if it % 5 == 0:
+			var checkpoint := FileAccess.open(args.out + ".partial", FileAccess.WRITE)
+			checkpoint.store_string(JSON.stringify({"entry":int(rec.entry),"heroes":heroes,"steps":steps + b.steps,"events":[],"done":false}))
+			checkpoint.close()
 			print("it %d t=%d wpi=%d pos=%s life=%d lost=%d score=%.0f" % [it, b.t, b.wpi, str(b.s.two.flat_of(0)), life(b.s), b.lost, b.score])
 	var fin: Dictionary = best_done if not best_done.is_empty() else (beam[0] if beam.size() > 0 else {})
 	if fin.is_empty():
@@ -255,6 +258,10 @@ func step(st: Dictionary, act: String, reuse: bool) -> Dictionary:
 				k.score = 1e9 - k.t - k.lost * hurt_w
 				return k
 			return {}
+		if ev == "list" and s.message.begins_with("STAGE CLEAR"):
+			k.done = true
+			k.score = 1e9 - k.t - k.lost * hurt_w
+			return k
 		if ev != "playing" or s.two == null:
 			if args.has("dbg"):
 				print("end t=%d ev=%s msg=%s" % [k.t, ev, s.message])
@@ -301,12 +308,17 @@ func score(k: Dictionary) -> float:
 	elif k.wpi < wps.size():
 		var lv: Pb2Level = s.two.pb2v
 		var w2: Vector2i = s.two.flat_of(0)
-		sc -= absi(w2.x - (lv.width_tiles * 8 - 16)) * 10.0
+		if args.has("fight"):
+			var target := String(args.fight).split(",")
+			sc -= (absi(w2.x - int(target[0])) + absi(w2.y - int(target[1]))) * 2.0
+		else:
+			sc -= absi(w2.x - (lv.width_tiles * 8 - 16)) * 10.0
 	if kill_w > 0 and s.two.host_pb2 != null:
 		var o: Pb2Objects = s.two.host_pb2
 		for n in range(Pb2Objects.FIRST_LIVE, Pb2Objects.SLOTS):
 			if o.slots[n][Pb2Objects.F_TYPE] == 0x0C and o.slots[n][Pb2Objects.F_STATE] < 2:
 				sc -= 3 * kill_w
-			elif o.slots[n][Pb2Objects.F_TYPE] != 0:
-				sc -= o.slots[n][Pb2Objects.F_LIFE] * kill_w
+			elif o.slots[n][Pb2Objects.F_TYPE] != 0 and o.slots[n][Pb2Objects.F_LIFE] < 128:
+				if not args.has("boss-type") or o.slots[n][Pb2Objects.F_TYPE] == int(args["boss-type"]):
+					sc -= o.slots[n][Pb2Objects.F_LIFE] * kill_w
 	return sc
