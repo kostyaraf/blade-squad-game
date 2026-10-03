@@ -364,5 +364,8 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "s16-s19-sol/replay.json"
   }
 ]
