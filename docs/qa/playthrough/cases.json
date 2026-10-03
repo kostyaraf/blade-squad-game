@@ -278,6 +278,14 @@
       {
         "tick": 3947,
         "all_alive": true
+      },
+      {
+        "tick": 4776,
+        "all_alive": true
+      },
+      {
+        "tick": 8033,
+        "all_alive": true
       }
     ]
   },
