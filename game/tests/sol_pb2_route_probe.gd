@@ -5,9 +5,11 @@ func _initialize() -> void:
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(OS.get_cmdline_user_args()[0]))
 	var results: Array = []
 	for c in cfg.cases:
+		Pb2Turn.exact_scan = bool(c.get("exact_scan", true))
 		var s := Pb3Session.new([1])
 		s.at = int(c.get("entry", 5))
 		s.enter()
+		if c.has("gun"): s.gear.gun[0] = int(c.gun)
 		var steps: Array = []
 		var events: Array = []
 		var samples: Array = []
@@ -18,7 +20,7 @@ func _initialize() -> void:
 				var e := s.advance(s.tick, [int(part[1])])
 				consumed += 1
 				if e != "playing": events.append({"tick":s.tick,"entry":s.at,"event":e,"message":s.message})
-				if s.tick % 100 == 0: samples.append(snapshot(s))
+				if s.tick % int(c.get("every",100)) == 0: samples.append(snapshot(s))
 			if consumed > 0: steps.append([consumed,int(part[1])])
 			if s.two == null: break
 		if c.has("lift_policy"):
@@ -49,7 +51,7 @@ func _initialize() -> void:
 				if not steps.is_empty() and int(steps[-1][1]) == pad: steps[-1][0] += 1
 				else: steps.append([1,pad])
 				if e != "playing": events.append({"tick":s.tick,"entry":s.at,"event":e,"message":s.message})
-				if s.tick % 100 == 0: samples.append(snapshot(s))
+				if s.tick % int(c.get("every",100)) == 0: samples.append(snapshot(s))
 				if s.at != policy_entry: break
 		var result := snapshot(s)
 		result["name"] = c.name

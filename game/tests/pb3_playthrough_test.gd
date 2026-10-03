@@ -19,6 +19,8 @@ func check(ok: bool, label: String) -> void:
 func play(case: Dictionary) -> void:
 	var rec: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(
 			"res://../docs/qa/playthrough/" + case.file))
+	# Recordings made before SPB2-04 carry no flag and replay the old spawn rule.
+	Pb2Turn.exact_scan = bool(rec.get("exact_scan", false))
 	var heroes: Array = []
 	for hero in rec.heroes:
 		heroes.append(int(hero))
