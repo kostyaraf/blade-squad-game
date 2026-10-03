@@ -766,6 +766,9 @@ var more_guests: Array = []
 ## nothing and flies on.  Stepping them is not this pool's: they are his, and
 ## they are stepped where he is.  See `work/re/pb3_arms.md`.
 var guest_arms: Array = []
+## PB3: a living guest is being drawn even when the native sprite slot is empty.
+## The boss entrance's $875D must wait for the actual party in that case.
+var guest_drawn := false
 ## PB3 only: native foreign terrain destruction, shared by blades, beams and satellites.
 var terrain_strike: Callable = Callable()
 
@@ -2932,7 +2935,7 @@ func _call_06(s: PackedByteArray) -> void:
 ## $875D -- nothing happens until the hero has a picture of his own, which is
 ## to say until the level has finished opening and he is being drawn.
 func _hold_boss(s: PackedByteArray) -> void:
-	if slots[0][F_KIND] == 0:
+	if slots[0][F_KIND] == 0 and not guest_drawn:
 		return
 	playing = 4                                        # $27 -- out of play
 	s[F_STATE] += 1
