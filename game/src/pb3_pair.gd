@@ -89,6 +89,8 @@ var sol_pending := Vector2i.ZERO
 ## A stage script ($A835/$A867 and others) may move the view after the heroes
 ## took their picture; that motion belongs to the next `slid`, not to nobody.
 var sol_seen := Vector2i(-1, -1)
+## $75 as the Power Blade heroes last stood on it, -1 off the carrying map.
+var ride_seen := -1
 ## The middle of the two as it stood at the end of the last picture, in
 ## sixteenths, at the height Solbrain's own view is measured from.
 var started := false
@@ -775,6 +777,13 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 		else:
 			q.shift = slid.x
 			q.shift_y = slid.y
+		if game == SOL:
+			# $D065/$D079 -- the lift carries whoever stands on its line:
+			# the view rose by `slid` and the line moved by what $75 did, so
+			# a hero on it ($A126, only while he stands) goes with both.
+			q.push_y = 0
+			if down.ride_line >= 0 and ride_seen >= 0:
+				q.push_y = host_sol.z75 - ride_seen + slid.y
 		var held: int = int(pads[i])
 		var hit: int = held & ~last_pad[i]
 		last_pad[i] = held
@@ -795,6 +804,8 @@ func _walk_them(take_pad: bool = false, shots: int = 0,
 			# looks for him when it turns round ($A764).
 			if flowing:
 				Pb2Turn.mirror(v, q)
+	if game == SOL:
+		ride_seen = host_sol.z75 if down.ride_line >= 0 else -1
 	_drive_view()
 	_hold_them_in()
 	_mirror_them()
@@ -1551,6 +1562,10 @@ func _sol_move(d: Vector2i) -> void:
 func _led_by_sol() -> void:
 	eye.pos = (sol_eye.x >> 4) & 0xFFFF
 	down.cam_y = (sol_eye.y >> 4) + Pb2Objects.VIEW_TOP
+	# $D04E -- on the carrying map the ground is the lift's line, $75 lines
+	# under the top of the view.
+	down.ride_line = (sol_eye.y >> 4) + host_sol.z75 \
+			if host_sol != null and sol_eye.map_kind == SolCamera.RIDE else -1
 
 
 ## $AC1C -> $96FF: scripted departure can cross the screen and wrap Y.

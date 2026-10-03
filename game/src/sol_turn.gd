@@ -141,6 +141,19 @@ func step(held: int) -> void:
 	# which is what ends his arriving -- writes what he reads next picture, so
 	# it is taken back out of the pool after the pool has run and not before.
 	hero.fuel = pool.hero_fuel
+	blanking(pool, view, script_)
+
+
+## $C3DF and $FBDB -- what the blanking between two pictures does for the
+## stage's own script.  $C3DF moves the lift's line by what the script asked
+## ($75 += $74) and $C39F wipes the ask; $FBDB copies $7D into $70, so the
+## kind of map the script asked for is the one the next picture runs on.
+## The stand in `main.gd` ($C3E0 there) has always done this; the game itself
+## never did, and the second stage's lift ($A8EB, $AA46) never started.
+static func blanking(pool: SolObjects, view: SolCamera, sc: SolScript) -> void:
+	pool.z75 = (pool.z75 + sc.g(0x74)) & 0xFF                # $C3DF
+	sc.p(0x74, 0)                                            # $C39F
+	view.map_kind = sc.g(0x7D)                               # $FBDB
 
 
 static func strip(suit: int, clock: int, bonus: int,
