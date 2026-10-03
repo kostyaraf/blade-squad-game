@@ -656,8 +656,27 @@ func step(pads: Array) -> void:
 						continue
 					if (solv as Pb2AsSol).hurts_at((p.x >> 4) + dx, feet + dy):
 						gone[i] = true
-		if not _sol_departing(i) and world_of(i).y >= solv.height_tiles * 8:
+		if not _sol_departing(i) and _below_area(i):
 			gone[i] = true
+
+
+## Out of the bottom of the area -- in both games the fall that kills.
+##
+## A Power Blade area that scrolls downwards keeps its map in pages of 256
+## lines but is never shown below its last view, page and line $59/$5A
+## (`Pb2Camera.limit_page`/`limit_low`, from the area record).  The map
+## under that view can be empty, or not drawn at all, so its height is not
+## the bottom: the bottom is the last line of the lowest view.  His own hero
+## dies higher up, at screen line $C7 ($A17A, `_off_foot`); the Solbrain hero
+## has only his own rule -- feet past the end of the stage -- and here the
+## end of the stage is the foot of that lowest screen (SPB-07, p2.0).
+func _below_area(i: int) -> bool:
+	var feet: int = world_of(i).y
+	if feet >= solv.height_tiles * 8:
+		return true
+	if game == PB2 and pb2v.vertical:
+		return _flat(feet) >= pb2v.cam_limit_page * 240 + pb2v.cam_limit_low + 0xF0
+	return false
 
 
 ## $A17A..$A191 -- a Power Blade hero whose feet are off the foot of the
@@ -1690,7 +1709,7 @@ func _hold_them_in() -> void:
 		if gone[i]:
 			continue
 		var s: Vector2i = screen_of(i)
-		if live_session and world_of(i).y >= solv.height_tiles * 8:
+		if live_session and _below_area(i):
 			# A fall out of the map must be consumed before screen clamping
 			# pins him at its last pixel forever.
 			gone[i] = true
