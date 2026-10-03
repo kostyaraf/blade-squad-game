@@ -1091,6 +1091,12 @@ func _walk_sol(hold: int) -> void:
 		pads_now = []
 		pads_now.resize(who.size())
 		pads_now.fill(0)
+		# SSB-20 -- $9E73 empties $06, but a step may then write its own
+		# buttons there ($9EB5 walks him to the beaten boss), and $94CA reads
+		# $06 from memory. Solbrain heroes get the script's buttons.
+		for i in range(who.size()):
+			if who[i] == SOL:
+				pads_now[i] = host_sol.six
 		_let_go_held()
 	_walk_them(false, 0, 0, hold)
 	pads_now = saved_pads
