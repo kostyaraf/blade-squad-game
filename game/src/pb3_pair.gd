@@ -1047,6 +1047,7 @@ func _walk_sol(hold: int) -> void:
 		pads_now = []
 		pads_now.resize(who.size())
 		pads_now.fill(0)
+		_let_go_held()
 	_walk_them(false, 0, 0, hold)
 	pads_now = saved_pads
 	# $91C0 -- and the stage's own hero into the table, where the order has it,
@@ -1055,6 +1056,23 @@ func _walk_sol(hold: int) -> void:
 		var h: SolPlayer = sol[host]
 		SolSprites.hero(h, (h.x - sol_eye.x) & 0xFFFF,
 				(h.y - sol_eye.y) & 0xFFFF, host_table)
+
+
+## $9E73 / $9371 (NSB-05) -- the end of a stage holds the heroes ($9E73 takes
+## $04/$06 away) and waits for $05A2 to be 0 or 8, a hero on his feet.  The
+## stage's own hero comes down by himself once his buttons are gone; a Power
+## Blade hero does not: on a wall, under a ceiling or on a net he holds on
+## with no button at all, so the wait never ends and the stage stands locked.
+## Held without buttons, he lets go and falls to the floor the script wants.
+func _let_go_held() -> void:
+	for i in range(who.size()):
+		if gone[i] or who[i] != PB2:
+			continue
+		var q: Pb2Player = pb2[i]
+		if q.sub in [Pb2Player.SUB_WALL, Pb2Player.SUB_ROOF,
+				Pb2Player.SUB_ROOF_ON, Pb2Player.SUB_ROOF_OVER,
+				Pb2Player.SUB_HANG, Pb2Player.SUB_NET]:
+			q._step_off(0)
 
 
 ## $CA9A / $F806: palette requests are a clock used by room scripts too.
