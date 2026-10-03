@@ -14,10 +14,14 @@ func _initialize() -> void:
 	var cands: Array = []
 	for d in cfg.get("dirs", [0, 1, 2]):
 		for j in cfg.get("jumps", [0, 8, 24]):
-			cands.append(_macro(int(d), int(j), seg))
+			for dl in (cfg.get("delays", [0]) if int(j) > 0 else [0]):
+				cands.append(_macro(int(d), int(j), seg, int(dl)))
 	for e in cfg.get("extra", []):
 		cands.append(e)
 	var log: Array = []
+	var cur := _run(steps)
+	var lazy: bool = bool(cfg.get("lazy", false))
+	var gain: float = float(cfg.get("min_gain", 0.0))
 	for k in range(int(cfg.get("segments", 80))):
 		var best: Dictionary = {}
 		for c in cands:
@@ -25,6 +29,13 @@ func _initialize() -> void:
 			if best.is_empty() or r.score > best.score:
 				best = r
 				best["cand"] = c
+			# lazy: the first candidate (in the given order) that loses no
+			# health and gains enough is taken without trying the rest.
+			if lazy and r.hp >= cur.hp and r.score >= cur.score + gain and r.score > -1.0e8:
+				best = r
+				best["cand"] = c
+				break
+		cur = best
 		for part in best.cand:
 			if not steps.is_empty() and int(steps[-1][1]) == int(part[1]): steps[-1][0] += int(part[0])
 			else: steps.append([int(part[0]), int(part[1])])
@@ -37,12 +48,12 @@ func _initialize() -> void:
 			break
 	quit(0)
 
-func _macro(dir: int, jump: int, seg: int) -> Array:
+func _macro(dir: int, jump: int, seg: int, delay: int = 0) -> Array:
 	var out: Array = []
 	var shoot: int = int(cfg.get("shoot", 8))
 	for t in range(seg):
 		var pad := dir
-		if t < jump: pad |= 128
+		if t >= delay and t < delay + jump: pad |= 128
 		if shoot > 0 and t % shoot == 0: pad |= 64
 		if not out.is_empty() and int(out[-1][1]) == pad: out[-1][0] += 1
 		else: out.append([1, pad])
@@ -56,17 +67,19 @@ func _run(steps: Array) -> Dictionary:
 	s.enter()
 	if cfg.has("gun"): s.gear.gun[0] = int(cfg.gun)
 	var event := ""
+	var win := false
 	for part in steps:
 		for _f in range(int(part[0])):
 			if s.two == null: break
 			var e := s.advance(s.tick, [int(part[1])])
 			if e != "playing":
 				event = e
+				win = "CLEAR" in s.message
 				break
 		if s.two == null or event != "": break
 	var res := {"tick": s.tick, "event": event, "x": 0, "y": 0, "hp": 0, "view": 0, "score": -1.0e9}
 	if event != "" or s.at != entry:
-		res.score = 1.0e9 if event == "changed" else -1.0e9
+		res.score = 1.0e9 if (event == "changed" or win) else -1.0e9
 		if s.two != null: s.leave()
 		return res
 	var p: Vector2i = s.two.world_of(0)
@@ -76,8 +89,20 @@ func _run(steps: Array) -> Dictionary:
 	var g: Dictionary = cfg.get("goal", {})
 	var score: float = float(h.suit) * 100000.0
 	if g.has("y"): score -= absf(float(p.y) - float(g.y)) * 10.0
-	else: score -= float(p.y) * 10.0
-	if g.has("x"): score -= absf(float(p.x) - float(g.x))
+	elif not g.has("x"): score -= float(p.y) * 10.0
+	if g.has("x"): score -= absf(float(p.x) - float(g.x)) * 10.0
+	if cfg.get("boss", false):
+		var life := 0
+		var bx := -1
+		for n in range(Pb2Objects.FIRST_LIVE, Pb2Objects.SLOTS):
+			var r: PackedByteArray = s.two.host_pb2.slots[n]
+			if r[Pb2Objects.F_TYPE] >= 0x50 and r[Pb2Objects.F_TYPE] < 0x60:
+				life = maxi(life, r[Pb2Objects.F_LIFE])
+				bx = r[Pb2Objects.F_X]
+		res["boss"] = life
+		score -= float(life) * 400.0
+		if bx >= 0:
+			score -= absf(float(bx) - float(res.x - s.two.view_x())) * float(cfg.get("boss_dist", 2.0))
 	res.score = score
 	s.leave()
 	return res
