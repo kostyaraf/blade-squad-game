@@ -77,6 +77,10 @@ func backgrounds() -> void:
 			mat.set_shader_parameter("sprites_on", false)
 			mat.set_shader_parameter("sprites2_on", false)
 			mat.set_shader_parameter("sprites3_on", false)
+			# REV-03 -- the shared bar (Pb3Board, the port's own letters at
+			# y=2..~30) stands over the picture; the oracle is background only.
+			if app.pb3_board != null:
+				app.pb3_board.visible = false
 			await process_frame
 			RenderingServer.force_draw()
 			var img := root.get_texture().get_image()

@@ -197,6 +197,7 @@ func step(buttons: int, pressed: int, camera: int,
 	y -= shift_y << 8
 	cam = camera
 	_terrain()
+	_b570()
 	match sub:
 		SUB_GROUND: _ground()
 		SUB_AIR: _air()
@@ -2214,8 +2215,29 @@ func _class_byte(sx: int, sy: int) -> int:
 	# which we have no way of keeping -- so the first row stands in for them.
 	if sy >= 0xE0:
 		return 0x00
+	sy = _turned(clampi(sy, 0x10, 0xAF)) if lvl.kind == 0x04 else sy
 	sy = maxi(sy, top)
 	return lvl.class_byte(cam + sx, sy - top)
+
+
+## $29 -- the line the area's water, lava or ceiling has reached.  It moves
+## (the things' frame moves it, $CEE0), so it is read live and not from the
+## area's record.
+func _line() -> int:
+	return int(world.water) if world != null else lvl.line
+
+
+## $AC1D -- kind four: the ceiling over the top of the screen is drawn turned
+## about and moves against the line.  Between the line and the hundred and
+## twenty eighth row there is nothing at all, and above the line the map is
+## asked with the row moved down by $80 - $29.
+func _turned(sy: int) -> int:
+	if lvl.kind != 0x04 or sy >= 0x80:
+		return sy
+	var ln: int = _line()
+	if sy >= ln:
+		return 0x80
+	return (sy - ln + 0x80) & 0xFF
 
 
 ## $B16D -- water and mud take their share of every movement.
@@ -2232,6 +2254,60 @@ func _scaled(v: int) -> int:
 
 
 # ------------------------------------------------------- what he stands in
+
+## $B570 -- what the sort of area ($87) does to him, after the ground has had
+## its say ($8E1D) and before he moves ($8E2C).  Kinds five and nine ride a
+## floor that the screen carries ($B5E7, p0.5 and p3.6); kind seven nothing;
+## every other kind looks at $2E for an area that slides sideways by itself
+## ($B59F, p4.4 and p5.3).
+func _b570() -> void:
+	if lvl is SolAsPb2:
+		return
+	match lvl.kind:
+		5, 9:
+			_b5e7()
+		7:
+			pass
+		_:
+			_b59f()
+
+
+## $B59F -- the view carries itself sideways: the edge it is coming from pushes
+## him on a pixel a step, and past it he is dead.
+func _b59f() -> void:
+	var sx: int = (x >> 8) & 0xFF
+	if lvl.auto == 3:
+		if sx < 0xEF:
+			return
+		held |= 0x10                            # $0668
+		push_x = -1                             # $063C := $FF
+		if sx >= 0xF7:
+			dead = true                         # $049A := 0
+	elif lvl.auto == 4:
+		if sx >= 0x12:
+			return
+		held |= 0x20
+		push_x = 1
+		if sx < 0x0A:
+			dead = true
+
+
+## $B5E7 -- a floor right across the screen at the area's line ($29), as solid
+## as any thing's ($0120..$0150), which the view carries up with it.  Standing
+## a little into it he is lifted out; caught more than six lines under it, he
+## is crushed.
+func _b5e7() -> void:
+	var top: int = (_line() - 1) & 0xFF         # $08
+	var under: int = (top + 2) & 0xFF           # $09
+	solids = solids + [[0x00, 0xFF, under, (under + 0x28) & 0xFF]]
+	var sy: int = (y >> 8) & 0xFF
+	if sy < top or (state & 0x60) != 0:
+		return
+	var v: int = ((sy - under) & 0xFF) ^ 0xFF   # $0652
+	push_y = v - 256 if v > 127 else v
+	if v >= 0x80 and v < 0xFA:
+		dead = true                             # $049A := 0
+
 
 ## $B316 -- what the place he is standing in does to him.
 ##
@@ -2329,17 +2405,18 @@ func _feel(ox: int, oy: int) -> int:
 	var sy: int = (y >> 8) + oy
 	if not lvl.vertical and not lvl is SolAsPb2:
 		sy = clampi(sy, 0x10, 0xAF)
+		sy = _turned(sy)
 	# $B34A: a few areas have a line across them -- water below it, or a fall
 	# that kills -- and there the map underneath does not matter.
 	match lvl.kind:
 		8:
-			if lvl.line + 0x1F >= sy:
+			if _line() + 0x1F >= sy:
 				return 2
 		0x0A:
-			if sy < 0x98 and sy >= lvl.line:
+			if sy < 0x98 and sy >= _line():
 				return 4
 		6:
-			if sy - 4 >= lvl.line:
+			if sy - 4 >= _line():
 				return 2
 	if lvl.vertical:
 		return lvl.terrain_at(sx, Pb2Level.map_row(cam, sy & 0xFF))

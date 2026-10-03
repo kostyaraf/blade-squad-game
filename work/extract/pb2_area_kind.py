@@ -3,7 +3,9 @@
 
 Two numbers decide whether a spot in an area is water, or a drop into
 something that kills: $87 says what sort of area this is and $29 says at which
-line of the screen the thing starts.  They are set by sixty-odd little
+line of the screen the thing starts.  $20 is which way that line sets off,
+and $FC where the screen is drawn from -- in the area with the turned-about
+ceiling (kind four) the two move against each other.  They are set by sixty-odd little
 routines, one per area, so instead of reading all of them the game is asked:
 each area is opened and the two bytes are read back out of its memory.
 """
@@ -32,7 +34,7 @@ def read(stage, area):
                         '-frames', str(P.IN_LEVEL + 2), '-ramdump', ram],
                        check=True, capture_output=True)
         m = open(ram, 'rb').read()
-        return m[0x87], m[0x29]
+        return m[0x87], m[0x29], m[0x20], m[0xFC]
     finally:
         P.sweep(d)
 
@@ -44,10 +46,13 @@ def main():
         path = os.path.join(DATA, 'stage%d.json' % stage)
         doc = json.load(open(path))
         for area in range(st['areas']):
-            kind, line = read(stage, area)
+            kind, line, flow, draw = read(stage, area)
             doc['areas'][area]['kind'] = kind
             doc['areas'][area]['line'] = line
-            print('%d:%-2d kind=%02X line=%02X' % (stage, area, kind, line))
+            doc['areas'][area]['flow'] = flow
+            doc['areas'][area]['draw'] = draw
+            print('%d:%-2d kind=%02X line=%02X flow=%02X draw=%02X'
+                  % (stage, area, kind, line, flow, draw))
             sys.stdout.flush()
         json.dump(doc, open(path, 'w'), separators=(',', ':'))
 

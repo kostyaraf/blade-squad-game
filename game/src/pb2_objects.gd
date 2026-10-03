@@ -302,6 +302,9 @@ var whirr := 0
 var solids: Array = []
 ## PB3 guests need each platform even when the native hero does not touch it.
 var guest_surfaces: Array = []
+## The box `lift_line` declared this frame ($B5E7), or empty where there is no
+## lift; PB3 carries a Solbrain guest on it (`Pb3Pair._supply_surfaces`).
+var lift_box: Array = []
 ## $011A -- thirty-six to the hero's pose: where in the table of answers
 ## ($B990) his own six rows begin.
 var hero_block := 0
@@ -353,6 +356,12 @@ func _init(level: Pb2Level) -> void:
 	area = lvl.area
 	came = lvl.stage
 	water = lvl.line
+	flow = lvl.flow
+	# Only the turned-about ceiling of kind four needs the screen's drawing
+	# point from the start; elsewhere the view answers for it until a
+	# harness says otherwise.
+	if lvl.kind == 0x04:
+		draw = lvl.draw
 	for i in range(SLOTS):
 		slots.append(empty_row())
 	var f := FileAccess.open("res://data/pb2/objects.json", FileAccess.READ)
@@ -1426,6 +1435,7 @@ func turns() -> Array:
 	hero_look()                                        # $BF18 -> $BA44
 	solids = []                                        # $011F
 	guest_surfaces.clear()
+	lift_box = []
 	claimed = 0                                        # $0167
 	# $F163 -- the spare byte of the fifteenth place read as a request for a
 	# noise: one asks for it once, two asks for it over and over.  The once is
@@ -1467,7 +1477,24 @@ func turns() -> Array:
 			Pb2Sound.at_slot = n
 			call(mind, n, s)
 			Pb2Sound.at_slot = -1
+	lift_line()                                        # $8E20 -> $B570
 	return gone
+
+
+## $B570 -> $B5E7 -- the areas of kind five and nine ride a lift whose floor is
+## the line $29 (0:5, 3:6).  The cartridge declares it every frame as a box
+## across the whole screen, from one line under $29 forty lines down.  The
+## Power Blade hero stands on it himself (`Pb2Player._b5e7`, NPB-04); the box
+## is kept here so that PB3 can carry a Solbrain guest on it (SPB-03,
+## `Pb3Pair._supply_surfaces`).
+##
+## Kind nine (3:6) is left out for now: its `line` in the area data was read
+## ~350 frames after the area opens (142 then, 113 in the data, SPB-06).
+func lift_line() -> void:
+	if lvl.kind != 5:
+		return
+	var under: int = (water + 1) & 0xFF                # $09
+	lift_box = [0x00, 0xFF, under, (under + 0x28) & 0xFF]
 
 
 ## $8026 and $8043 -- a stunned thing always counts its stun down, and most of
