@@ -213,7 +213,9 @@ func _init(from: int, st: int, ar: int, kinds: Array) -> void:
 	game = from
 	stage = st
 	area = ar
-	came = 0 if st == Pb2Objects.BOSS_STAGE else st
+	# $84FE/$86F7 keep $53 while $79 selects the boss table. A menu
+	# entry has no preceding door, so recover its stage from that table.
+	came = ar % Pb2Objects.BOSS_STAGE if game == PB2 and st == Pb2Objects.BOSS_STAGE else st
 	if game == PB2:
 		var src := Pb2Level.new(st, ar)
 		pb2v = src
@@ -477,6 +479,8 @@ func _raise_flow() -> void:
 		host_status = Pb2Status.new()
 		host_pb2.status = host_status
 		host_pb2.came = came
+		if stage == Pb2Objects.BOSS_STAGE:
+			host_pb2.boss = 1 # $84FE/$86F7: the door has set $79.
 		host_pb2.suit = host_status.suit
 		host_pb2.power = host_status.power_level
 		host_pb2.second = host_status.second_blade
