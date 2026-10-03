@@ -651,5 +651,14 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "s4-nova/replay.json",
+    "checkpoints": [
+      {
+        "tick": 4741,
+        "all_alive": true
+      }
+    ]
   }
 ]
