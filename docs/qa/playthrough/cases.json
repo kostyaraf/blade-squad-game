@@ -285,5 +285,14 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "s6-sol/replay.json",
+    "checkpoints": [
+      {
+        "tick": 2881,
+        "all_alive": true
+      }
+    ]
   }
 ]
