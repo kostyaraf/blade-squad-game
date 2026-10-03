@@ -198,5 +198,8 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "s1-s13-nova/replay.json"
   }
 ]
