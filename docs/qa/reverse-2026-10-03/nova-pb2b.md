@@ -25,7 +25,7 @@
 | p1.4 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 530 | обычный ввод; враги и урон; повтор цепочки |
 | p1.5 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 1680 | обычный ввод; враги и урон; повтор цепочки |
 | p1.6 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 3861 | обычный ввод; враги и урон; повтор цепочки |
-| p1.7 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 4676 | обычный ввод; враги и урон; полёт костюмом3 через гнёзда; обработчик $1C исправлен NPB2-40; вход к p6.1 |
+| p1.7 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 4676 | обычный ввод; враги и урон; повтор цепочки |
 | p2.0 | ☐ | — | — | не подтверждено |
 | p2.1 | ☐ | — | — | не подтверждено |
 | p2.2 | ☐ | — | — | не подтверждено |
@@ -65,7 +65,7 @@
 | p5.12 | ☐ | [вход](../playthrough/p5.12-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→15; (234,63); вход 51 |
 | p5.13 | ☐ | [вход](../playthrough/p5.13-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→14; (119,133); вход 52 |
 | p6.0 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 13213 | босс `$50` убит, штатный STAGE CLEAR; костюм 2 |
-| p6.1 | ☐ | [вход](../playthrough/p6.1-nova-pb2b-entry/replay.json) | — | обход 324 тиков; TEAM DOWN - CHOOSE A LEVEL TO RETRY; события list@324 |
+| p6.1 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 5413 | обычный ввод; враги и урон; победа над $51 обычным вводом; HP минимум13; STAGE CLEAR; от p1.4 |
 | p6.2 | ☐ | [вход](../playthrough/p6.2-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→7; (234,143); вход 55 |
 | p6.3 | ☐ | [вход](../playthrough/p6.3-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→4; (234,143); вход 56 |
 | p6.4 | ☐ | [вход](../playthrough/p6.4-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→10; (234,143); вход 57 |
@@ -281,4 +281,17 @@ NPB-02 уже исправлен SPB2-02 (91c9729), повтор боя оста
 
 костюм0; ожидание камеры на последней площадке; энергия11 после двери. Запись `p1-nova-pb2b-energy`, штатный выход 4401.
 Последнее состояние: тик 4460, вход 9, [{'alive': True, 'energy': 11, 'life': 16, 'menu': 0, 'owned': 15, 'state': 0, 'status_mode': 3, 'sub': 4, 'suit': 0, 'vy': 0, 'x': 224, 'y': 303}].
+Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.
+
+### Исправления и регрессия продолжения 3
+
+- [NPB2-40](npb2-40.md): реализован $1C, унаследованный NPB-01; коммит1f6a784. ROM0/853760 полей, фокус11/11; обычный входp1.7, объект на198/220.
+- [NPB2-41](npb2-41.md): потолок kind4 p1.0 рисуется как NES, часть NPB-06; коммит06d6b4f. GPU/NES0/277760 пикселей на7 кадрах. Kind6/9 ещё не закрыты.
+- После общих правок verify_pb3_playthrough.py: 48/48, exit0, без SCRIPT ERROR.
+- Бой p6.1 пока открыт. Попытка3: босс48→39, Нова погиб на5972; запись p1-upper-nova-pb2b-boss-attempt3.
+
+### Передача после p6.1 (продолжение 3)
+
+победа над $51 обычным вводом; HP минимум13; STAGE CLEAR; от p1.4. Запись `p1-upper-nova-pb2b`, штатный выход 5413.
+Последнее состояние: тик 5413, вход 54, [].
 Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.

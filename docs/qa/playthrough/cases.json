@@ -386,6 +386,23 @@
     ]
   },
   {
+    "file": "p1-nova-pb2b-energy/replay.json",
+    "checkpoints": [
+      {
+        "tick": 1773,
+        "all_alive": true
+      },
+      {
+        "tick": 4400,
+        "all_alive": true
+      },
+      {
+        "tick": 4460,
+        "all_alive": true
+      }
+    ]
+  },
+  {
     "file": "p1-upper-nova-pb2b/replay.json",
     "checkpoints": [
       {
@@ -405,24 +422,7 @@
         "all_alive": true
       },
       {
-        "tick": 4690,
-        "all_alive": true
-      }
-    ]
-  },
-  {
-    "file": "p1-nova-pb2b-energy/replay.json",
-    "checkpoints": [
-      {
-        "tick": 1773,
-        "all_alive": true
-      },
-      {
-        "tick": 4400,
-        "all_alive": true
-      },
-      {
-        "tick": 4460,
+        "tick": 5412,
         "all_alive": true
       }
     ]
