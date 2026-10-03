@@ -1471,6 +1471,16 @@ func _drive_view() -> void:
 		sol_pending = Vector2i.ZERO
 		_remember()
 		return
+	# $A4BB (NSB-04) -- while a room script holds the heroes ($9E73 clears
+	# $06/$04) it walks $30/$31 itself, a sixteenth of a screen a picture,
+	# until the boss column is under the hero.  The native view only follows
+	# a hero who moves ($F1EA), and a held one does not, so the walk stands;
+	# the pair's band would pull it back every picture and the step never ends.
+	if game == SOL and live_session and host_script != null \
+			and host_script.controls_locked:
+		sol_pending = Vector2i.ZERO
+		_remember()
+		return
 	var mid := Vector2i.ZERO
 	for k in range(across.size()):
 		mid += Vector2i(across[k], down[k])
