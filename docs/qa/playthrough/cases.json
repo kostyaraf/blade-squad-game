@@ -300,5 +300,18 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "p4-nova-pb2c/replay.json",
+    "checkpoints": [
+      {
+        "tick": 455,
+        "all_alive": true
+      },
+      {
+        "tick": 2237,
+        "all_alive": true
+      }
+    ]
   }
 ]
