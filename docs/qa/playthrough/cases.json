@@ -324,5 +324,45 @@
   },
   {
     "file": "s19-sol/replay.json"
+  },
+  {
+    "file": "p4-nova-pb2c/replay.json",
+    "checkpoints": [
+      {
+        "tick": 455,
+        "all_alive": true
+      },
+      {
+        "tick": 2237,
+        "all_alive": true
+      },
+      {
+        "tick": 2743,
+        "all_alive": true
+      },
+      {
+        "tick": 2788,
+        "all_alive": true
+      },
+      {
+        "tick": 2937,
+        "all_alive": true
+      }
+    ]
+  },
+  {
+    "file": "p0-sol-SPB2-p05/replay.json"
+  },
+  {
+    "file": "p0-sol-SPB2-p06/replay.json"
+  },
+  {
+    "file": "s6-sol/replay.json",
+    "checkpoints": [
+      {
+        "tick": 2881,
+        "all_alive": true
+      }
+    ]
   }
 ]

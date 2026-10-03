@@ -1088,15 +1088,15 @@ func _walk_sol(hold: int) -> void:
 		spare_sol.suit = 0
 	var saved_pads := pads_now
 	if live_session and host_script.controls_locked:
+		# $9E73 takes the player's buttons away, and the step that holds
+		# him may then hand him its own: $06 held ($9EB5 walks him towards
+		# the last boss) and $04 pressed.  The script has run already this
+		# picture ($CDB3 before $91B5), so they are read as it left them;
+		# every hero is handed them, as the stage's hero is (NSB-20, SSB-20).
+		var scripted: int = host_script.g(0x06) | host_script.g(0x04)
 		pads_now = []
 		pads_now.resize(who.size())
-		pads_now.fill(0)
-		# SSB-20 -- $9E73 empties $06, but a step may then write its own
-		# buttons there ($9EB5 walks him to the beaten boss), and $94CA reads
-		# $06 from memory. Solbrain heroes get the script's buttons.
-		for i in range(who.size()):
-			if who[i] == SOL:
-				pads_now[i] = host_sol.six
+		pads_now.fill(scripted)
 		_let_go_held()
 	_walk_them(false, 0, 0, hold)
 	pads_now = saved_pads
