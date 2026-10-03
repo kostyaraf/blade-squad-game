@@ -203,6 +203,14 @@ def export():
                        spawn_wall=list(b11[0x73D:0x740]), floor_probe=list(b11[0x750:0x752]),
                        walk_wall=list(b11[0x78E:0x791]), gravity=b11[0x775],
                        fall_limit=b11[0x77D], burst_ticks=b11[0x799], burst_anim=b11[0x79B]),
+        # $8E29..$8E9C: nest child falling, floor/wall probes and expiry.
+        nest_child_1c=dict(life=b10[0xE45], anim=b10[0xE37],
+                          fall_start=list(b10[0xE3B:0xE3D]),
+                          speed=list(b10[0xE40:0xE42]),
+                          floor_probe=list(b10[0xE4F:0xE51]),
+                          gravity=b10[0xE54], fall_limit=b10[0xE5C],
+                          walk_wall=list(b10[0xE7F:0xE82]),
+                          burst_anim=b10[0xE8A], burst_ticks=b10[0xE8E]),
         # $AB45..$AC0C: invulnerable shutters spawned by boss $52.
         hand_4a=dict(life=b11[0xB55], anim=b11[0xB59],
                      left=b11[0xB72], right=b11[0xB65],

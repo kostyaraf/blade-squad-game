@@ -129,7 +129,7 @@ const MINDS := {0x46: "_mind_46", 0x3D: "_mind_3d", 0x48: "_mind_48", 0x01: "_mi
 		0x22: "_mind_22", 0x37: "_mind_37", 0x2F: "_mind_2f", 0x33: "_mind_33",
 		0x30: "_mind_30", 0x31: "_mind_31", 0x32: "_mind_32",
 		0x1E: "_mind_1e", 0x38: "_mind_38", 0x24: "_mind_24",
-		0x3C: "_mind_3c", 0x1B: "_mind_1b", 0x1A: "_mind_1a", 0x15: "_mind_15",
+		0x3C: "_mind_3c", 0x1B: "_mind_1b", 0x1C: "_mind_1c", 0x1A: "_mind_1a", 0x15: "_mind_15",
 		0x27: "_mind_27", 0x28: "_mind_28",
 		0x07: "_mind_07", 0x08: "_mind_08", 0x2B: "_mind_2b",
 		0x29: "_mind_29", 0x20: "_mind_20",
@@ -225,6 +225,7 @@ var death_cfg: Dictionary = {}
 var small_shot_cfg: Dictionary = {}
 var hatchling_cfg: Dictionary = {}
 var hand_4a_cfg: Dictionary = {}
+var nest_child_1c_cfg: Dictionary = {}
 var drop_clock := 0  ## $98 -- successive deaths read successive nibbles.
 ## The ten minds themselves, which live in a file of their own.
 var bosses := Pb2Bosses.new()
@@ -373,6 +374,7 @@ func _init(level: Pb2Level) -> void:
 	small_shot_cfg = t["small_shots"]
 	hatchling_cfg = t["hatchling"]
 	hand_4a_cfg = t["hand_4a"]
+	nest_child_1c_cfg = t["nest_child_1c"]
 	pickup_bit = PackedByteArray(t["pickup_bit"])
 	pickup_pic = PackedByteArray(t["pickup_pic"])
 	cull_class = PackedByteArray(t["cull_class"])
@@ -5200,6 +5202,53 @@ func _mind_1b(_n: int, s: PackedByteArray) -> void:
 	s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
 	if s[F_COUNT] == 0:
 		s[F_STATE] -= 1                                # $C969
+
+
+## $8E29 (bank 10) -- the nest's child: drop to the floor, walk towards
+## the hero, fall off ledges, and burst against a wall. $BEDD/$BEE3 differ
+## only in the floor answer on frames when the slot does not probe terrain.
+func _mind_1c(n: int, s: PackedByteArray) -> void:
+	var c: Dictionary = nest_child_1c_cfg
+	var floor_probe: Array = c["floor_probe"]
+	match s[F_STATE]:
+		0:                                            # $8E34
+			start_anim(s, int(c["anim"]))
+			var down: Array = c["fall_start"]
+			set_speed_down(s, int(down[1]), int(down[0]))
+			var side: Array = c["speed"]
+			set_speed_side_at_hero(s, int(side[1]), int(side[0]))
+			s[F_LIFE] = int(c["life"])
+			s[F_MARK] = int(small_shot_cfg["trail_mark"]) # $BE5A -> $FD76
+			s[F_STATE] += 1
+		1:                                            # $8E49 -- falling
+			step_anim(s)
+			if walled_either_turn(n, s, int(floor_probe[1]), int(floor_probe[0]), 0) >= 0x80:
+				snap_down(s)
+				set_speed_down(s, 0, 0)
+				s[F_STATE] += 1
+				return
+			add_speed_down(s, int(c["gravity"]))
+			if s[F_VY] >= int(c["fall_limit"]):
+				set_speed_down(s, int(c["fall_limit"]), 0)
+			step_down(s)
+		2:                                            # $8E72 -- walking
+			if walled_either_turn(n, s, int(floor_probe[1]), int(floor_probe[0]), 0x80) < 0x80:
+				s[F_STATE] -= 1
+				return
+			var wall: Array = c["walk_wall"]
+			if walled_ahead_turn(n, s, int(wall[0]), int(wall[2]), int(wall[1]), 0) < 0x80:
+				step_anim(s)
+				step_both(s)
+				return
+			start_anim(s, int(c["burst_anim"]))
+			s[F_COUNT] = int(c["burst_ticks"])
+			s[F_STATE] += 1
+		3:                                            # $8E92
+			s[F_COUNT] = (s[F_COUNT] - 1) & 0xFF
+			if s[F_COUNT] == 0:
+				clear(n)
+			else:
+				step_anim(s)
 
 
 ## $910D -- the one that hangs in the air and spits.  The bottom bit of the
