@@ -11,7 +11,7 @@ def main():
     result = subprocess.run(
         [GODOT, '--headless', '--path', str(ROOT / 'game'), '--script',
          'res://tests/pb3_playthrough_test.gd'],
-        capture_output=True, text=True, timeout=180)
+        capture_output=True, text=True, timeout=900)
     print(result.stdout, end='')
     print(result.stderr, end='')
     bad = int(result.returncode != 0 or 'FAIL:' in result.stdout

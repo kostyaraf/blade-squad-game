@@ -201,5 +201,23 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "p4.0-sol-SPB2/replay.json",
+    "checkpoints": [
+      {
+        "tick": 636,
+        "all_alive": true
+      }
+    ]
+  },
+  {
+    "file": "s0-s8-sol/replay.json"
+  },
+  {
+    "file": "s3-s18-sol/replay.json"
+  },
+  {
+    "file": "s10-s14-sol/replay.json"
   }
 ]
