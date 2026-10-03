@@ -201,5 +201,14 @@
   },
   {
     "file": "s1-s13-nova/replay.json"
+  },
+  {
+    "file": "p4.0-sol-SPB2/replay.json",
+    "checkpoints": [
+      {
+        "tick": 636,
+        "all_alive": true
+      }
+    ]
   }
 ]
