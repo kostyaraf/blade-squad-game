@@ -31,6 +31,12 @@ class_name Pb2AsSol
 var src: Pb2Level
 ## PB3 uses continuous hero coordinates across the 16 padding rows of each page.
 var continuous_vertical := false
+## $29 and the view as they stand this frame, after $CED2 moved the line.
+## The pair hands them over; -1 is "nobody said", and nothing is turned.
+var live_line := -1
+var view_pos := 0
+## The bar over a sideways area: its map starts at line sixteen of the screen.
+const VIEW_TOP := 16
 
 ## $10 -- a wall. Shifted up by three this is the $80 the hero tests.
 const SOLID := 0x10
@@ -93,6 +99,8 @@ func collision_at(px: int, py: int) -> int:
 	# of the bottom is how a hero dies, not something a wall prevents.
 	if py >= height_tiles * 8:
 		return 0x00
+	var wet := _line_says(py) == 0x04
+	py = _asked_y(py)
 	# $A194 -> $963D: belts must retain both solidity and their push bit.
 	# Test terrain before the wall class, because both PB2 belts are solid.
 	var terrain := src.terrain_at(px, py)
@@ -103,9 +111,48 @@ func collision_at(px: int, py: int) -> int:
 			return BELT_LEFT
 	if src.class_byte(px, py) == 0x80:
 		return SOLID
-	if terrain == 0x04 or terrain == 0x03:
+	if wet or terrain == 0x04 or terrain == 0x03:
 		return WATER
 	return 0x00
+
+
+## $AC1D -- kind four (p1.0): above the line the ceiling is turned about and
+## moves against it; between the line and the hundred and twenty eighth line
+## of the screen there is nothing.  Map line in, the map line PB2 asks out.
+func _asked_y(py: int) -> int:
+	if src.kind != 0x04 or src.vertical or live_line < 0:
+		return py
+	var sy := py + VIEW_TOP
+	if sy < 0x10 or sy >= 0x80:
+		return py
+	if sy >= live_line:
+		return 0x80 - VIEW_TOP
+	return ((sy - live_line + 0x80) & 0xFF) - VIEW_TOP
+
+
+## $B34A -- the areas with a line across them, where the map underneath does
+## not matter: kind eight kills above it, kind six below it and kind ten is
+## water down to $98.  Returns PB2's terrain there, or -1.  The line is a line
+## of the screen, so a map line is first turned into one.
+func _line_says(py: int) -> int:
+	if live_line < 0 or src.kind not in [0x06, 0x08, 0x0A]:
+		return -1
+	var sy := py + VIEW_TOP
+	if src.vertical:
+		sy = py - view_pos
+		if Pb2Level.map_row(view_pos, sy) != py:
+			sy -= 16
+	match src.kind:
+		0x08:
+			if live_line + 0x1F >= sy:
+				return 0x02
+		0x0A:
+			if sy < 0x98 and sy >= live_line:
+				return 0x04
+		0x06:
+			if sy - 4 >= live_line:
+				return 0x02
+	return -1
 
 
 ## $2A -- the metatile his feet are inside.  Power Blade 2 has no panels, and
@@ -120,7 +167,11 @@ func raw_at(_px: int, _py: int) -> int:
 func hurts_at(px: int, py: int) -> bool:
 	if src == null:
 		return false
-	return src.class_byte(px, map_y(py)) == 0x02 or src.terrain_at(px, map_y(py)) == 0x02
+	var my := map_y(py)
+	if _line_says(my) == 0x02:
+		return true
+	my = _asked_y(my)
+	return src.class_byte(px, my) == 0x02 or src.terrain_at(px, my) == 0x02
 
 
 ## And the other one: a ladder, which the Solbrain hero cannot climb.  He walks

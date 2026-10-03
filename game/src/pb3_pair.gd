@@ -610,6 +610,9 @@ func step(pads: Array) -> void:
 		if host_pb2 != null:
 			host_pb2.water_turn(eye)
 		eye.drive()
+		if host_pb2 != null and solv is Pb2AsSol:
+			solv.live_line = host_pb2.water
+			solv.view_pos = eye.pos
 		slid = Vector2i(eye.shift, 0) if not pb2v.vertical \
 				else Vector2i(0, eye.shift)
 	else:
