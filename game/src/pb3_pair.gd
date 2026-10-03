@@ -1121,6 +1121,7 @@ func _pb2_gate_ready(i: int) -> bool:
 ## Native AI reads $0508/$04C6 even when nobody occupies Nova's own slot.
 ## Keep that non-colliding slot aimed at a living guest, never the origin.
 func _pb2_living_target() -> void:
+	host_pb2.guest_drawn = false
 	for i in range(who.size()):
 		if gone[i]:
 			continue
@@ -1132,6 +1133,7 @@ func _pb2_living_target() -> void:
 		row[Pb2Objects.F_YHI] = 0
 		# Health stays zero: contact and pickups use the actual guest mirror.
 		row[Pb2Objects.F_LIFE] = 0
+		host_pb2.guest_drawn = true
 		return
 
 
