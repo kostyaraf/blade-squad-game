@@ -91,6 +91,10 @@ var sol_pending := Vector2i.ZERO
 var sol_seen := Vector2i(-1, -1)
 ## $75 as the Power Blade heroes last stood on it, -1 off the carrying map.
 var ride_seen := -1
+## SPB-03 -- where the top of a Power Blade lift ($B5E7) stood in the level
+## last step, in hero lines, and how far it has risen since.
+var lift_seen := -1
+var lift_carry := 0
 ## The middle of the two as it stood at the end of the last picture, in
 ## sixteenths, at the height Solbrain's own view is measured from.
 var started := false
@@ -749,6 +753,16 @@ func _sol_script_feet(i: int) -> Vector2i:
 func _walk_them(take_pad: bool = false, shots: int = 0,
 		extra: int = 0, hold: int = 0) -> void:
 	var pads: Array = pads_now
+	lift_carry = 0
+	if live_session and game == PB2 and host_pb2 != null:
+		# SPB-03 -- the lift is a box fixed on the screen; the native hero
+		# lives in screen lines and rides it for free ($D363, then $0652).
+		# Solbrain lives in the level, so he is moved by what it rose.
+		var lift: Array = host_pb2.lift_box
+		var top: int = -1 if lift.is_empty() else _hero_y(line_at(int(lift[2])))
+		if top >= 0 and lift_seen >= 0:
+			lift_carry = top - lift_seen
+		lift_seen = top
 	for i in range(who.size()):
 		shoved[i] = Vector2i.ZERO
 		if gone[i]:
@@ -908,6 +922,12 @@ func _supply_surfaces(i: int) -> void:
 		if i != host and feet.x >= int(box[0]) - dx - 5 and feet.x <= int(box[1]) - dx + 5 \
 				and absi(feet.y - (int(box[2]) - dy)) <= 1:
 			carry = Vector2i(dx, dy)
+	var lift: Array = host_pb2.lift_box
+	if who[i] == SOL and not lift.is_empty():
+		boxes = boxes + [lift]          # $B5E7 -- PB2 heroes add it themselves
+	if who[i] == SOL and lift_carry != 0 and not lift.is_empty() \
+			and absi(_hero_y(world_of(i).y) - (lift_seen - lift_carry)) <= 1:
+		carry.y = lift_carry
 	if who[i] == PB2:
 		pb2[i].solids = boxes
 		if i != host:
