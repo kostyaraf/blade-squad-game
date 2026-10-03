@@ -20,11 +20,11 @@
 | s7.0 | ☐ | [Обход](../playthrough/s7.0-sol-SSB-smoke/replay.json) | — | Старт: (727,1728), HP 8, жив |
 | s8.0 | ☑ | [Непрерывно s0 → s8](../playthrough/s0-s8-sol/replay.json) | 14752 | Босс первого этапа побеждён, STAGE CLEAR; за всю цепочку s0 → s8 урона нет (HP 8) |
 | s9.0 | ☑ | [Непрерывно s3 → s18](../playthrough/s3-s18-sol/replay.json) (срез до выхода: [s3-s9-sol](../playthrough/s3-s9-sol/replay.json)) | 7634 | Штатный выход в s18.0: стоять на машине у x≈2260 (y 1136); HP 8 на выходе |
-| s10.0 | ☑ | [Непрерывно s10 → s11 → s14](../playthrough/s10-s14-sol/replay.json) | 4095 | Штатный переход в s11.0; HP 8 |
-| s11.0 | ☑ | [Непрерывно s10 → s11 → s14](../playthrough/s10-s14-sol/replay.json) | 10125 | Штатный выход в s14.0: стоять на площадке (2004,1632); HP 8 на выходе |
+| s10.0 | ☑ | [Непрерывно s10 → s11 → s14](../playthrough/s10-s14-sol/replay.json) | 4120 | Штатный переход в s11.0; HP 7 |
+| s11.0 | ☑ | [Непрерывно s10 → s11 → s14](../playthrough/s10-s14-sol/replay.json) | 10150 | Штатный выход в s14.0: стоять на площадке (2004,1632); HP 8 на выходе |
 | s12.0 | ☐ | [Обход](../playthrough/s12.0-sol-SSB-smoke/replay.json) | — | Старт: (2936,1728), HP 7, жив |
 | s13.0 | ☐ | [Обход](../playthrough/s13.0-sol-SSB-smoke/replay.json) | — | Старт: (1468,3744), HP 8, жив |
-| s14.0 | ☑ | [Непрерывно s10 → s11 → s14](../playthrough/s10-s14-sol/replay.json), [кадр](../playthrough/s10-s14-sol/boss-down-14300.png) | 14604 | Босс (id 65, 80 жизней) побеждён, STAGE CLEAR; HP 3 (урон от рывков босса) |
+| s14.0 | ☑ | [Непрерывно s10 → s11 → s14](../playthrough/s10-s14-sol/replay.json), [кадр](../playthrough/s10-s14-sol/boss-down-14325.png) | 14629 | Босс (id 65, 80 жизней) побеждён, STAGE CLEAR; HP 3 (урон от рывков босса) |
 | s15.0 | ☐ | [Обход](../playthrough/s15.0-sol-SSB-smoke/replay.json) | — | Старт: (439,1472), HP 8, жив |
 | s16.0 | ☐ | [Обход](../playthrough/s16.0-sol-SSB-smoke/replay.json) | — | Старт: (3089,1728), HP 8, жив |
 | s17.0 | ☐ | [Обход](../playthrough/s17.0-sol-SSB-smoke/replay.json) | — | Старт: (3248,1728), HP 7, жив |
