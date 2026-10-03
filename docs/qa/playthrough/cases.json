@@ -258,5 +258,14 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "s4-s5-sol/replay.json",
+    "checkpoints": [
+      {
+        "tick": 8172,
+        "all_alive": true
+      }
+    ]
   }
 ]
