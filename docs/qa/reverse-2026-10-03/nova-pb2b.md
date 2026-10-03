@@ -20,7 +20,7 @@
 | p4.7 | ☐ | [вход](../../playthrough/p4.7-nova-pb2b-entry/replay.json) | — | обход 302 тиков; TEAM DOWN - CHOOSE A LEVEL TO RETRY; события list@302 |
 | p4.8 | ☐ | [вход](../../playthrough/p4.8-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→16; (138,68); вход 37 |
 | p4.9 | ☐ | [вход](../../playthrough/p4.9-nova-pb2b-entry/replay.json) | — | обход 380 тиков; HP 16→16; (90,563); вход 38 |
-| p5.0 | ☐ | — | — | вход ещё не проверен |
+| p5.0 | ☐ | [вход](../../playthrough/p5.0-nova-pb2b-entry/replay.json) | — | обход 237 тиков; TEAM DOWN - CHOOSE A LEVEL TO RETRY; события list@237 |
 | p5.1 | ☐ | — | — | вход ещё не проверен |
 | p5.2 | ☐ | — | — | вход ещё не проверен |
 | p5.3 | ☐ | — | — | вход ещё не проверен |
