@@ -376,5 +376,14 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "p1.4-sol-SPB2/replay.json",
+    "checkpoints": [
+      {
+        "tick": 658,
+        "all_alive": true
+      }
+    ]
   }
 ]
