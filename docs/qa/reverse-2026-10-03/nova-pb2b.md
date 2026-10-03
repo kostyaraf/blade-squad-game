@@ -18,11 +18,11 @@
 | p0.4 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 4379 | повтор от p0.0; босс p6.0 также завершён |
 | p0.5 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 10515 | повтор от p0.0; босс p6.0 также завершён |
 | p0.6 | ☑ | [p0 целиком](../playthrough/p0-nova-pb2b/replay.json) | 12019 | повтор от p0.0; босс p6.0 также завершён |
-| p1.0 | ☑ | [цепочка p1](../playthrough/p1-nova-pb2b/replay.json) | 1774 | костюмы 2/3; живой Нова, HP10 |
-| p1.1 | ☑ | [цепочка p1](../playthrough/p1-nova-pb2b/replay.json) | 3948 | спуск подкатами, костюм3; HP3 перед дверью |
-| p1.2 | ☑ | [цепочка p1](../playthrough/p1-nova-pb2b/replay.json) | 4777 | обычный ввод; перебор нажатий |
-| p1.3 | ☑ | [цепочка p1](../playthrough/p1-nova-pb2b/replay.json) | 15872 | обычный ввод; перебор нажатий |
-| p1.4 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 530 | обычный ввод; враги и урон; повтор цепочки |
+| p1.0 | ☑ | [p1-nova-pb2b](../playthrough/p1-nova-pb2b/replay.json) | 1774 | обычный ввод; враги и урон; повтор цепочки |
+| p1.1 | ☑ | [p1-nova-pb2b](../playthrough/p1-nova-pb2b/replay.json) | 3948 | обычный ввод; враги и урон; повтор цепочки |
+| p1.2 | ☑ | [p1-nova-pb2b](../playthrough/p1-nova-pb2b/replay.json) | 4777 | обычный ввод; враги и урон; повтор цепочки |
+| p1.3 | ☑ | [p1-nova-pb2b](../playthrough/p1-nova-pb2b/replay.json) | 5658 | обычный ввод; враги и урон; повтор цепочки |
+| p1.4 | ☑ | [p1-nova-pb2b](../playthrough/p1-nova-pb2b/replay.json) | 6116 | обычный ввод; враги и урон; непрерывно от p1.0; быстрый p1.3, подкат в левую шахту |
 | p1.5 | ☑ | [p1-upper-nova-pb2b](../playthrough/p1-upper-nova-pb2b/replay.json) | 1680 | обычный ввод; враги и урон; от p1.4, полёт костюмом3; HP16 перед дверью |
 | p1.6 | ☐ | — | — | не подтверждено |
 | p1.7 | ☐ | — | — | не подтверждено |
@@ -257,4 +257,10 @@ NPB-02 уже исправлен SPB2-02 (91c9729), повтор боя оста
 
 от p1.4, полёт костюмом3; HP16 перед дверью. Запись `p1-upper-nova-pb2b`, штатный выход 1680.
 Последнее состояние: тик 1680, вход 13, [{'alive': True, 'energy': 12, 'life': 16, 'menu': 0, 'owned': 15, 'state': 0, 'status_mode': 3, 'sub': 4, 'suit': 3, 'vy': 0, 'x': 224, 'y': 127}].
+Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.
+
+### Передача после p1.4 (продолжение 3)
+
+непрерывно от p1.0; быстрый p1.3, подкат в левую шахту. Запись `p1-nova-pb2b`, штатный выход 6116.
+Последнее состояние: тик 6192, вход 12, [{'alive': True, 'energy': 1, 'life': 16, 'menu': 0, 'owned': 15, 'state': 0, 'status_mode': 3, 'sub': 4, 'suit': 0, 'vy': 0, 'x': 1220, 'y': 89}].
 Принято повтором playthrough.gd с начала записи; SCRIPT ERROR в стенде отсутствует.
