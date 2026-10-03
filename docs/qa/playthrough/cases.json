@@ -521,7 +521,11 @@
         "all_alive": true
       },
       {
-        "tick": 480,
+        "tick": 1685,
+        "all_alive": true
+      },
+      {
+        "tick": 1686,
         "all_alive": true
       }
     ]
