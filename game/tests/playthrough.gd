@@ -97,6 +97,8 @@ func poll() -> void:
 	write_json("state.json", result)
 	print(JSON.stringify(result))
 	busy = false
+	if cmd.get("quit", false):
+		quit(0)
 
 func status() -> Dictionary:
 	var result := {"tick":session.tick,"entry":session.at,"message":session.message,"players":[],"enemies":[]}
