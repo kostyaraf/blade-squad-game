@@ -155,6 +155,18 @@ func step(held: int, pressed: int, prepared: bool = false) -> int:
 	# built again with $AD one, where the same record is a door ($B0D7).
 	if world.interlude:
 		return INTERLUDE
+	# $802F -- once a door has set $2A only the door kinds ($03, $04) take
+	# their turn; he is the thing in slot 0 and waits with the rest, so his
+	# own step ($8E1D..$8E52: throws, move, $A17A, satellites) is not run.
+	# Falling into the door of p5.0 he stops where he touched it (NPB2-20).
+	if world.frozen != 0:
+		world.push_x = 0
+		world.push_y = 0
+		world.solids = []
+		world.claimed = 0
+		world.marks = 0
+		world.marks2 = 0
+		return NONE
 	# $8E26 -- what is already in the air moves first, and only then does
 	# $8E29 let go of the next one; $8E2C moves him after both.
 	world.shots_turn()
