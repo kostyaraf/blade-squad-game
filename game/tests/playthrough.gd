@@ -30,7 +30,7 @@ func poll() -> void:
 	var cmd = JSON.parse_string(FileAccess.get_file_as_string(folder + "/command.json"))
 	if not cmd is Dictionary or int(cmd.get("id", -1)) <= seen:
 		return
-	# The mailbox survives process restarts; continuation needs a live run.
+	# A saved continuation belongs to the previous runner process.
 	if session == null and not cmd.has("start"):
 		seen = int(cmd.id)
 		return

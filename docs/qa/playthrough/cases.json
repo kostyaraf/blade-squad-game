@@ -260,6 +260,28 @@
     ]
   },
   {
+    "file": "p0-nova-pb2b/replay.json",
+    "checkpoints": [
+      {
+        "tick": 13212,
+        "all_alive": true
+      }
+    ]
+  },
+  {
+    "file": "p1-nova-pb2b/replay.json",
+    "checkpoints": [
+      {
+        "tick": 1773,
+        "all_alive": true
+      },
+      {
+        "tick": 3947,
+        "all_alive": true
+      }
+    ]
+  },
+  {
     "file": "p0-sol-SPB2/replay.json"
   }
 ]
