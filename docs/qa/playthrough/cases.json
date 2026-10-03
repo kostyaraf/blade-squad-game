@@ -349,5 +349,14 @@
   },
   {
     "file": "p0-sol-SPB2-p06/replay.json"
+  },
+  {
+    "file": "s6-sol/replay.json",
+    "checkpoints": [
+      {
+        "tick": 2881,
+        "all_alive": true
+      }
+    ]
   }
 ]
