@@ -300,5 +300,23 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "s12-sol/replay.json",
+    "checkpoints": [
+      {
+        "tick": 1397,
+        "all_alive": true
+      }
+    ]
+  },
+  {
+    "file": "s17-sol/replay.json",
+    "checkpoints": [
+      {
+        "tick": 2197,
+        "all_alive": true
+      }
+    ]
   }
 ]
