@@ -219,5 +219,14 @@
   },
   {
     "file": "s10-s14-sol/replay.json"
+  },
+  {
+    "file": "p0.6-sol/replay.json",
+    "checkpoints": [
+      {
+        "tick": 2095,
+        "all_alive": true
+      }
+    ]
   }
 ]
