@@ -16,7 +16,7 @@
 | s7.0 | ☐ | [попытка](../playthrough/s7-nova-attempt1/replay.json) | — | Не пройден: после NSB-06 боссы 1–2 ($57=2), тик ~6590 у (1670,1300), HP 5 |
 | s8.0 | ☑ | [s0-s8-nova](../playthrough/s0-s8-nova/replay.json) | 12100 | Победа STAGE CLEAR, непрерывно из s0 |
 | s9.0 | ☑ | [s9-nova](../playthrough/s9-nova/replay.json), [s3-s18-nova](../playthrough/s3-s18-nova/replay.json) | 3653 | Выход к s18; в цепочке из s3 вход 2476 → выход 6134 |
-| s10.0 | ☐ | — | — | В работе |
+| s10.0 | ☑ | [s10-nova](../playthrough/s10-nova/replay.json) | 3917 | s10 → s11; поиск по маршруту Солбрайна (путь обычными нажатиями), минимум HP 6 |
 | s11.0 | ☐ | — | — | В работе |
 | s12.0 | ☑ | [s12-nova](../playthrough/s12-nova/replay.json) | 3386 | Отдельный штатный вход; цепочка этапа ещё не закрыта |
 | s13.0 | ☑ | [s13-nova](../playthrough/s13-nova/replay.json), [s1-s13-nova](../playthrough/s1-s13-nova/replay.json) | 1479 | Отдельный вход; лифт после NSB-03 (до правки — 1529). Этап s1→s2→s13 непрерывно: переходы 4427/12841, STAGE CLEAR 15402, минимум HP 4 |

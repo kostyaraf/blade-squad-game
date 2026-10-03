@@ -16,7 +16,7 @@
 | s3.0 | ☑ | [Непрерывно s3 → s18](../playthrough/s3-s18-sol/replay.json) | 2635 | Штатный переход в s9.0 (HP 8) |
 | s4.0 | ☑ | [Проход s4 → s5](../playthrough/s4-s5-sol/replay.json) | 8172 | Штатный выход в s5.0 при x ≥ 2800 по низу (ROM `$A3AF`: `$81 ≥ $AF`); HP 8 на входе s5. Путь: ящик → колонна, уступ (1752,494) → труба 479 → сетка → верхний ряд → спуск по уступам, пушки id26/id27 бьются ударами лицом к ним |
 | s5.0 | ☐ | [Обход](../playthrough/s5.0-sol-SSB-smoke/replay.json) | — | Старт: (503,1696), HP 8, жив |
-| s6.0 | ☐ | [Обход](../playthrough/s6.0-sol-SSB-smoke/replay.json) | — | Старт: (492,416), HP 8, жив |
+| s6.0 | ☑ | [Обход s6 → s7](../playthrough/s6-sol/replay.json) | 2881 | Штатный вход (id 69), выход s6 → s7 при x ≥ 3296 (смена этапа на тике 2882); HP 8 |
 | s7.0 | ☐ | [Обход](../playthrough/s7.0-sol-SSB-smoke/replay.json) | — | Старт: (727,1728), HP 8, жив |
 | s8.0 | ☑ | [Непрерывно s0 → s8](../playthrough/s0-s8-sol/replay.json) | 14752 | Босс первого этапа побеждён, STAGE CLEAR; за всю цепочку s0 → s8 урона нет (HP 8) |
 | s9.0 | ☑ | [Непрерывно s3 → s18](../playthrough/s3-s18-sol/replay.json) (срез до выхода: [s3-s9-sol](../playthrough/s3-s9-sol/replay.json)) | 7634 | Штатный выход в s18.0: стоять на машине у x≈2260 (y 1136); HP 8 на выходе |
