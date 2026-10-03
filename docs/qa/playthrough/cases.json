@@ -318,5 +318,11 @@
         "all_alive": true
       }
     ]
+  },
+  {
+    "file": "p0-sol-SPB2-p05/replay.json"
+  },
+  {
+    "file": "p0-sol-SPB2-p06/replay.json"
   }
 ]
