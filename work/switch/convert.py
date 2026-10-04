@@ -2,6 +2,7 @@
 """Generate an isolated Godot 3 homebrew project from the Godot 4 sources."""
 from pathlib import Path
 import re, shutil, json, argparse, hashlib
+from audio_adapter import optimize as optimize_audio
 ROOT=Path(__file__).resolve().parents[2]
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--source',type=Path,default=ROOT/'game')
@@ -163,6 +164,7 @@ for filename,s in files.items():
  s=s.replace('JSON.parse_string','parse_json').replace('JSON.stringify','to_json')
  s=s.replace('Image.create_from_data','NXCompat.image_from_data').replace('Image.create(', 'NXCompat.image(')
  s=s.replace('ImageTexture.create_from_image','NXCompat.texture')
+ s=re.sub(r'(?m)^(\s*oam[2]?_tex = )NXCompat\.texture\(', r'\1NXCompat.texture_oam(', s)
  s=s.replace('Color.html(', 'Color(').replace('Color.BLACK','Color.black').replace('Color.WHITE','Color.white')
  s=s.replace('await VisualServer.frame_post_draw','yield(VisualServer, "frame_post_draw")')
  s=s.replace('menu.picked.connect(_menu_took)','menu.connect("picked", self, "_menu_took")')
@@ -213,6 +215,11 @@ for filename,s in files.items():
   if key in constants.get(cls,{}): return '('+constants[cls][key]+')'
   return 'NXCompat.script("res://src/'+classes[cls]+'").'+key
  s=re.sub(r'\b('+'|'.join(classes)+r')\.(\w+)',member,s)
+ if filename == 'main.gd':
+  s=s.replace('func _ready() -> void:\n',
+   'var nx_perf\nfunc _ready() -> void:\n\tnx_perf = load("res://src/nx_perf.gd").new()\n')
+  s=s.replace('func _process(dt: float) -> void:', 'func _nx_process(dt: float) -> void:')
+  s+='\nfunc _process(dt: float) -> void:\n\tvar start_us = OS.get_ticks_usec()\n\t_nx_process(dt)\n\tnx_perf.observe(self, dt, OS.get_ticks_usec() - start_us)\n'
  (OUT/'src'/filename).write_text(s)
 for p in Path(__file__).parent.glob('nx_*.gd'):
  shutil.copy2(p,OUT/'src'/p.name)
@@ -236,6 +243,13 @@ if i>=0:
  shader=shader.replace(helpers,''); shader=shader[:i]+helpers+'\n'+shader[i:]
 shader=shader.replace('FRAGCOORD.xy','pixel').replace('FRAGCOORD.x','pixel.x').replace('FRAGCOORD.y','pixel.y')
 shader=shader.replace('void fragment() {','void fragment() {\n    vec2 pixel = UV * vec2(256.0, 240.0);')
+shader=shader.replace('i < 64', 'i < 8')
+shader=shader.replace('texelFetch(oam, ivec2(i, 0), 0)',
+ 'texelFetch(oam, ivec2(i, clamp(here_y, 0, 255)), 0)')
+shader=shader.replace('texelFetch(oam2, ivec2(i, 0), 0)',
+ 'texelFetch(oam2, ivec2(i, clamp(here_y, 0, 255)), 0)')
+shader=shader.replace('texelFetch(oam2, ivec2(i, 1), 0)',
+ 'texelFetch(oam2, ivec2(i, 256 + clamp(here_y, 0, 255)), 0)')
 (OUT/'src/nes_bg.shader').write_text(shader)
 scene=(SRC/'src/main.tscn').read_text().replace('format=3','format=2').replace('.gdshader','.shader').replace('offset_right','margin_right').replace('offset_bottom','margin_bottom')
 scene=re.sub(r'(ExtResource|SubResource)\("(\d+)"\)',r'\1( \2 )',scene)
@@ -271,4 +285,5 @@ quality/driver/driver_name="GLES3"
 textures/default_filters/use_nearest_mipmap_filter=false
 ''')
 (OUT/'source-manifest.json').write_text(json.dumps(source_hashes,indent=2)+'\n')
+optimize_audio(OUT)
 print(OUT)

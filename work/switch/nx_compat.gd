@@ -75,8 +75,37 @@ static func texture_image(img):
  return linear
 static func texture_update(tex, img):
  img.unlock()
- tex.set_data(texture_image(img))
+ tex.set_data(texture_image(oam_scanlines(img) if tex.has_meta("nx_oam") else img))
  img.lock()
+static func texture_oam(img):
+ var tex = texture(oam_scanlines(img))
+ tex.set_meta("nx_oam", true)
+ return tex
+static func oam_scanlines(img):
+ # The NES accepts the first eight sprites per scanline, before testing X.
+ # Build that exact queue once per frame instead of scanning all 64 per pixel.
+ var tables = img.get_height()
+ var source = img.get_data()
+ var out = Image.new()
+ out.create(8, 256 * tables, false, Image.FORMAT_RGBA8)
+ out.fill(Color8(247, 0, 0, 0))
+ var data = out.get_data()
+ var counts = []
+ counts.resize(256 * tables)
+ for pos in range(counts.size()): counts[pos] = 0
+ for table in range(tables):
+  for sprite in range(64):
+   var src = (table * 64 + sprite) * 4
+   var first = int(source[src]) + 1
+   for line in range(first, min(first + 16, 240)):
+    var row = table * 256 + line
+    var slot = int(counts[row])
+    if slot >= 8: continue
+    var dst = (row * 8 + slot) * 4
+    for channel in range(4): data[dst + channel] = source[src + channel]
+    counts[row] += 1
+ out.create_from_data(8, 256 * tables, false, Image.FORMAT_RGBA8, data)
+ return out
 static func font_size(label, _key, size_):
  var font = DynamicFont.new()
  font.font_data = load("res://fonts/NotoSans-Regular.ttf")

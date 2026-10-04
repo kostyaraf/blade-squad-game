@@ -31,7 +31,10 @@ func _idle(_dt):
    main._snd_use("sol")
   else:
    main._menu_took("pb3")
- if mode == "pb3":
+   if mode == "pair":
+    main.pb3_players = 2
+    main.pb3_heroes = [0, 1]
+ if mode in ["pb3", "pair"]:
   if count in [20, 30]: main.pads[0].handed = 16
   elif count < 35: main.pads[0].handed = 0
  if count > 40 and not mode in ["title", "sol-title"]:
