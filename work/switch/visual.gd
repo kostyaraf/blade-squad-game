@@ -14,7 +14,9 @@ func _idle(_dt):
  count += 1
  if main == null: return false
  if count == 10:
-  if mode == "pb2":
+  if mode == "title" or mode == "sol-title":
+   main._menu_took("pb2" if mode == "title" else "sol")
+  elif mode == "pb2":
    main.menu.queue_free()
    main.menu = null
    main._start_play(0, 0)
@@ -32,7 +34,7 @@ func _idle(_dt):
  if mode == "pb3":
   if count in [20, 30]: main.pads[0].handed = 16
   elif count < 35: main.pads[0].handed = 0
- if count > 40:
+ if count > 40 and not mode in ["title", "sol-title"]:
   main.pads[0].handed = 1 | (128 if count % 40 < 5 else 0) | (64 if count % 15 < 4 else 0)
  main._process(1.0 / 60.0)
  if count == 180:

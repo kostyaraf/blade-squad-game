@@ -64,6 +64,8 @@ for m in re.finditer(r'^(?:static )?func (\w+)\(',main,re.M):
  funcs[m[1]]=main[m.start():end]
  spans.append((m.start(),end,m[1]))
 reachable={'_ready','_input','_process','_draw','_exit_tree','_menu_took'}
+# SolFlow calls this public interface on main; no local call references it.
+reachable.update(name for name in funcs if name.startswith('flow_'))
 while True:
  more=set()
  for key in reachable:
