@@ -54,7 +54,7 @@ For the rebuilt main c1ce69e on 2026-10-04: 7422 frame records matched exactly: 
 velocities, actor states and session events. The earlier snapshot's 960-frame probe also
 matched. `visual.gd` checks interactive scenes and writes a screenshot under
 `user://`; pass `-- --mode=pb2`, `sol`, or `pb3`. An earlier snapshot's Solbrain screenshot
-matched Godot 4 pixel for pixel; the current build's PB3 scene was rendered
+differed from Godot 4 by at most 1/255 per RGB channel; the current build's PB3 scene was rendered
 and the packed scene was launched without script or shader errors. The packed PCK was also run from `/tmp`, outside
 the source project. These checks do not establish full level playthrough or
 performance on Switch.
@@ -70,3 +70,12 @@ in `fonts/`. The delivered ZIP includes those notices and Russian launch guidanc
 Current source snapshot: `build/switch-source-current`, created from Git main
 commit c1ce69e (not pending WIP). Delivered archive: `build/PB3-Switch-v0.1.0.zip`.
 Checks on 2026-10-04 returned code 0 without SCRIPT ERROR.
+
+## SW-02 — данные текстур без коррекции sRGB
+
+На реальном Switch пользователь получил повреждённые тайлы и надписи.
+Принудительное декодирование sRGB в настольном шейдере воспроизвело дефект.
+RGBA8 теперь преобразуется в отдельное RGBAF-изображение для GPU как при
+создании, так и при обновлении текстуры. Изображения CPU не меняются.
+Проверка: `texture_probe.gd` проверяет все значения байта каждого канала
+до и после обновления. Подробности: `docs/qa/switch-hardware.md`.

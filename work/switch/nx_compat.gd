@@ -59,9 +59,24 @@ static func image_from_data(w, h, mip, format_, data):
 static func texture(img):
  img.unlock()
  var tex = ImageTexture.new()
- tex.create_from_image(img, 0)
+ tex.create_from_image(texture_image(img), 0)
  img.lock()
  return tex
+static func texture_image(img):
+ # Godot 3 GLES3 can store RGBA8 as GL_SRGB8_ALPHA8. On Switch,
+ # texelFetch then decodes RGB, corrupting tile numbers and OAM bytes.
+ # RGBA32F has no sRGB variant. Keep the CPU image in its original format.
+ if img.get_format() != Image.FORMAT_RGBA8:
+  return img
+ var linear = Image.new()
+ linear.create_from_data(img.get_width(), img.get_height(), img.has_mipmaps(),
+   Image.FORMAT_RGBA8, img.get_data())
+ linear.convert(Image.FORMAT_RGBAF)
+ return linear
+static func texture_update(tex, img):
+ img.unlock()
+ tex.set_data(texture_image(img))
+ img.lock()
 static func font_size(label, _key, size_):
  var font = DynamicFont.new()
  font.font_data = load("res://fonts/NotoSansUI_Regular.woff2")

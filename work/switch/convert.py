@@ -166,6 +166,7 @@ for filename,s in files.items():
  s=s.replace('.call(', '.invoke(') # only callable uses in this project
  s=s.replace('.update(img)', '.set_data(img)')
  s=re.sub(r'\b(map_tex|pal2_tex|oam_tex|oam2_tex)\.update\(',r'\1.set_data(',s)
+ s=method(s,'set_data','NXCompat.texture_update')
  for old,new in [('set_shader_param','shader_param'),('resize','resize_array'),('fill','fill_array'),('slice','slice_array'),('decode_s16','decode_s16'),('encode_s16','encode_s16'),('append_array','append_array'),('join','join_array'),('add_theme_font_size_override','font_size')]:
   s=method(s,old,'NXCompat.'+new)
  # Pure integer two-dimensional coordinates (Godot 3 has no Vector2i).
