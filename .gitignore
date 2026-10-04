@@ -31,3 +31,6 @@ docs/qa/playthrough/state.json
 docs/qa/playthrough/trace.json
 docs/qa/playthrough/replay.json
 docs/qa/playthrough/trimmed.json
+
+# Local release binaries, toolchains and cleanup reports; downloadable builds are Releases assets.
+/build/
