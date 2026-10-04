@@ -79,7 +79,7 @@ static func texture_update(tex, img):
  img.lock()
 static func font_size(label, _key, size_):
  var font = DynamicFont.new()
- font.font_data = load("res://fonts/NotoSansUI_Regular.woff2")
+ font.font_data = load("res://fonts/NotoSans-Regular.ttf")
  font.size = size_
  font.use_filter = false
  label.add_font_override("font", font)

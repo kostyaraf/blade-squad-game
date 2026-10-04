@@ -85,3 +85,10 @@ RGBA8 теперь преобразуется в отдельное RGBAF-изо
 Конвертер сохраняет публичные методы main.flow_* для вызовов из SolFlow.
 Проверка `visual.gd -- --mode=sol-title` проходит 180 кадров от выбора
 Solbrain в меню без ошибок скрипта или шейдера; код выхода 0.
+
+## SW-05 — видимое меню на Switch
+
+Для меню поставляется NotoSans-Regular.ttf из notofonts/noto-fonts
+(hinted/ttf/NotoSans), лицензия OFL в fonts/LICENSE.Noto.txt.
+NES-фон и неиспользуемый синтез звука выключены в меню.
+`menu_probe.gd` проверяет переход обычными кнопками от трёх игр к списку PB3.

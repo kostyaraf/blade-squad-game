@@ -45,7 +45,7 @@ main=chunks[0]
 for chunk in chunks[1:]:
  name=re.match(r'(?:static )?func (\w+)',chunk)[1]
  if name=='_ready':
-  main+='func _ready() -> void:\n\tpads = [Pad.player_one(), Pad.player_two()]\n\t_snd_raise()\n\tbg.z_index = -1\n\t_start_menu()\n\n'
+  main+='func _ready() -> void:\n\tpads = [Pad.player_one(), Pad.player_two()]\n\tbg.hide()\n\t_snd_raise()\n\t_start_menu()\n\n'
  elif name.startswith('_run_') or 'func(' in chunk:
   # Preserve any top-level fields that follow a function.
   lines=chunk.splitlines(True)
@@ -75,6 +75,11 @@ while True:
 for start,end,name in reversed(spans):
  if name not in reachable: main=main[:start]+main[end:]
 files['main.gd']=main
+# Hide the NES shader beneath menus and do not synthesize unused menu audio.
+files['main.gd']=files['main.gd'].replace('func _process(dt: float) -> void:\n',
+ 'func _process(dt: float) -> void:\n\tbg.visible = menu == null and (pb3 == null or pb3.two != null)\n')
+files['main.gd']=files['main.gd'].replace('\t_step_game()\n\tif snd != null:',
+ '\t_step_game()\n\tif menu != null or (pb3 != null and pb3.two == null):\n\t\treturn\n\tif snd != null:')
 # Static storage lives in an autoload; Godot 3 has no static variables.
 state=[]; statics={}
 for filename,s in files.items():
