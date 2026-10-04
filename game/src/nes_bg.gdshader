@@ -64,6 +64,9 @@ uniform int band_bank[16];
 uniform float view_top = 0.0;      // the lines the level owns
 uniform float view_bottom = 240.0;
 uniform bool sprites_on = false;
+// GAP-17: presentation only. Simulation, OAM and collision maps stay native.
+uniform bool pb3_expanded = false;
+uniform bool pb3_horizontal = false;
 
 // The picture unit is told where the picture stands once a frame, and a game
 // may tell it again half way down: the screen a stage is picked on scrolls its
@@ -128,10 +131,18 @@ int tile_colour2(int bank, int index, int px, int py) {
 void fragment() {
     // Outside the level's window is the status bar's business.
     bool outside = FRAGCOORD.y < view_top || FRAGCOORD.y >= view_bottom;
-    vec2 world = floor((FRAGCOORD.y < split_at ? scroll : scroll2)
-                       + FRAGCOORD.xy);
-    if (top_wrap_y > 0.0 && FRAGCOORD.y < split_at) {
+    float display_dy = pb3_expanded ? 16.0 : 0.0;
+    vec2 world = floor((FRAGCOORD.y - display_dy < split_at ? scroll : scroll2)
+                       + FRAGCOORD.xy - vec2(0.0, display_dy));
+    if (top_wrap_y > 0.0 && FRAGCOORD.y - display_dy < split_at) {
         world.y = mod(mod(world.y, top_wrap_y) + top_wrap_y, top_wrap_y);
+    }
+    // Decorative rows use the room's own edge blocks, without collisions.
+    bool decoration = false;
+    if (pb3_expanded && pb3_horizontal && (world.y < 0.0 || world.y >= map_size.y * 8.0)) {
+        decoration = true;
+        world.y = world.y < 0.0 ? mod(world.y, 32.0)
+                : map_size.y * 8.0 - 32.0 + mod(world.y, 32.0);
     }
     if (wrap.x > 0.0) {
         world = mod(mod(world, wrap) + wrap, wrap);
@@ -162,7 +173,7 @@ void fragment() {
         int tile = int(m.r * 255.0 + 0.5);
         int pal = int(m.g * 255.0 + 0.5);
         ivec2 inner = ivec2(mod(world, 8.0));
-        bg_c = tile_colour(bg_bank(tile / 64, int(FRAGCOORD.y)), tile % 64,
+        bg_c = tile_colour(bg_bank(tile / 64, int(FRAGCOORD.y - display_dy)), tile % 64,
                 inner.x, inner.y);
         // Colour zero of every palette is the same backdrop colour, exactly as
         // the console wires it.
@@ -170,7 +181,9 @@ void fragment() {
         COLOR = texelFetch(palette, ivec2(slot, 0), 0);
     }
     int here_x = int(FRAGCOORD.x);
-    int here_y = int(FRAGCOORD.y);
+    // Decorative rows cannot conceal native sprites behind background.
+    if (decoration) { bg_c = 0; }
+    int here_y = int(FRAGCOORD.y - display_dy);
     int on_line = 0;
     // Whether the level's own table has this point already.  It is set by the
     // sprite that wins the point and not by the colour that ends up showing:

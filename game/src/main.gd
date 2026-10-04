@@ -2901,6 +2901,7 @@ func _show_sol_screen(at: Vector2i) -> void:
 	m.set_shader_parameter("split_at", 1000.0)
 	m.set_shader_parameter("top_wrap_y", 0.0)
 	m.set_shader_parameter("clip_left", 0.0)
+	m.set_shader_parameter("pb3_expanded", false)
 	m.set_shader_parameter("view_top", 0.0)
 	m.set_shader_parameter("view_bottom", 240.0)
 	m.set_shader_parameter("scroll", Vector2(at))
@@ -3508,6 +3509,7 @@ func _apply() -> void:
 	elif sol_hero != null:
 		_show_sol()
 	m.set_shader_parameter("scroll", Vector2(scroll if (world != null and level_pb2 != null and level_pb2.vertical) else scroll - origin))
+	m.set_shader_parameter("pb3_expanded", false)
 	m.set_shader_parameter("view_top", float(origin.y))
 	m.set_shader_parameter("view_bottom", float(origin.y + view_h))
 
@@ -4360,6 +4362,7 @@ func _sol_dark() -> void:
 	m.set_shader_parameter("split_at", 1000.0)
 	m.set_shader_parameter("top_wrap_y", 0.0)
 	m.set_shader_parameter("clip_left", 0.0)
+	m.set_shader_parameter("pb3_expanded", false)
 	m.set_shader_parameter("view_top", 0.0)
 	m.set_shader_parameter("view_bottom", 240.0)
 	m.set_shader_parameter("scroll", Vector2.ZERO)
@@ -5702,10 +5705,11 @@ func _pb3_apply() -> void:
 		game = "pb2"
 		img = lv.map_image
 		size = Vector2(lv.width_tiles, lv.height_tiles)
-		# Power Blade 2 hangs its level sixteen pixels below the top of the
-		# screen and keeps the bottom sixty-four for the status bar.
+		# GAP-17: keep native geometry; show 224 lines without scaling.
+		# The shader centres the original 160-line room and extends its
+		# background only. Vertical rooms reveal existing map instead.
 		origin = Vector2i(0, 16)
-		view_h = 160
+		view_h = 224
 	else:
 		var sl: SolLevel = two.solv as SolLevel
 		game = "sol"
@@ -5743,8 +5747,10 @@ func _pb3_apply() -> void:
 	m.set_shader_parameter("clip_left", 0.0)
 	m.set_shader_parameter("wrap", Vector2.ZERO)
 	_pb3_show()
-	m.set_shader_parameter("view_top", float(origin.y))
-	m.set_shader_parameter("view_bottom", float(origin.y + view_h))
+	m.set_shader_parameter("pb3_expanded", two.game == Pb3Pair.PB2)
+	m.set_shader_parameter("pb3_horizontal", two.game == Pb3Pair.PB2 and not two.pb2v.vertical)
+	m.set_shader_parameter("view_top", 0.0)
+	m.set_shader_parameter("view_bottom", 224.0)
 
 
 ## One picture of the mode handed over: where the view stands, the colours of
