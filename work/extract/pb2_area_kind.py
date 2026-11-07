@@ -8,6 +8,12 @@ and $FC where the screen is drawn from -- in the area with the turned-about
 ceiling (kind four) the two move against each other.  They are set by sixty-odd little
 routines, one per area, so instead of reading all of them the game is asked:
 each area is opened and the two bytes are read back out of its memory.
+
+QAI-01: they are read on the first picture the area is played ($1A = 5 with
+the hero put down), not at IN_LEVEL.  An area opened through $53/$9C goes
+live about 360 pictures before IN_LEVEL, and in the areas whose line moves
+(kinds 4, 6, 9) the line had already travelled by then: p3.6 opened with the
+lava 29 lines above the hero's feet and crushed him on the first step.
 """
 import json
 import os
@@ -19,11 +25,25 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, os.path.join(ROOT, 'work', 'tools'))
 import pb2_probe as P                                            # noqa: E402
+import pb2_trace as T                                            # noqa: E402
 
 DATA = os.path.join(ROOT, 'game', 'data', 'pb2', 'levels')
 
 
 def read(stage, area):
+    """$87, $29, $20, $FC on the first picture the area is played."""
+    first = P.PICK_LEVEL + 1
+    rows = T.trace([(0, '-')], P.IN_LEVEL - first + 3, first=first,
+                   stage=stage, area=area)
+    for r in rows:
+        if r['w_live'] == 5 and (r['xp'] or r['yp']) \
+                and (r['stage'], r['area']) == (stage, area):
+            return r['w_kind'], r['w_line'], r['w_flow'], r['w_draw']
+    return read_late(stage, area)
+
+
+def read_late(stage, area):
+    """Fallback for an area never played when opened out of turn."""
     os.makedirs(P.SCRATCH, exist_ok=True)
     state = os.path.join(P.SCRATCH, 'kind_%d_%d.st' % (stage, area))
     P.make_state(state, stage=stage, area=area)
