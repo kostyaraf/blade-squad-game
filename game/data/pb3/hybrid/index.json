@@ -1,0 +1,19 @@
+{
+ "levels": [
+  {
+   "name": "ASSEMBLY LINE",
+   "segments": [
+    {
+     "game": "pb2",
+     "stage": 0,
+     "area": 2,
+     "file": "pb3/hybrid/h1_0.json"
+    },
+    {
+     "game": "sol",
+     "stage": 8
+    }
+   ]
+  }
+ ]
+}

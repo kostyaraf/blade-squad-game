@@ -64,14 +64,19 @@ var auto_wait: int
 var _data: Dictionary
 
 
-func _init(stage_index: int, area_index: int) -> void:
+## `file` -- a hybrid level's area (game/data/pb3/hybrid/*.json): the same
+## format as the stage it borrows its blocks, tiles and code from.
+func _init(stage_index: int, area_index: int, file: String = "") -> void:
 	stage = stage_index
 	area = area_index
 	# The same door `SolLevel` keeps: a stage below nought loads nothing, and
 	# is how `SolAsPb2` borrows this class.
 	if stage_index < 0:
 		return
-	_data = Nes._load_json("%s/pb2/levels/stage%d.json" % [Nes.DATA, stage])
+	if file != "":
+		_data = Nes._load_json("%s/%s" % [Nes.DATA, file])
+	else:
+		_data = Nes._load_json("%s/pb2/levels/stage%d.json" % [Nes.DATA, stage])
 	var a: Dictionary = _data["areas"][area]
 	vertical = int(a["vertical"]) != 0
 	palette = PackedByteArray(a["palette"])

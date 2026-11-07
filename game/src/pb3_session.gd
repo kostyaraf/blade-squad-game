@@ -132,6 +132,8 @@ func resolve() -> String:
 		message = "TEAM DOWN - CHOOSE A LEVEL TO RETRY"
 		leave()
 		return "list"
+	if two.hyb >= 0:
+		return _hybrid_resolve()
 	if two.game == Pb3Pair.PB2:
 		var world: Pb2Objects = two.host_pb2
 		if two.ended == Pb2Turn.NEXT_AREA:
@@ -152,6 +154,37 @@ func resolve() -> String:
 		if mode == SolFlow.CLEAR or mode == SolFlow.END_PAY:
 			return _cleared()
 	return "playing"
+
+
+## A hybrid segment ends wherever its own game would leave the level: a
+## Power Blade door to the next area, a Solbrain door, or a beaten stage.
+## The next segment is raised the way a door raises a level; after the last
+## one the hybrid level is cleared.
+func _hybrid_resolve() -> String:
+	var done := false
+	if two.game == Pb3Pair.PB2:
+		done = two.ended == Pb2Turn.NEXT_AREA or two.ended == Pb2Turn.INTERLUDE
+	else:
+		var mode: int = two.host_script.g(0x02)
+		done = mode == SolFlow.DOOR or mode == 0x40 or mode == SolFlow.CLEAR \
+				or mode == SolFlow.END_PAY
+	if not done:
+		return "playing"
+	var seg: int = two.hyb_seg + 1
+	if seg >= Pb3Pair.hybrid_segments(two.hyb):
+		return _cleared()
+	var level: int = two.hyb
+	var old_world: Pb2Objects = two.host_pb2
+	two.release()
+	two = Pb3Pair.new(Pb3Pair.HYB, level, seg, kinds)
+	two.begin(entry_spots(), true)
+	if old_world != null and two.host_pb2 != null:
+		two.host_pb2.got = old_world.got
+		two.host_pb2.drop_clock = old_world.drop_clock
+	if two.host_pb2 != null:
+		two.host_status.restart_time(two.came, 0)
+	prepare()
+	return "changed"
 
 
 func _cleared() -> String:

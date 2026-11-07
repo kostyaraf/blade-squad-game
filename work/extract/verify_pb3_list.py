@@ -54,7 +54,10 @@ PADS = [0x01, 0x02]
 # All four pairings, the way Э5.2 asks them.
 KINDS = [['pb2', 'sol'], ['sol', 'pb2'], ['pb2', 'pb2'], ['sol', 'sol']]
 
-RECORDS = 63 + 20
+# both games' own records, then PB3's hybrid levels (work/hybrid/build.py)
+RECORDS = 63 + 20 + len(json.load(open(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), '..', '..', 'game', 'data',
+    'pb3', 'hybrid', 'index.json')))['levels'])
 
 
 def parse(line, head, n):

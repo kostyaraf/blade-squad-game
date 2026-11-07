@@ -72,6 +72,9 @@ func _label(text: String, x: int, y: int, size_: int) -> Label:
 ## four letters, which is what a stand reads; this is the same triple written
 ## out for somebody looking at it.
 static func name_of(rec: Array) -> String:
+	if int(rec[0]) == Pb3Pair.HYB:
+		return "PB3   H%d  %s" % [int(rec[1]) + 1,
+				String(Pb3Pair.hybrid_levels()[int(rec[1])]["name"])]
 	if int(rec[0]) == SOL:
 		return "SOLBRAIN   STAGE %d" % [int(rec[1]) + 1]
 	return "POWER BLADE 2   STAGE %d  AREA %d" % [int(rec[1]) + 1,

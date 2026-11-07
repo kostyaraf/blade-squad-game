@@ -71,7 +71,10 @@ import verify_sol_player as V                                    # noqa: E402
 # the ground they started on and for the level's own things to be about.
 FRAMES = 90
 
-RECORDS = 63 + 20
+# both games' own records, then PB3's hybrid levels (work/hybrid/build.py)
+RECORDS = 63 + 20 + len(json.load(open(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), '..', '..', 'game', 'data',
+    'pb3', 'hybrid', 'index.json')))['levels'])
 
 # The two games' sheets, by the name the engine prints.
 SHEETS = {'p': 'pb2', 's': 'sol'}

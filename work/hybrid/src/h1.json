@@ -1,0 +1,44 @@
+{
+  "name": "ASSEMBLY LINE",
+  "name_ru": "Сборочный цех",
+  "segments": [
+    {
+      "game": "pb2",
+      "donor": {"stage": 0, "area": 2},
+      "legend": {
+        "c": [65, 66], ".": 69, "0": 0,
+        "b": [72, 73], "l": [84, 85], "m": [75, 76],
+        "t": 71, "k": 12, "S": 82
+      },
+      "screens": [
+        {"copy": 3},
+        {"rows": ["cccccccc",
+                  "........",
+                  "........",
+                  "mmm0bbbb",
+                  "mmm0mmmm"]},
+        {"rows": ["cccccccc",
+                  "........",
+                  "...tt...",
+                  "m000000m",
+                  "mllllllm"]},
+        {"rows": ["cccccccc",
+                  "........",
+                  "........",
+                  "mm0mm0mm",
+                  "mm0mm0mm"]},
+        {"copy": 7}
+      ],
+      "spawns": [
+        {"along": 6,  "type": 41, "across": 32,  "flags": 0},
+        {"along": 20, "type": 41, "across": 32,  "flags": 0},
+        {"along": 38, "type": 35, "across": 144, "flags": 0},
+        {"along": 41, "type": 2,  "across": 64,  "flags": 3},
+        {"along": 56, "type": 29, "across": 112, "flags": 0},
+        {"along": 74, "type": 19, "across": 64,  "flags": 1},
+        {"along": 79, "type": 4,  "across": 128, "flags": 0}
+      ]
+    },
+    {"game": "sol", "stage": 8}
+  ]
+}
