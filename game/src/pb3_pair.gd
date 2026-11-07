@@ -34,6 +34,10 @@ class_name Pb3Pair
 ## Which game the level came from.
 const PB2 := 0
 const SOL := 1
+## A PB3 hybrid level (docs/hybrid/authoring.md): a chain of segments, each
+## one a level of one of the two games run under that game's own rules.  A
+## record [HYB, level, segment] is raised as the segment's own game.
+const HYB := 2
 
 ## How near the edge of the screen a hero may come, in pixels.  He is sixteen
 ## across, so this is his shoulder against the edge.
@@ -121,6 +125,10 @@ var area := 0
 ## into from nowhere, so a boss room is given the first stage and the clock has
 ## a number to read.
 var came := 0
+## Which hybrid level and which of its segments this is, or -1 when the level
+## is one of the two games' own.
+var hyb := -1
+var hyb_seg := 0
 
 
 # ---- Э5.7: the level's own game, running under the two of them ------------
@@ -214,6 +222,15 @@ func release() -> void:
 
 ## `kinds` is one of `PB2`/`SOL` a hero, in the order their pads come.
 func _init(from: int, st: int, ar: int, kinds: Array) -> void:
+	var file := ""
+	if from == HYB:
+		hyb = st
+		hyb_seg = ar
+		var seg: Dictionary = hybrid_segment(st, ar)
+		from = SOL if String(seg["game"]) == "sol" else PB2
+		st = int(seg["stage"])
+		ar = int(seg.get("area", 0))
+		file = String(seg.get("file", ""))
 	game = from
 	stage = st
 	area = ar
@@ -221,7 +238,7 @@ func _init(from: int, st: int, ar: int, kinds: Array) -> void:
 	# entry has no preceding door, so recover its stage from that table.
 	came = ar % Pb2Objects.BOSS_STAGE if game == PB2 and st == Pb2Objects.BOSS_STAGE else st
 	if game == PB2:
-		var src := Pb2Level.new(st, ar)
+		var src := Pb2Level.new(st, ar, file)
 		pb2v = src
 		solv = Pb2AsSol.new(src)
 		eye = Pb2Camera.new(pb2v)
@@ -254,6 +271,25 @@ func _init(from: int, st: int, ar: int, kinds: Array) -> void:
 			things.append(null)
 			pb2.append(null)
 			sol.append(p)
+
+
+## The hybrid levels, game/data/pb3/hybrid/index.json, built by
+## work/hybrid/build.py.
+static var _hybrid: Array = []
+
+
+static func hybrid_levels() -> Array:
+	if _hybrid.is_empty():
+		_hybrid = Nes._load_json("%s/pb3/hybrid/index.json" % Nes.DATA)["levels"]
+	return _hybrid
+
+
+static func hybrid_segment(level: int, seg: int) -> Dictionary:
+	return (hybrid_levels()[level]["segments"] as Array)[seg]
+
+
+static func hybrid_segments(level: int) -> int:
+	return (hybrid_levels()[level]["segments"] as Array).size()
 
 
 # ---- where the screen is --------------------------------------------------

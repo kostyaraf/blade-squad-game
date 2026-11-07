@@ -54,10 +54,15 @@ static func records() -> Array:
 			out.append([PB2, st, ar])
 	for st in range(SOL_STAGES):
 		out.append([SOL, st, 0])
+	# PB3's own levels come after both games', so no old index moves.
+	for h in range(Pb3Pair.hybrid_levels().size()):
+		out.append([Pb3Pair.HYB, h, 0])
 	return out
 
 
 static func say(rec: Array) -> String:
+	if int(rec[0]) == Pb3Pair.HYB:
+		return "h%d.%d" % [int(rec[1]) + 1, int(rec[2])]
 	return "%s%d.%d" % ["s" if int(rec[0]) == SOL else "p", int(rec[1]),
 			int(rec[2])]
 
